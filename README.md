@@ -60,6 +60,12 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 - **Alerts** when a friend comes online, someone joins or leaves your Discord call, or a Steam download finishes. Turn each off in Settings › Controllers.
 - **Steam downloads**: installs and updates show a progress bar on the game's tile; new installs appear by themselves.
 
+## News and clips
+
+- **Gaming news**: scroll down from Home's cards. Headlines from GameSpot, PC Gamer, IGN, Polygon, Eurogamer, VGC, Nintendo Life, Push Square and Pure Xbox, refreshed every couple of hours. A opens a story's summary, then *Read full article* opens it in your browser on the chosen display. B goes back up.
+- **Clips** (dock, and the guide's Clips tab): your Medal clips and screenshots, read straight from Medal's capture folder (C:\Medal unless you changed it in Medal; *Change folder* if needed). In the player: A play/pause, left/right skip 5 seconds, LB/RB previous/next clip, Y show it in its folder.
+- **Find all art** (Settings › Platforms › Game art) replaces the tile and background of every game; *Find missing art* only fills gaps.
+
 ## Players, saves and TV settings
 
 - **Players** (Settings › Controllers › Players, or guide › Profile & system › Set up players): everyone presses A once on their controller, in player order. Every Ryujinx, Dolphin and RPCS3 game then starts with those players, no extra screen. For Xbox-style controllers; Player 1 needs to be set up with a controller in each emulator once (your button layout is copied to the other players). The launcher keeps a backup of each emulator setting it changes (`.couch-original` / `.couch-backup` next to the file). Prefer to pick every time? Settings › Controllers › Players in emulator games › Ask every time.

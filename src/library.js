@@ -31,7 +31,8 @@ const DEFAULT_SETTINGS = {
   notifyDownloads: true, // pop-up when a Steam download finishes
   pickPlayers: 'saved',  // emulator players: 'saved' (use the players set up in Settings) | 'ask' (screen each time, 2+ controllers) | 'off'
   playerSlots: [],       // saved players: controller slot for Player 1, 2, 3, 4
-  saveStates: true       // Dolphin: save a state when closing / switching, offer to resume
+  saveStates: true,      // Dolphin: save a state when closing / switching, offer to resume
+  clipsFolder: null      // Medal's capture folder, when it isn't found by itself
 };
 
 const DEFAULT_PLATFORMS = {

@@ -97,6 +97,8 @@
     pad: '<path d="M6 12h4M8 10v4"/><circle cx="15" cy="11" r="1"/><circle cx="17" cy="13" r="1"/><path d="M7 6h10a5 5 0 0 1 4.9 6l-1 5a2.5 2.5 0 0 1-4.4 1L15 16H9l-1.5 2a2.5 2.5 0 0 1-4.4-1l-1-5A5 5 0 0 1 7 6z"/>',
     star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
     play: '<path d="M7 4l13 8-13 8z"/>',
+    film: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+    news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2zM17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 13h7M7 16h4"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
     pin: '<path d="M9 4h6l-1 6 4 4H6l4-4z"/><path d="M12 14v7"/>',
     users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 6 4.8"/>',
@@ -227,6 +229,163 @@
     if (recent) { all.splice(all.indexOf(recent), 1); all.unshift(recent); }
     return all.slice(0, 12);
   }
+  // ---- Gaming news (under Home): headlines from gaming sites, refreshed every couple of hours.
+  S.news = null; S.newsErr = null;
+  const ago = (t) => { if (!t) return ''; const m = Math.round((Date.now() - t) / 60000); return m < 60 ? Math.max(1, m) + ' min ago' : m < 1440 ? Math.round(m / 60) + ' hr ago' : Math.round(m / 1440) + ' d ago'; };
+  function newsSub() {
+    if (S.newsErr && !S.news) return 'Couldn’t reach news sites';
+    if (!S.news) return 'Loading…';
+    return 'Updated ' + ago(S.news.at) + ' · ' + S.news.items.length + ' stories';
+  }
+  function newsCardsHTML() {
+    const items = (S.news && S.news.items) || [];
+    if (!items.length) return '<p class="hint news-empty">' + (S.newsErr ? 'No news right now: the launcher tries again in a little while.' : 'Loading the latest gaming news…') + '</p>';
+    // Magazine layout: a big lead story, some wide ones, the rest regular (only stories with a
+    // picture get the bigger cards).
+    const size = (it, i) => (!it.image ? '' : i % 9 === 0 ? ' big' : (i % 9 === 4 || i % 9 === 7) ? ' wide' : '');
+    return items.slice(0, 36).map((it, i) => '<button class="ncard' + size(it, i) + '" data-nav data-key="n-' + i + '" data-zone="news" data-action="news" data-i="' + i + '">' +
+      (it.image ? '<span class="nimg" style="background-image:url(&quot;' + esc(it.image) + '&quot;)"></span>' : '<span class="nimg none">' + icon('news') + '</span>') +
+      '<span class="nbody"><span class="nmeta">' + esc(it.source) + (it.at ? ' · ' + ago(it.at) : '') + '</span><span class="ntitle">' + esc(it.title) + '</span></span></button>').join('');
+  }
+  function paintNews() {
+    const list = $('#news-list'), sub = $('#news-sub');
+    if (sub) sub.textContent = newsSub();
+    if (!list || S.view !== 'home') return;
+    const f = currentFocus(), key = f && f.closest('.home-news') ? f.dataset.key : null;
+    list.innerHTML = newsCardsHTML();
+    if (key) { const el = $('[data-key="' + cssEsc(key) + '"]', list) || $('[data-nav]', list); if (el) setFocus(el, { instant: true }); }
+  }
+  function openNews(it) {
+    const layer = openLayer({
+      html: '<div class="dialog news-read">' + (it.image ? '<div class="nr-img" style="background-image:url(&quot;' + esc(it.image) + '&quot;)"></div>' : '') +
+        '<div class="nr-meta">' + esc(it.source) + (it.at ? ' · ' + ago(it.at) : '') + '</div><h2>' + esc(it.title) + '</h2>' +
+        (it.summary ? '<p class="nr-sum">' + esc(it.summary) + '</p>' : '') +
+        '<div class="dialog-foot"><button class="btn big" data-nav data-key="nr-close" data-act="close">Close</button>' +
+        '<button class="btn big primary" data-nav data-key="nr-open" data-act="open">' + icon('link') + 'Read full article</button></div></div>',
+      focus: 'nr-open',
+      onActivate: async (el) => {
+        if (el.dataset.act === 'close') return closeLayer(layer);
+        try { await api.newsOpen(it.link); closeLayer(layer); } catch (e) { toast(e.message, true); }
+      },
+      onBack: () => closeLayer(layer),
+      prompts: () => [['A', 'Select'], ['B', 'Back']]
+    });
+  }
+  (async () => { if (OVERLAY) return; try { S.news = await api.news(false); S.newsErr = null; } catch (e) { S.newsErr = e.message; } paintNews(); })();
+
+  // ---- Medal clips: the Clips page (dock), the guide's Clips tab, and the player.
+  let clipsCache = null;
+  async function loadClips(force) {
+    if (clipsCache && !force && Date.now() - clipsCache.t < 30000) return clipsCache.v;
+    const v = await api.clips();
+    clipsCache = { t: Date.now(), v };
+    return v;
+  }
+  const clipName = (c) => c.game + ' · ' + new Date(c.at).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + new Date(c.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  function clipThumbHTML(c) {
+    return '<span class="cthumb">' + (c.kind === 'shot' ? '<img src="' + esc(fileUrl(c.file)) + '" alt="" loading="lazy">' : '<video muted preload="none" data-src="' + esc(fileUrl(c.file)) + '#t=1"></video><span class="cplay">' + icon('play') + '</span><span class="cdur"></span>') + '</span>';
+  }
+  // Videos load their first frame only when they scroll into view.
+  function lazyThumbs(root, scroller) {
+    const vids = $$('video[data-src]', root);
+    if (!vids.length) return;
+    const load = (v) => {
+      if (v.src) return;
+      v.preload = 'metadata';
+      v.addEventListener('loadedmetadata', () => { const d = v.duration; const lab = v.parentElement && $('.cdur', v.parentElement); if (lab && isFinite(d)) lab.textContent = Math.floor(d / 60) + ':' + String(Math.round(d % 60)).padStart(2, '0'); }, { once: true });
+      v.src = v.dataset.src;
+    };
+    if (!('IntersectionObserver' in window)) { vids.slice(0, 24).forEach(load); return; }
+    const io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { load(e.target); io.unobserve(e.target); } }, { root: scroller || null, rootMargin: '300px' });
+    vids.forEach((v) => io.observe(v));
+  }
+  async function openClips() {
+    let data = null, err = null, filter = 'all';
+    const layer = openLayer({
+      className: 'clips-layer',
+      html: '<div class="clips"><div class="clips-head"><h1>' + icon('film') + 'Clips</h1><span class="clips-sub">Looking for your Medal clips…</span></div><div class="clips-main"></div></div>',
+      onActivate: async (el) => {
+        const act = el.dataset.act;
+        if (act === 'filter') { filter = el.dataset.f; draw('cf-' + filter); return; }
+        if (act === 'play') return openClipPlayer(shown(), Number(el.dataset.i));
+        if (act === 'folder') {
+          const p = await browse({ title: 'Choose your Medal folder', folder: true });
+          if (!p) return;
+          S.lib.settings.clipsFolder = p; save(); clipsCache = null;
+          setTimeout(load, 400); // after the setting reaches the app core
+        }
+      },
+      onBack: () => closeLayer(layer),
+      prompts: (el) => (el && el.dataset.act === 'play' ? [['A', 'Play'], ['B', 'Close']] : [['A', 'Select'], ['B', 'Close']])
+    });
+    const shown = () => ((data && data.clips) || []).filter((c) => filter === 'all' || (filter === 'shots' ? c.kind === 'shot' : c.game === filter));
+    function draw(focusKey) {
+      const main = $('.clips-main', layer.el), sub = $('.clips-sub', layer.el);
+      if (err || !data) { sub.textContent = err || 'Looking for your Medal clips…'; main.innerHTML = ''; return; }
+      const all = data.clips;
+      sub.textContent = data.folder ? data.folder + ' · ' + all.length + ' clip' + (all.length === 1 ? '' : 's') : 'Medal folder not found';
+      if (!all.length) {
+        main.innerHTML = '<div class="clips-empty"><p>' + (data.folder ? 'No clips in your Medal folder yet.' : 'Couldn’t find Medal’s clips folder.') + ' Medal saves clips in <b>C:\\Medal</b> unless you changed it in Medal’s settings (Capture Folder Location).</p>' +
+          '<button class="btn big primary" data-nav data-key="cl-folder" data-act="folder">' + icon('folder') + 'Choose Medal folder</button></div>';
+        setFocus($('[data-nav]', main), { instant: true });
+        return;
+      }
+      const games = [...new Set(all.filter((c) => c.kind === 'clip').map((c) => c.game))];
+      const shots = all.filter((c) => c.kind === 'shot').length;
+      const side = [['all', 'All clips', all.length]].concat(games.map((g) => [g, g, all.filter((c) => c.game === g && c.kind === 'clip').length]), shots ? [['shots', 'Screenshots', shots]] : []);
+      const list = shown();
+      main.innerHTML = '<aside class="side">' + side.map(([k, l, n]) => '<button class="sideitem' + (filter === k ? ' sel' : '') + '" data-nav data-key="cf-' + esc(k) + '" data-zone="cside" data-act="filter" data-f="' + esc(k) + '"><span>' + esc(l) + '</span><span class="n">' + n + '</span></button>').join('') +
+        '<div class="spacer"></div><button class="dashed" data-nav data-key="cl-folder" data-zone="cside" data-act="folder">' + icon('folder') + 'Change folder</button></aside>' +
+        '<section class="content"><div class="clip-grid">' + list.map((c, i) => '<button class="clip" data-nav data-key="cl-' + i + '" data-zone="cgrid" data-act="play" data-i="' + i + '">' + clipThumbHTML(c) +
+          '<span class="cname">' + esc(c.kind === 'shot' ? 'Screenshot' : c.game) + '</span><span class="cwhen">' + esc(ago(c.at)) + '</span></button>').join('') + '</div></section>';
+      lazyThumbs(main, $('.content', main));
+      const el = (focusKey && $('[data-key="' + cssEsc(focusKey) + '"]', main)) || $('.clip', main) || $('[data-nav]', main);
+      if (el) setFocus(el, { instant: true });
+    }
+    async function load() {
+      try { data = await loadClips(true); err = null; } catch (e) { err = e.message; }
+      if (layers.indexOf(layer) >= 0) draw(layer.focusKey);
+    }
+    load();
+  }
+  // Full-screen player: A play/pause, left/right 5 s, LB/RB previous/next, Y show in folder.
+  function openClipPlayer(list, index) {
+    let i = index;
+    const layer = openLayer({
+      className: 'player-layer',
+      html: '<div class="player"><div class="pl-stage"></div><div class="pl-bar"><div class="pl-title"></div><div class="pl-time"></div><div class="pl-track"><i></i></div></div>' +
+        '<button class="pl-hit" data-nav data-key="pl" aria-label="Play or pause"></button></div>',
+      focus: 'pl',
+      onActivate: () => toggle(),
+      onMove: (dir) => { const v = $('video', layer.el); if (dir === 'left' || dir === 'right') { if (v) v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + (dir === 'right' ? 5 : -5))); return true; } return true; },
+      onButton: (b) => {
+        if (b === 'LB' || b === 'RB') { const n = i + (b === 'RB' ? 1 : -1); if (n >= 0 && n < list.length) { i = n; show(); } return true; }
+        if (b === 'Y') { api.clipsShow(list[i].file).catch((e) => toast(e.message, true)); return true; }
+        if (b === 'X' || b === 'A') { toggle(); return true; }
+        return false;
+      },
+      onBack: () => closeLayer(layer),
+      onClose: () => { const v = $('video', layer.el); if (v) { v.pause(); v.removeAttribute('src'); v.load(); } clearInterval(tick); },
+      prompts: () => [['A', 'Play/Pause'], ['LB', 'RB'], ['Y', 'Show in folder'], ['B', 'Close']]
+    });
+    const stage = $('.pl-stage', layer.el);
+    function toggle() { const v = $('video', layer.el); if (v) { if (v.paused) v.play().catch(() => {}); else v.pause(); } }
+    function show() {
+      const c = list[i];
+      stage.innerHTML = c.kind === 'shot' ? '<img src="' + esc(fileUrl(c.file)) + '" alt="">' : '<video src="' + esc(fileUrl(c.file)) + '" autoplay playsinline></video>';
+      $('.pl-title', layer.el).textContent = (c.kind === 'shot' ? 'Screenshot · ' : '') + clipName(c) + '  (' + (i + 1) + '/' + list.length + ')';
+      const v = $('video', stage);
+      if (v) v.addEventListener('error', () => toast('Can’t play this clip here (its format isn’t supported). Y opens it in its folder.', true), { once: true });
+    }
+    const fmt = (t) => (isFinite(t) ? Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0') : '0:00');
+    const tick = setInterval(() => {
+      const v = $('video', layer.el);
+      $('.pl-time', layer.el).textContent = v ? fmt(v.currentTime) + ' / ' + fmt(v.duration) + (v.paused ? '  ·  paused' : '') : '';
+      $('.pl-track i', layer.el).style.width = v && v.duration ? (v.currentTime / v.duration * 100) + '%' : '0';
+    }, 250);
+    show();
+  }
+
   // Steam achievement progress for a Steam game (null when there's none or Steam isn't connected).
   const steamAppId = (g) => (g && g.source === 'steam' && /^steam:(\d+)$/.exec(g.key || '') || [])[1] || null;
   async function steamAch(g) {
@@ -322,7 +481,7 @@
   function renderTop() {
     const s = S.lib.settings;
     const n = games().length;
-    const navs = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
+    const navs = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
     const x = s.xbox;
     const sub = profileFrom() === 'steam' ? icon('level') + '<span>' + esc(profileSub()) + '</span>'
       : x ? icon('trophy') + '<span>' + Number(x.gamerscore || 0).toLocaleString() + '</span>'
@@ -452,7 +611,9 @@
     return '<div class="hero"><div class="eyebrow" id="hero-eyebrow"></div><h1 id="hero-title"></h1><div class="meta" id="hero-meta"></div></div>' +
       '<div class="row home-tiles"><div class="row-inner">' + tiles + '</div></div>' +
       '<div class="row home-cards"><div class="row-inner">' + cards.map(([k, ic, t, s, attrs]) =>
-        '<button class="card" data-nav data-key="' + k + '" data-zone="cards" data-lock="cards" ' + attrs + '>' + icon(ic) + '<div><div class="t">' + t + '</div><div class="s">' + esc(s) + '</div></div></button>').join('') + '</div></div>';
+        '<button class="card" data-nav data-key="' + k + '" data-zone="cards" data-lock="cards" ' + attrs + '>' + icon(ic) + '<div><div class="t">' + t + '</div><div class="s">' + esc(s) + '</div></div></button>').join('') + '</div></div>' +
+      '<section class="home-news" aria-label="Gaming news"><div class="news-head">' + icon('news') + '<h2>Gaming news</h2><span class="news-sub" id="news-sub">' + esc(newsSub()) + '</span></div>' +
+      '<div class="news-list" id="news-list">' + newsCardsHTML() + '</div></section>';
   }
 
   let heroTimer = null;
@@ -587,6 +748,7 @@
       }
       h += '<div class="prow"><div class="picon" style="background:var(--chip);color:var(--text)">' + icon('image') + '</div><div class="pinfo"><div class="t">Game art · SteamGridDB</div><div class="p">Finds tiles and backgrounds by game name</div></div>' +
         (S.artOn ? '<span class="status ok">Connected</span><button class="btn" data-nav data-key="p-art-find" data-zone="body" data-action="art-find">' + icon('search') + (S.artRunning ? 'Finding…' : 'Find missing art') + '</button>' +
+          '<button class="btn" data-nav data-key="p-art-all" data-zone="body" data-action="art-all">' + icon('refresh') + 'Find all art</button>' +
           '<button class="btn" data-nav data-key="p-art-off" data-zone="body" data-action="art-off">Disconnect</button>'
           : '<span class="status off">Not connected</span><button class="btn" data-nav data-key="p-art-on" data-zone="body" data-action="art-on">' + icon('link') + 'Connect</button>') + '</div>';
       h += '<div class="prow"><div class="picon" style="background:' + SOURCES.custom.color + '">+</div><div class="pinfo"><div class="t">Custom</div><div class="p">Games and programs you add one at a time</div></div>' +
@@ -732,7 +894,7 @@
     onFocusChanged(el);
   }
   function ensureVisible(el, instant) {
-    const sc = el.closest('.row, .content, .fb-list, .side, .flist, .gbody');
+    const sc = el.closest('.row, .content, .fb-list, .side, .flist, .gbody, .news-list');
     if (!sc) return;
     const r = el.getBoundingClientRect(), c = sc.getBoundingClientRect();
     const rem = remPx();
@@ -762,6 +924,7 @@
 
   let tabTimer = null;
   function onFocusChanged(el) {
+    $('#app').classList.toggle('news-mode', !layers.length && S.view === 'home' && !!(el && el.closest && el.closest('.home-news')));
     if (!layers.length) {
       if (S.view === 'home') updateHero(false);
       // Settings tabs follow focus, like a console.
@@ -1416,7 +1579,8 @@
     let tab = opts.tab || 'games';
     let status = null;
     let friends = null, friendsErr = null, xboxOn = false, ach = null;
-    const TABS_G = [['games', 'grid', 'Games'], ['friends', 'users', 'Friends'], ['system', 'user', 'Profile & system']];
+    const TABS_G = [['games', 'grid', 'Games'], ['clips', 'film', 'Clips'], ['friends', 'users', 'Friends'], ['system', 'user', 'Profile & system']];
+    let gclips = null, gclipsErr = null;
     let music = null, musicErr = null, musicTimer = null;
     const item = (key, ic, label, attrs, cls) => '<button class="mitem' + (cls ? ' ' + cls : '') + '" data-nav data-key="' + key + '" data-zone="gbody" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
     const thumb = (g) => '<span class="mthumb" style="background-color:' + tileColor(g) + (g.art && g.art.tile ? ';background-image:url(&quot;' + esc(fileUrl(g.art.tile)) + '&quot;)' : '') + '"></span>';
@@ -1440,6 +1604,14 @@
         return h;
       }
       if (tab === 'friends') return discordHTML() + friendSectionsHTML(friends, 'gbody');
+      if (tab === 'clips') {
+        if (gclipsErr) return '<p class="hint gpad">' + esc(gclipsErr) + '</p>';
+        if (!gclips) { loadClips(false).then((v) => { gclips = v; if (layers.indexOf(layer) >= 0 && tab === 'clips') redraw(); }, (e) => { gclipsErr = e.message; redraw(); }); return '<p class="hint gpad">Loading your Medal clips…</p>'; }
+        const recent = gclips.clips.filter((c) => c.kind === 'clip').slice(0, 8);
+        return '<div class="glabel">Latest clips · Medal</div>' + (recent.length ? '<div class="gclips">' + recent.map((c, i) => '<button class="gclip" data-nav data-key="gc-' + i + '" data-zone="gbody" data-act="clip" data-i="' + i + '">' + clipThumbHTML(c) + '<span class="cname">' + esc(c.game) + '</span><span class="cwhen">' + esc(ago(c.at)) + '</span></button>').join('') + '</div>'
+          : '<p class="hint gpad">' + (gclips.folder ? 'No clips yet.' : 'Medal’s clips folder wasn’t found.') + '</p>') +
+          item('gc-all', 'film', 'All clips', 'data-act="clips-all"');
+      }
       const s = S.lib.settings;
       return '<button class="gprofile" data-nav data-key="s-profile" data-zone="gbody" data-act="profile">' + avatarHTML('avatar') +
         '<span><span class="gp-name">' + esc(displayName()) + '</span><span class="gp-sub">' +
@@ -1466,6 +1638,7 @@
       $('.guide', layer.el).outerHTML = html().replace('<aside class="guide">', '<aside class="guide still">');
       const el = (key && $('[data-key="' + cssEsc(key) + '"]', layer.el)) || $('.gbody [data-nav]', layer.el) || $('[data-nav]', layer.el);
       setFocus(el, { instant: true });
+      if (tab === 'clips') lazyThumbs(layer.el, $('.gbody', layer.el));
     }
     function setTab(t) {
       if (t === tab) return;
@@ -1675,7 +1848,7 @@
           try { await api.discordType(text); } catch (e) { toast(e.message, true); }
           return;
         }
-        if (OVERLAY && !['resume', 'friends-retry', 'm-toggle', 'm-next', 'm-prev', 'm-shuffle', 'm-pref', 'm-open', 'm-voldown', 'm-volup'].includes(act)) {
+        if (OVERLAY && !['resume', 'friends-retry', 'm-toggle', 'm-next', 'm-prev', 'm-shuffle', 'm-pref', 'm-open', 'm-voldown', 'm-volup', 'clip', 'clips-all'].includes(act)) {
           const req = act === 'play' ? { action: S.playing ? 'switch' : 'goto', id: el.dataset.id, target: 'library' }
             : act === 'close' ? { action: 'close' } : { action: 'goto', target: act };
           closeLayer(layer);
@@ -1730,6 +1903,8 @@
         if (act === 'dc-add') { closeLayer(layer); return discordPins(); }
         if (act === 'dc-setup') { closeLayer(layer); return discordConnect(); }
         if (act === 'players-setup') { closeLayer(layer); return setUpPlayersNow(); }
+        if (act === 'clip') { const list = gclips.clips.filter((c) => c.kind === 'clip').slice(0, 8); return openClipPlayer(list, Number(el.dataset.i)); }
+        if (act === 'clips-all') { closeLayer(layer); return openClips(); }
         if (act === 'profile') { openProfile(); return; }
         if (act === 'settings') { closeLayer(layer); S.setTab = 'platforms'; return go('settings', 't-platforms'); }
         if (act === 'themes') { closeLayer(layer); S.setTab = 'themes'; return go('settings', 't-themes'); }
@@ -2180,11 +2355,12 @@
     return S.artOn || connectArt();
   }
   // Fills in missing tiles and backgrounds for the whole library, one game at a time.
-  async function autoArt(loud) {
+  // all = true: "Find all art" replaces the tile and background of every game.
+  async function autoArt(loud, all) {
     if (OVERLAY || S.artRunning) return;
     try { S.artOn = await api.artStatus(); } catch (_) { S.artOn = false; }
     if (!S.artOn) return;
-    const todo = games().filter((g) => (!g.art || !g.art.tile || !g.art.hero) && !g.artTried);
+    const todo = all ? games().slice() : games().filter((g) => (!g.art || !g.art.tile || !g.art.hero) && !g.artTried);
     if (!todo.length) { if (loud) toast('Every game already has art'); return; }
     S.artRunning = true;
     if (S.view === 'settings') refreshContent();
@@ -2196,7 +2372,7 @@
         await enqueue(async () => {
           const g = byId(g0.id);
           if (!g) return;
-          const want = { tile: !(g.art && g.art.tile), hero: !(g.art && g.art.hero) };
+          const want = all ? { tile: true, hero: true } : { tile: !(g.art && g.art.tile), hero: !(g.art && g.art.hero) };
           const r = await api.findArt(g.title, g.id, want);
           g.art = g.art || {};
           g.artEdited = Object.assign({}, g.artEdited);
@@ -2214,7 +2390,7 @@
     S.artRunning = false;
     save();
     if (!layers.length) rerenderKeepFocus();
-    if (loud || found) toast(found ? 'Added art for ' + found + ' game' + (found === 1 ? '' : 's') : 'No new art found');
+    if (loud || found) toast(found ? (all ? 'New art for ' : 'Added art for ') + found + ' game' + (found === 1 ? '' : 's') : 'No new art found');
   }
 
   async function refreshXbox(silent) {
@@ -2450,12 +2626,14 @@
         const to = el.dataset.to;
         if (to === 'add') return openEdit(null);
         if (to === 'friends') return openFriends();
+        if (to === 'clips') return openClips();
         if (to === 'search') { if (S.view !== 'library') go('library', 's-search'); return searchPrompt(); }
         return go(to);
       }
       case 'add': return openEdit(null);
       case 'profile': return openProfile();
       case 'stores': return storesMenu();
+      case 'news': { const it = S.news && S.news.items[Number(el.dataset.i)]; if (it) openNews(it); return; }
       case 'pick-mode': {
         const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
         if (m) { s.pickPlayers = m; save(); refreshContent(); }
@@ -2528,6 +2706,11 @@
       case 'art-on': if (await connectArt()) { refreshContent(); autoArt(false); } return;
       case 'art-off': try { await api.artDisconnect(); } catch (_) { /* ignore */ } S.artOn = false; return refreshContent();
       case 'art-find': for (const g of games()) delete g.artTried; return autoArt(false);
+      case 'art-all': {
+        const n = games().length;
+        if (!(await confirmBox('Find all art?', 'Gets a new tile and background for all ' + n + ' games from SteamGridDB, replacing the art they have now (including pictures you picked yourself). Games it can’t find keep their art.', 'Replace all art', true))) return;
+        return autoArt(true, true);
+      }
       case 'display': {
         s.displayId = el.dataset.id;
         save();
@@ -2584,6 +2767,7 @@
       case 'B':
         if (top) return top.onBack ? top.onBack() : closeLayer(top);
         if (S.view !== 'home') return go('home');
+        if (el && el.closest('.home-news')) { const c = $('[data-key="c-lib"]'); if (c) setFocus(c); } // back up from the news
         return;
       case 'Y':
         if (!top && el && el.dataset.game) { const g = byId(el.dataset.game); if (g) openEdit(g); }
@@ -2776,6 +2960,7 @@
     paintDownloads();
   });
   (async () => { try { S.downloads = await api.downloads(); paintDownloads(); } catch (_) { /* not available */ } })();
+  api.on('news', (n) => { if (n && Array.isArray(n.items)) { S.news = n; S.newsErr = null; paintNews(); } });
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
   api.on('pads', (list) => { S.pads = Array.isArray(list) ? list : null; const p = $('#padcount'); if (p) p.innerHTML = padsHTML(); if (S.onPads) S.onPads(); });
   api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.title); });

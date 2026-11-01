@@ -1,6 +1,6 @@
 {
- "version": "1.6.2",
- "notes": "Fixes 1.6.0/1.6.1 not starting (the launcher fell back to its original version). Includes everything from 1.6: players, Dolphin saves, TV settings per game, and the setup wizard.",
- "file": "CouchLauncher-update-1.6.2.zip",
- "size": 135888
+ "version": "1.7.0",
+ "notes": "Gaming news below Home (scroll down from the cards), refreshed every couple of hours, in a magazine layout. Clips: your Medal clips in the dock and in the guide, with a controller-friendly player. Find all art replaces every game's art.",
+ "file": "CouchLauncher-update-1.7.0.zip",
+ "size": 146224
 }

@@ -650,3 +650,90 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .pp-c svg { width: 2.2rem; height: 2.2rem; }
 .pp-c .glyph { transform: scale(0.9); }
 .reduce-motion .pp.in { animation: none; }
+
+/* ---------- Gaming news (below Home: focus slides the page up) ---------- */
+#app.view-home #view .view { transition: transform 520ms var(--ease); }
+#app.view-home.news-mode #view .view { transform: translateY(calc(-100vh + 11rem)); }
+.reduce-motion #app.view-home #view .view { transition: none; }
+.home-news { position: absolute; left: 0; right: 0; top: 100vh; height: calc(100vh - 11rem); display: flex; flex-direction: column;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg) 88%, transparent) 9rem); }
+#app.news-mode .home-news { backdrop-filter: blur(18px); }
+.news-head { display: flex; align-items: center; gap: 1.2rem; padding: 2.4rem 5.6rem 0.4rem; }
+.news-head svg { width: 2.8rem; height: 2.8rem; color: var(--accent); }
+.news-head h2 { margin: 0; font-size: 2.8rem; font-weight: 800; }
+.news-sub { margin-left: auto; color: var(--sub); font-size: 1.5rem; }
+.news-list { flex: 1; overflow-y: auto; scrollbar-width: none; padding: 2rem 5.6rem 9rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(38rem, 1fr)); grid-auto-rows: 34rem; gap: 2rem; align-content: start;
+  scroll-padding: 2rem 0 8rem; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 10rem), transparent calc(100% - 3rem)); mask-image: linear-gradient(to bottom, #000 calc(100% - 10rem), transparent calc(100% - 3rem)); }
+.news-list::-webkit-scrollbar { display: none; }
+.news-empty { grid-column: 1 / -1; font-size: 1.7rem; }
+.ncard { display: flex; flex-direction: column; text-align: left; border-radius: var(--r-card); overflow: hidden; background: var(--panel-solid); border: 1px solid var(--border); color: var(--text); }
+.ncard.focused { transform: scale(1.03); background: var(--panel-hover); }
+.nimg { display: block; width: 100%; height: 20rem; background: var(--chip) center / cover no-repeat; flex-shrink: 0; }
+.nimg.none { display: flex; align-items: center; justify-content: center; color: var(--sub); }
+.nimg.none svg { width: 5rem; height: 5rem; }
+.nbody { display: flex; flex-direction: column; gap: 0.8rem; padding: 1.4rem 1.8rem 1.6rem; min-height: 0; flex: 1; }
+.nmeta { font-size: 1.3rem; font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
+.ntitle { font-size: 1.8rem; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.news-read { width: 88rem; padding-top: 0; overflow: hidden; }
+.nr-img { height: 34rem; margin: 0 -3.2rem 2rem; background: var(--chip) center / cover no-repeat; }
+.nr-meta { color: var(--accent); font-weight: 700; font-size: 1.4rem; }
+.news-read h2 { font-size: 2.8rem; line-height: 1.25; margin: 0.6rem 0 1.2rem; }
+.nr-sum { color: var(--sub); font-size: 1.7rem; line-height: 1.55; margin: 0 0 1rem; }
+
+/* ---------- Clips (Medal) ---------- */
+.clips-layer { background: var(--bg); }
+.clips { position: absolute; inset: 0; display: flex; flex-direction: column; animation: viewIn var(--t-med) var(--ease) both; }
+.clips-head { display: flex; align-items: baseline; gap: 2rem; padding: 4.4rem 5.6rem 1rem; }
+.clips-head h1 { display: flex; align-items: center; gap: 1.2rem; margin: 0; font-size: 3.6rem; font-weight: 800; }
+.clips-head h1 svg { width: 3.4rem; height: 3.4rem; color: var(--accent); }
+.clips-sub { color: var(--sub); font-size: 1.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clips-main { position: relative; flex: 1; display: flex; min-height: 0; }
+.clips-main .side { padding-top: 1rem; }
+.clip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(32rem, 1fr)); gap: 2rem; }
+.clip, .gclip { display: flex; flex-direction: column; gap: 0.6rem; text-align: left; color: var(--text); border-radius: var(--r-card); padding: 0.8rem; background: transparent; }
+.clip.focused, .gclip.focused { background: var(--panel-hover); transform: scale(1.03); }
+.cthumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: calc(var(--r-card) * 0.8); overflow: hidden; background: #000; }
+.cthumb video, .cthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cplay { position: absolute; left: 50%; top: 50%; width: 5rem; height: 5rem; margin: -2.5rem 0 0 -2.5rem; border-radius: 50%; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; color: #fff; opacity: 0.85; }
+.cplay svg { width: 2.2rem; height: 2.2rem; }
+.cdur { position: absolute; right: 0.8rem; bottom: 0.8rem; padding: 0.2rem 0.7rem; border-radius: 0.6rem; background: rgba(0,0,0,0.7); color: #fff; font-size: 1.2rem; font-weight: 700; }
+.cdur:empty { display: none; }
+.cname { font-size: 1.6rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 0.4rem; }
+.cwhen { font-size: 1.3rem; color: var(--sub); padding: 0 0.4rem; }
+.clips-empty { margin: 6rem auto; max-width: 70rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2.4rem; font-size: 1.8rem; color: var(--sub); }
+.gclips { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; padding: 0 0.4rem; }
+.gclip .cname { font-size: 1.4rem; }
+.gclip .cwhen { font-size: 1.2rem; }
+.gclip .cplay { width: 3.6rem; height: 3.6rem; margin: -1.8rem 0 0 -1.8rem; }
+
+/* Player */
+.player-layer { background: #000; z-index: 50; }
+.player { position: absolute; inset: 0; }
+.pl-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.pl-stage video, .pl-stage img { max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
+.pl-bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 6rem 5.6rem 8.4rem; background: linear-gradient(to top, rgba(0,0,0,0.85), transparent); color: #fff; display: grid; grid-template-columns: 1fr auto; gap: 1rem; pointer-events: none; }
+.pl-title { font-size: 2rem; font-weight: 700; }
+.pl-time { font-size: 1.6rem; opacity: 0.85; font-variant-numeric: tabular-nums; }
+.pl-track { grid-column: 1 / -1; height: 0.5rem; border-radius: 0.3rem; background: rgba(255,255,255,0.25); overflow: hidden; }
+.pl-track i { display: block; height: 100%; width: 0; background: var(--accent); }
+.pl-hit { position: absolute; inset: 0; background: transparent; outline: none !important; }
+
+/* While reading news, the rest of Home fades out so nothing peeks out under the top bar. */
+#app.view-home .hero, #app.view-home .home-tiles, #app.view-home .home-cards { transition: opacity 400ms var(--ease); }
+#app.view-home.news-mode .hero, #app.view-home.news-mode .home-tiles, #app.view-home.news-mode .home-cards { opacity: 0; }
+
+/* News: magazine layout (big lead story, wide features, regular cards), packed without gaps */
+.news-list { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 14rem; grid-auto-flow: dense; }
+.ncard { grid-row: span 2; }
+.ncard .nimg { height: auto; flex: 0 0 52%; }
+.ncard .ntitle { -webkit-line-clamp: 3; }
+.ncard.big { grid-column: span 2; grid-row: span 3; position: relative; }
+.ncard.big .nimg { position: absolute; inset: 0; height: 100%; }
+.ncard.big .nbody { position: absolute; left: 0; right: 0; bottom: 0; padding: 8rem 2.6rem 2.4rem; background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.88) 55%); color: #fff; }
+.ncard.big .ntitle { font-size: 2.8rem; line-height: 1.2; }
+.ncard.big .nmeta { font-size: 1.4rem; }
+.ncard.wide { grid-column: span 2; flex-direction: row; }
+.ncard.wide .nimg { flex: 0 0 52%; height: 100%; }
+.ncard.wide .nbody { justify-content: center; padding: 2rem 2.4rem; }
+.ncard.wide .ntitle { font-size: 2.1rem; -webkit-line-clamp: 4; }
+.ncard.focused.big, .ncard.focused.wide { transform: scale(1.02); }
