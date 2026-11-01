@@ -49,6 +49,7 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 
 - **Home**: back to the launcher's Home if a game opens or closes wrong (the game keeps running).
 - **Game / music balance**: while a game runs, slide toward the controller for more game, toward the note for more music.
+- **Discord calls** (Friends tab › *Connect Discord for calls*, set up once): see who's in your call and in each pinned voice channel, join a call by pressing its pin, leave, mute and deafen. It uses Discord's own connection through a free app you make on Discord's developer page; the launcher walks you through it. Discord asks you to approve it once.
 - **Discord** (Friends tab): pin channels, voice calls, servers or invites (in Discord: right-click › Copy Link, then *Pin* in the guide), open them in one press, mute/deafen, and type a message that's sent to the chat open in Discord. Mute and deafen need a one-time setup in Discord: **Settings › Keybinds › Add a Keybind**: *Toggle Mute* = Ctrl+Shift+M and *Toggle Deafen* = Ctrl+Shift+D (the guide reminds you the first time). Discord doesn't let other programs join calls, so a pin marked *Voice channel* opens the call screen with the pointer on **Join Voice**: press A. The launcher never reads or sends anything as your account on its own.
 
 ## Stores, Roblox, Microsoft Store

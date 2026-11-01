@@ -591,3 +591,19 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .pf-opt.sel { border-color: var(--accent); }
 .pf-opt.sel svg { color: var(--accent); }
 .pf-opt.focused { background: var(--panel-hover); }
+
+/* Discord: who's in the call */
+.dcpeople { display: flex; flex-direction: column; gap: 0.4rem; padding: 0 0.8rem 0.4rem; }
+.dcp { display: flex; align-items: center; gap: 1rem; font-size: 1.5rem; min-width: 0; }
+.dcn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dcav { position: relative; width: 3rem; height: 3rem; border-radius: 50%; background: var(--chip); color: var(--sub); display: inline-flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 700; overflow: hidden; flex-shrink: 0; }
+.dcav img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dcst svg { width: 1.8rem; height: 1.8rem; color: var(--danger, #E2506B); }
+.dcpin > span:not(.dcstack) { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mitem small { font-size: 1.3rem; color: var(--sub); font-weight: 500; }
+.dcstack { display: flex; margin-left: auto; padding-left: 1rem; }
+.dcstack .dcav { width: 2.6rem; height: 2.6rem; font-size: 1.1rem; border: 0.2rem solid var(--panel-solid, #1d2733); margin-left: -0.8rem; }
+.gpill.on { background: color-mix(in srgb, var(--danger, #E2506B) 28%, var(--chip)); }
+.gpill.on svg { color: var(--danger, #E2506B); }
+.dc-status.bad { color: var(--danger, #E2506B); }
+.dc-connect .dialog-foot { flex-wrap: wrap; }
