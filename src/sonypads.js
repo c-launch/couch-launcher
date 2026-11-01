@@ -12,14 +12,18 @@ const SONY = 0x054c;
 const DUALSENSE = new Set([0x0ce6, 0x0df2]); // DualSense, DualSense Edge
 const PADS = new Set([0x05c4, 0x09cc, 0x0ba0, 0x0ce6, 0x0df2]); // + DualShock 4 v1/v2, DS4 USB adapter
 const STATUS_PENDING = 0x103;
-const BUF = 1024; // any report fits (DS4 over Bluetooth is the biggest at 547)
 const RESCAN_MS = 3000;
+// A pad whose PS button seems to flip this often is being misread: ignore it rather than
+// spamming the guide.
+const FLIP_LIMIT = 8, FLIP_WINDOW = 1500;
 
 // One input report -> { ps, cross, circle, share, options } or null for reports we don't read.
+// size: the pad's report size from Windows (64 on USB; bigger over Bluetooth).
 // The three button bytes sit at the same place in every layout, only shifted:
 //   DS4 USB / Bluetooth basic 0x01: 5 · DS4 Bluetooth full 0x11-0x19: 7
 //   DualSense USB 0x01 (64 bytes): 8 · DualSense Bluetooth basic 0x01: 5 · full 0x31: 9
-function parseReport(pid, b, n) {
+function parseReport(pid, b, size) {
+  const n = size;
   if (!b || n < 10) return null;
   const id = b[0];
   let base;
@@ -34,6 +38,7 @@ function parseReport(pid, b, n) {
   }
   if (n < base + 3) return null;
   const b1 = b[base], b2 = b[base + 1], b3 = b[base + 2];
+  if ((b1 & 0x0f) > 8) return null; // the d-pad is 0-7 or 8 (centered): anything else isn't a button byte
   return {
     cross: !!(b1 & 0x20), circle: !!(b1 & 0x40),
     share: !!(b2 & 0x10), options: !!(b2 & 0x20),
@@ -56,6 +61,13 @@ function loadApi() {
 
   const HidD_GetHidGuid = hid.func('__stdcall', 'HidD_GetHidGuid', 'void', [koffi.out(koffi.pointer(GUID))]);
   const HidD_GetAttributes = hid.func('__stdcall', 'HidD_GetAttributes', 'uint8', ['intptr_t', koffi.inout(koffi.pointer(ATTR))]);
+  const CAPS = koffi.struct('CL_HIDP_CAPS', {
+    Usage: 'uint16', UsagePage: 'uint16', InputReportByteLength: 'uint16', OutputReportByteLength: 'uint16',
+    FeatureReportByteLength: 'uint16', Reserved: koffi.array('uint16', 17), Counts: koffi.array('uint16', 10)
+  });
+  const HidD_GetPreparsedData = hid.func('__stdcall', 'HidD_GetPreparsedData', 'uint8', ['intptr_t', koffi.out(koffi.pointer('void *'))]);
+  const HidD_FreePreparsedData = hid.func('__stdcall', 'HidD_FreePreparsedData', 'uint8', ['void *']);
+  const HidP_GetCaps = hid.func('__stdcall', 'HidP_GetCaps', 'uint32', ['void *', koffi.out(koffi.pointer(CAPS))]);
   const HidD_SetNumInputBuffers = hid.func('__stdcall', 'HidD_SetNumInputBuffers', 'uint8', ['intptr_t', 'uint32']);
   const GetClassDevs = sapi.func('__stdcall', 'SetupDiGetClassDevsW', 'intptr_t', [koffi.pointer(GUID), 'void *', 'void *', 'uint32']);
   const EnumIfaces = sapi.func('__stdcall', 'SetupDiEnumDeviceInterfaces', 'int', ['intptr_t', 'void *', koffi.pointer(GUID), 'uint32', koffi.inout(koffi.pointer(IFACE))]);
@@ -71,7 +83,7 @@ function loadApi() {
   const guid = {};
   HidD_GetHidGuid(guid);
   const U16PATH = koffi.array('uint16', 4096 / 2);
-  const U8BUF = koffi.array('uint8', BUF);
+  const u8 = new Map(); // report size -> koffi array type
   const ifaceSize = koffi.sizeof(IFACE);
   const DETAIL = 4096;
 
@@ -108,6 +120,16 @@ function loadApi() {
       if (!HidD_GetAttributes(h, a)) return null;
       return { vid: a.VendorID, pid: a.ProductID };
     },
+    // The pad's input report size. Reads must be exactly this big: a bigger buffer can come
+    // back holding several reports at once.
+    reportSize(h) {
+      const pp = [null];
+      if (!HidD_GetPreparsedData(h, pp) || !pp[0]) return 0;
+      try {
+        const caps = {};
+        return HidP_GetCaps(pp[0], caps) === 0x00110000 ? caps.InputReportByteLength : 0;
+      } finally { HidD_FreePreparsedData(pp[0]); }
+    },
     fewBuffers(h) { try { HidD_SetNumInputBuffers(h, 2); } catch (_) { /* fine */ } },
     alloc(n) { const p = koffi.alloc('uint8', n); memset(p, 0, n); return p; },
     free(p) { try { koffi.free(p); } catch (_) { /* fine */ } },
@@ -116,7 +138,10 @@ function loadApi() {
     read(h, buf, n, ov) { ReadFile(h, buf, n, null, ov); return true; },
     status(ov) { return koffi.decode(ov, 'uint32'); }, // OVERLAPPED.Internal
     result(h, ov) { const n = [0]; return GetOverlappedResult(h, ov, n, 0) ? n[0] : -1; }, // never waits
-    bytes(buf) { return koffi.decode(buf, U8BUF); },
+    bytes(buf, n) {
+      if (!u8.has(n)) u8.set(n, koffi.array('uint8', n));
+      return koffi.decode(buf, u8.get(n));
+    },
     cancel(h, ov) { try { CancelIoEx(h, ov); } catch (_) { /* fine */ } },
     close(h) { try { CloseHandle(h); } catch (_) { /* fine */ } }
   };
@@ -148,7 +173,7 @@ function createSonyPads(opts) {
   }
   function start(p) {
     api.zero(p.ov, 32);
-    return api.read(p.h, p.buf, BUF, p.ov);
+    return api.read(p.h, p.buf, p.size, p.ov);
   }
   function scan() {
     lastScan = now();
@@ -164,8 +189,11 @@ function createSonyPads(opts) {
       if (!h) continue;
       const ids = api.ids(h);
       if (!ids || ids.vid !== SONY || !PADS.has(ids.pid)) { api.close(h); continue; }
+      let size = 0;
+      try { size = api.reportSize(h); } catch (_) { size = 0; }
+      if (size < 10 || size > 4096) { api.close(h); continue; }
       api.fewBuffers(h); // read fresh reports, not a backlog
-      const p = { h, pid: ids.pid, buf: api.alloc(BUF), ov: api.alloc(32), state: null };
+      const p = { h, pid: ids.pid, size, buf: api.alloc(size), ov: api.alloc(32), state: null, flips: [], muted: false };
       pads.set(path, p);
       start(p);
     }
@@ -179,11 +207,19 @@ function createSonyPads(opts) {
         if (api.status(p.ov) === STATUS_PENDING) break;
         const n = api.result(p.h, p.ov);
         if (n < 0) { drop(path); break; }
-        const st = n > 0 ? parseReport(p.pid, api.bytes(p.buf), n) : null;
-        if (st) p.state = st;
+        const st = n > 0 ? parseReport(p.pid, api.bytes(p.buf, p.size), p.size) : null;
+        if (st) {
+          if (p.state && st.ps !== p.state.ps) {
+            const t = now();
+            p.flips = p.flips.filter((x) => t - x < FLIP_WINDOW);
+            p.flips.push(t);
+            if (p.flips.length > FLIP_LIMIT) p.muted = true; // until it's reconnected
+          }
+          p.state = st;
+        }
         start(p);
       }
-      if (pads.has(path) && p.state) out.push(p.state);
+      if (pads.has(path) && p.state && !p.muted) out.push(p.state);
     }
     return out;
   }
