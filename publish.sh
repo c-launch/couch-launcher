@@ -1,0 +1,24 @@
+#!/bin/sh
+# Publishes an update online: builds the update zip, puts it in the GitHub repo's updates/
+# folder with updates/latest.json, and pushes. Launchers pick it up by themselves.
+# Usage: ./publish.sh 1.3.1 "What changed"   (REPO = local clone of c-launch/couch-launcher)
+set -e
+V="$1"; NOTES="$2"; REPO="${REPO:-/home/claude/gh-couch-launcher}"
+[ -n "$V" ] && [ -n "$NOTES" ] || { echo "usage: ./publish.sh VERSION NOTES"; exit 1; }
+./make-update.sh "$V" "$NOTES" >/dev/null
+Z="CouchLauncher-update-$V.zip"
+mkdir -p "$REPO/updates"
+rm -f "$REPO"/updates/CouchLauncher-update-*.zip
+cp "$Z" "$REPO/updates/"
+python3 -c "import json,os,sys; json.dump({'version':sys.argv[1],'notes':sys.argv[2],'file':sys.argv[3],'size':os.path.getsize(sys.argv[4])}, open(sys.argv[5],'w'), ensure_ascii=False, indent=1)" "$V" "$NOTES" "$Z" "$Z" "$REPO/updates/latest.json"
+rm -rf "$REPO/src"; cp -r src README.md Build.bat "Try it (windowed).bat" make-update.sh publish.sh package.json "$REPO/"
+cd "$REPO"
+git add -A
+git commit -q -m "Couch Launcher $V
+
+$NOTES
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01VkLb4Dg9CpUrgE4zjtmw75"
+git push -q origin HEAD:main 2>&1 | grep -v "push negotiation" || true
+echo "published $V"

@@ -79,6 +79,19 @@ function createUpdater({ userData, folders, currentVersion, newer }) {
   // Online updates: asks GitHub for the newest release and downloads its update zip into
   // `into` (one of the folders above), where check() then finds it like any other zip.
   async function download(repo, into) {
+    // 1) updates/latest.json in the repo: { version, notes, file, size }
+    const raw = 'https://raw.githubusercontent.com/' + repo + '/main/updates/';
+    const m = await fetch(raw + 'latest.json?t=' + Date.now(), { headers: { 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(15000) });
+    if (m.ok) {
+      const info = await m.json();
+      const version = (/^(\d+\.\d+\.\d+)$/.exec(String(info.version || '')) || [])[1];
+      const fileName = String(info.file || '');
+      if (!version || !/^CouchLauncher-update-\d+\.\d+\.\d+\.zip$/.test(fileName)) throw new Error('The update list is damaged');
+      if (!newer(version, currentVersion)) return { status: 'current', version: currentVersion };
+      return fetchZip(raw + fileName, Number(info.size) || 0, version, into);
+    }
+    if (m.status !== 404) throw new Error('Couldn’t reach the update server (' + m.status + ')');
+    // 2) GitHub Releases, if the repo uses them.
     const api = 'https://api.github.com/repos/' + repo + '/releases/latest';
     const res = await fetch(api, { headers: { 'User-Agent': 'CouchLauncher', Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15000) });
     if (res.status === 404) return { status: 'none' };
@@ -88,14 +101,17 @@ function createUpdater({ userData, folders, currentVersion, newer }) {
     if (!version || !newer(version, currentVersion)) return { status: 'current', version: currentVersion };
     const asset = (rel.assets || []).find((a) => NAME.test(a.name || ''));
     if (!asset) return { status: 'none' };
+    return fetchZip(asset.browser_download_url, asset.size, version, into);
+  }
+  async function fetchZip(url, size, version, into) {
     const name = 'CouchLauncher-update-' + version + '.zip';
     const file = path.join(into, name);
-    if (fs.existsSync(file) && fs.statSync(file).size === asset.size) return { status: 'downloaded', version };
+    if (fs.existsSync(file) && (!size || fs.statSync(file).size === size)) return { status: 'downloaded', version };
     fs.mkdirSync(into, { recursive: true });
-    const dl = await fetch(asset.browser_download_url, { headers: { 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(300000) });
+    const dl = await fetch(url, { headers: { 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(300000) });
     if (!dl.ok) throw new Error('Download failed (' + dl.status + ')');
     const buf = Buffer.from(await dl.arrayBuffer());
-    if (asset.size && buf.length !== asset.size) throw new Error('Download was incomplete');
+    if (size && buf.length !== size) throw new Error('Download was incomplete');
     fs.writeFileSync(file + '.part', buf);
     fs.renameSync(file + '.part', file);
     // Older downloaded updates aren't needed any more.
