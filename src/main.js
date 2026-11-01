@@ -866,7 +866,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!discordWindow()) throw new Error('Discord isn’t open');
     // Ctrl+Shift+M (mute) and Ctrl+Shift+D (deafen). Discord reacts to these from anywhere once
     // they're added under Discord › Settings › Keybinds (the guide explains this the first time).
-    w32.keys([0x11, 0x10], which === 'deafen' ? 0x44 : 0x4D);
+    await w32.keys([0x11, 0x10], which === 'deafen' ? 0x44 : 0x4D);
     return true;
   });
   // Pastes your message into the chat that's open in Discord and sends it.
@@ -881,9 +881,9 @@ if (!app.requestSingleInstanceLock()) {
     await bringDiscord(6);
     await new Promise((r) => setTimeout(r, 450));
     clipboard.writeText(text);
-    w32.keys([0x11], 0x56);            // Ctrl+V
+    await w32.keys([0x11], 0x56);      // Ctrl+V
     await new Promise((r) => setTimeout(r, 250));
-    w32.keys([], 0x0D);                // Enter
+    await w32.keys([], 0x0D);          // Enter
     setTimeout(() => { try { clipboard.writeText(before); } catch (_) { /* fine */ } }, 800);
     return true;
   });

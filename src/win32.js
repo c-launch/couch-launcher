@@ -43,6 +43,7 @@ function createWin32() {
     const keybd_event = u.func('__stdcall', 'keybd_event', 'void', ['uint8', 'uint8', 'uint32', 'uintptr_t']);
     const PostMessageW = u.func('__stdcall', 'PostMessageW', 'bool', ['uintptr_t', 'uint32', 'uintptr_t', 'intptr_t']);
     const SetCursorPos = u.func('__stdcall', 'SetCursorPos', 'bool', ['int', 'int']);
+    const MapVirtualKeyW = u.func('__stdcall', 'MapVirtualKeyW', 'uint32', ['uint32', 'uint32']);
     let GetDpiForWindow = null;
     try { GetDpiForWindow = u.func('__stdcall', 'GetDpiForWindow', 'uint32', ['uintptr_t']); } catch (_) { /* older Windows */ }
     const SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
@@ -148,10 +149,24 @@ function createWin32() {
         return true;
       },
       // Presses a key with modifiers held (e.g. [0x11, 0x10] + 'M' = Ctrl+Shift+M), then lets go.
+      // Sent like a real keyboard (with scan codes, a short gap between presses): Discord's
+      // keybind listener reads the scan codes and ignores presses without them.
       keys(mods, vk) {
-        for (const m of mods) keybd_event(m, 0, 0, 0);
-        keybd_event(vk, 0, 0, 0); keybd_event(vk, 0, 2, 0);
-        for (const m of mods.slice().reverse()) keybd_event(m, 0, 2, 0);
+        const sc = (k) => MapVirtualKeyW(k, 0) & 0xFF;
+        const steps = [];
+        for (const m of mods) steps.push([m, 0]);
+        steps.push([vk, 0], [vk, 2]);
+        for (const m of mods.slice().reverse()) steps.push([m, 2]);
+        return new Promise((resolve) => {
+          let i = 0;
+          const next = () => {
+            if (i >= steps.length) return resolve(true);
+            const [k, up] = steps[i++];
+            keybd_event(k, sc(k), up, 0);
+            setTimeout(next, 25);
+          };
+          next();
+        });
       },
       // Lets the next program we start come to the front (otherwise Windows keeps it behind us).
       allowForeground: () => AllowSetForegroundWindow(0xFFFFFFFF)
