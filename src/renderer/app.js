@@ -102,6 +102,8 @@
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
     chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    micoff: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18"/>',
+    deaf: '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/><path d="M3 3l18 18"/>',
     headset: '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/>',
     folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>',
     file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
@@ -1346,20 +1348,53 @@
     }
     // Discord: opens your pinned channels / servers / invites, mute & deafen, and sends a
     // message to the chat that's open (typed here, pasted into Discord).
-    let dc = null;
+    // With Discord connected (Discord's own connection, set up once), the card also shows
+    // who's in your call and in each pinned voice channel, and joins / mutes for real.
+    let dc = null, dcCfg = null, rpc = null, rpcErr = null, rpcTimer = null, rpcSig = '';
+    const pinChannel = (p) => (/\/channels\/\d+\/(\d{5,25})/.exec((p && p.url) || '') || [])[1] || null;
+    const voiceIds = () => (S.lib.settings.discordPins || []).filter((p) => p.voice).map(pinChannel).filter(Boolean);
+    const personHTML = (p) => '<div class="dcp"><span class="dcav">' + esc((p.name || '?').charAt(0).toUpperCase()) + (p.pic ? '<img src="' + esc(p.pic) + '" alt="">' : '') + '</span>' +
+      '<span class="dcn">' + esc(p.name) + '</span>' + (p.deaf ? '<span class="dcst" title="Deafened">' + icon('deaf') + '</span>' : p.muted ? '<span class="dcst" title="Muted">' + icon('micoff') + '</span>' : '') + '</div>';
     function discordHTML() {
       const pins = S.lib.settings.discordPins || [];
-      const pill = (key, ic, label, attrs) => '<button class="pill gpill" data-nav data-key="' + key + '" data-zone="gbody" data-lock="dcrow" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
-      const note = !dc ? '' : !dc.installed && !dc.running ? 'Not installed' : dc.running ? 'Open' : 'Not open';
+      const live = !!rpc;
+      const pill = (key, ic, label, attrs, on) => '<button class="pill gpill' + (on ? ' on' : '') + '" data-nav data-key="' + key + '" data-zone="gbody" data-lock="dcrow" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
+      const note = live ? (rpc.call ? 'In a call' : 'Connected') : !dc ? '' : !dc.installed && !dc.running ? 'Not installed' : dc.running ? 'Open' : 'Not open';
       let h = '<div class="gdiscord"><div class="gm-head">' + icon('chat') + '<span>Discord</span><span class="gm-note">' + note + '</span></div>' +
         '<div class="gmrow">' + pill('dc-open', 'link', dc && dc.running ? 'Show' : 'Open', 'data-act="dc-open"') + pill('dc-msg', 'chat', 'Message', 'data-act="dc-msg"') +
-        pill('dc-mute', 'mic', 'Mute', 'data-act="dc-mute"') + pill('dc-deaf', 'headset', 'Deafen', 'data-act="dc-deaf"') + '</div>';
-      h += pins.map((p, i) => '<button class="mitem" data-nav data-key="dc-pin-' + i + '" data-zone="gbody" data-act="dc-pin" data-i="' + i + '">' + icon(p.voice ? 'headset' : p.kind === 'channel' ? 'chat' : 'users') + '<span>' + esc(p.name) + '</span></button>').join('');
+        pill('dc-mute', live && rpc.muted ? 'micoff' : 'mic', live && rpc.muted ? 'Unmute' : 'Mute', 'data-act="dc-mute"', live && rpc.muted) +
+        pill('dc-deaf', live && rpc.deaf ? 'deaf' : 'headset', live && rpc.deaf ? 'Undeafen' : 'Deafen', 'data-act="dc-deaf"', live && rpc.deaf) + '</div>';
+      if (live && rpc.call) {
+        h += '<div class="glabel">In ' + esc(rpc.call.name) + ' · ' + rpc.call.people.length + '</div><div class="dcpeople">' + rpc.call.people.map(personHTML).join('') + '</div>' +
+          '<button class="mitem danger" data-nav data-key="dc-leave" data-zone="gbody" data-act="dc-leave">' + icon('exit') + '<span>Leave call</span></button>';
+      }
+      h += pins.map((p, i) => {
+        const ch = p.voice ? pinChannel(p) : null;
+        const who = live && ch && rpc.pins ? rpc.pins[ch] : null;
+        const here = live && rpc.call && ch === rpc.call.id;
+        const sub = !p.voice || !live ? '' : here ? 'You’re in' : who ? (who.length ? who.length + ' in call' : 'Empty') : '';
+        return '<button class="mitem dcpin" data-nav data-key="dc-pin-' + i + '" data-zone="gbody" data-act="dc-pin" data-i="' + i + '">' + icon(p.voice ? 'headset' : p.kind === 'channel' ? 'chat' : 'users') +
+          '<span>' + esc(p.name) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>' +
+          (who && who.length && !here ? '<span class="dcstack">' + who.slice(0, 4).map((x) => '<span class="dcav">' + esc(x.name.charAt(0).toUpperCase()) + (x.pic ? '<img src="' + esc(x.pic) + '" alt="">' : '') + '</span>').join('') + '</span>' : '') + '</button>';
+      }).join('');
       h += '<button class="mitem" data-nav data-key="dc-add" data-zone="gbody" data-act="dc-add">' + icon('plus') + '<span>' + (pins.length ? 'Pins: add or remove' : 'Pin a server, channel or call') + '</span></button>';
+      if (dcCfg && !live) {
+        h += '<button class="mitem" data-nav data-key="dc-setup" data-zone="gbody" data-act="dc-setup">' + icon('link') + '<span>' +
+          (dcCfg.configured ? 'Reconnect Discord' + (rpcErr && rpcErr !== 'NEED_APPROVAL' ? '<small>' + esc(rpcErr) + '</small>' : '') : 'Connect Discord for calls<small>See who’s in, join, mute</small>') + '</span></button>';
+      }
       return h + '</div><div class="gsep"></div>';
+    }
+    async function pollRpc() {
+      try { rpc = await api.dcRpcState(voiceIds()); rpcErr = null; }
+      catch (e) { rpc = null; rpcErr = e.message; }
+      const sig = JSON.stringify([rpc, rpcErr]);
+      if (sig !== rpcSig) { rpcSig = sig; if (layers.indexOf(layer) >= 0 && tab === 'friends') redraw(); }
     }
     async function loadDiscord() {
       try { dc = await api.discordStatus(); } catch (_) { dc = null; }
+      try { dcCfg = await api.dcRpcStatus(); } catch (_) { dcCfg = null; }
+      clearInterval(rpcTimer);
+      if (dcCfg && dcCfg.configured) { await pollRpc(); rpcTimer = setInterval(() => { if (tab === 'friends' && layers.indexOf(layer) >= 0) pollRpc(); else clearInterval(rpcTimer); }, 3000); }
       if (layers.indexOf(layer) >= 0 && tab === 'friends') redraw();
     }
     function musicHTML() {
@@ -1407,6 +1442,7 @@
       if (layers.indexOf(layer) >= 0 && tab === 'games') redraw();
     }
     const close = () => {
+      clearInterval(rpcTimer);
       if (OVERLAY || (opts.fromGame && S.playing)) resumeGame(); else closeLayer(layer);
     };
     layer = openLayer({
@@ -1424,6 +1460,16 @@
         if (act === 'tab') return setTab(el.dataset.tab);
         if (act === 'm-bal') { if (S.input !== 'mouse') setBalance(0); return; } // A: back to the middle
         // Over the game: anything that needs the full launcher is handed to it.
+        if (act === 'dc-leave') { try { await api.dcRpcLeave(); toast('Left the call'); } catch (e) { toast(e.message, true); } return pollRpc(); }
+        if (act === 'dc-pin' && rpc) {
+          const pin = (S.lib.settings.discordPins || [])[Number(el.dataset.i)];
+          const ch = pin && pin.voice ? pinChannel(pin) : null;
+          if (ch) {
+            if (rpc.call && rpc.call.id === ch) { toast('You’re already in ' + pin.name); return; }
+            try { await api.dcRpcJoin(ch); toast('Joined ' + pin.name); } catch (e) { toast(e.message, true); }
+            return pollRpc();
+          }
+        }
         if (act === 'dc-open' || act === 'dc-pin') {
           const pin = act === 'dc-pin' ? (S.lib.settings.discordPins || [])[Number(el.dataset.i)] : null;
           try {
@@ -1432,6 +1478,11 @@
             else if (!OVERLAY) toast(pin ? 'Opening ' + pin.name : 'Opening Discord');
           } catch (e) { toast(e.message, true); }
           return;
+        }
+        if ((act === 'dc-mute' || act === 'dc-deaf') && rpc) {
+          try { const on = await api.dcRpcToggle(act === 'dc-deaf' ? 'deafen' : 'mute'); toast(act === 'dc-deaf' ? (on ? 'Deafened' : 'Undeafened') : (on ? 'Muted' : 'Unmuted')); }
+          catch (e) { toast(e.message, true); }
+          return pollRpc();
         }
         if (act === 'dc-mute' || act === 'dc-deaf') {
           let keysOk = false;
@@ -1504,6 +1555,7 @@
         }
         if (act === 'friends-retry') { friends = null; redraw(); return loadFriends(); }
         if (act === 'dc-add') { closeLayer(layer); return discordPins(); }
+        if (act === 'dc-setup') { closeLayer(layer); return discordConnect(); }
         if (act === 'profile') { openProfile(); return; }
         if (act === 'settings') { closeLayer(layer); S.setTab = 'platforms'; return go('settings', 't-platforms'); }
         if (act === 'themes') { closeLayer(layer); S.setTab = 'themes'; return go('settings', 't-themes'); }
@@ -2052,9 +2104,14 @@
   // Copy Link, or an invite link), then paste it here.
   async function discordPins() {
     const pins = S.lib.settings.discordPins = S.lib.settings.discordPins || [];
+    let cfg = null;
+    try { cfg = await api.dcRpcStatus(); } catch (_) { cfg = null; }
     const pick = await openMenu('Discord pins', [{ id: 'add', label: 'Paste a copied Discord link', icon: 'plus' }]
-      .concat(pins.map((p, i) => ({ id: 'rm' + i, label: 'Remove “' + p.name + '”', icon: 'trash', danger: true }))));
+      .concat(pins.map((p, i) => ({ id: 'rm' + i, label: 'Remove “' + p.name + '”', icon: 'trash', danger: true })))
+      .concat(cfg && cfg.configured ? [{ id: 'unlink', label: 'Disconnect Discord calls', icon: 'exit', danger: true }] : [{ id: 'link', label: 'Connect Discord for calls', icon: 'link' }]));
     if (!pick) return;
+    if (pick === 'link') return discordConnect();
+    if (pick === 'unlink') { try { await api.dcRpcDisconnect(); } catch (_) { /* gone */ } toast('Discord calls disconnected'); return; }
     if (pick.startsWith('rm')) { pins.splice(Number(pick.slice(2)), 1); save(); toast('Removed'); return; }
     let url = '';
     try { url = await api.discordClipboard(); } catch (_) { /* empty */ }
@@ -2087,6 +2144,51 @@
     if (!pick) return;
     try { await api.openStore(pick); toast('Opening ' + { steam: 'the Steam Store', xbox: 'the Xbox app', msstore: 'the Microsoft Store', epic: 'the Epic Games Store' }[pick]); }
     catch (e) { toast(e.message, true); }
+  }
+
+  // One-time setup of Discord's own connection, through your own Discord app.
+  function discordConnect() {
+    return new Promise((resolve) => {
+      let appId = '', ok = false;
+      const layer = openLayer({
+        html: '<div class="dialog confirm dc-connect"><h2>Connect Discord for calls</h2>' +
+          '<ol class="steps"><li>Choose <b>Open developer page</b>, sign in to Discord, press <b>New Application</b>, call it <b>Couch Launcher</b> and create it.</li>' +
+          '<li>Copy the <b>Application ID</b>, come back and choose <b>Paste App ID</b>.</li>' +
+          '<li>Open <b>OAuth2</b>: under Redirects add <b>http://127.0.0.1</b> and save. Then <b>Reset Secret</b>, copy it, come back and choose <b>Paste secret</b>.</li>' +
+          '<li>Discord pops up <b>Authorize</b>: approve it.</li></ol>' +
+          '<p class="hint dc-status">Your app’s ID and secret stay on this PC, encrypted. If Discord says the app isn’t allowed, add yourself under <b>App Testers</b> on the developer page.</p>' +
+          '<div class="dialog-foot"><button class="btn big" data-nav data-key="dk-cancel" data-act="cancel">Cancel</button>' +
+          '<button class="btn big" data-nav data-key="dk-site" data-act="site">' + icon('link') + 'Open developer page</button>' +
+          '<button class="btn big" data-nav data-key="dk-id" data-act="id">' + icon('key') + 'Paste App ID</button>' +
+          '<button class="btn big primary" data-nav data-key="dk-secret" data-act="secret">' + icon('key') + 'Paste secret</button></div></div>',
+        focus: 'dk-site',
+        onActivate: async (el) => {
+          const act = el.dataset.act;
+          const status = (t, bad) => { const p = $('.dc-status', layer.el); if (p) { p.textContent = t; p.classList.toggle('bad', !!bad); } };
+          if (act === 'cancel') return closeLayer(layer);
+          if (act === 'site') { try { await api.openDiscordDevPage(); } catch (e) { toast(e.message, true); } return; }
+          let clip = '';
+          try { clip = (await api.discordClipboard()).trim(); } catch (_) { clip = ''; }
+          if (act === 'id') {
+            if (!/^\d{15,25}$/.test(clip)) return status('Copy the Application ID first (a long number), then choose Paste App ID.', true);
+            appId = clip; status('App ID saved ✓  Now copy the Client Secret and choose Paste secret.');
+            return setFocus($('[data-key="dk-secret"]', layer.el));
+          }
+          if (act === 'secret') {
+            if (!appId) return status('Paste the App ID first.', true);
+            if (!clip || /^\d+$/.test(clip)) return status('Copy the Client Secret (OAuth2 › Reset Secret), then choose Paste secret.', true);
+            status('Check Discord: approve “Couch Launcher” in the box it shows…');
+            try {
+              const me = await api.dcRpcConnect(appId, clip);
+              ok = true; toast('Discord connected as ' + me.name); closeLayer(layer);
+            } catch (e) { status(e.message, true); }
+          }
+        },
+        onBack: () => closeLayer(layer),
+        onClose: () => resolve(ok),
+        prompts: () => [['A', 'Select'], ['B', 'Cancel']]
+      });
+    });
   }
 
   async function powerMenu() {
@@ -2405,6 +2507,7 @@
     const t = r.target;
     if (t === 'home') return go('home', S.playing ? 'h-' + S.playing.id : null);
     if (t === 'dc-add') return discordPins();
+    if (t === 'dc-setup') return discordConnect();
     if (t === 'library') return go('library');
     if (t === 'add') return openEdit(null);
     if (t === 'profile') return openProfile();

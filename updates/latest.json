@@ -1,6 +1,6 @@
 {
- "version": "1.3.3",
- "notes": "Discord mute and deafen now send their shortcuts like a real keyboard, so Discord's keybinds pick them up. Includes 1.3.2 (everything opens on your chosen display, Roblox gets focus back after the guide).",
- "file": "CouchLauncher-update-1.3.3.zip",
- "size": 110980
+ "version": "1.4.0",
+ "notes": "Discord calls: connect once (Friends tab › Connect Discord for calls) to see who's in your call and in each pinned voice channel, join a call by pressing its pin, leave, mute and deafen for real.",
+ "file": "CouchLauncher-update-1.4.0.zip",
+ "size": 117841
 }

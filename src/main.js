@@ -9,6 +9,7 @@ const { createControllerWatcher, loadXInput } = require('./hotkey');
 const { createPadMouse } = require('./padmouse');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
+const { createDiscordRpc } = require('./discordrpc');
 const { createSteam } = require('./steam');
 const { createMedia } = require('./media');
 const { createPauser } = require('./pause');
@@ -604,7 +605,7 @@ if (!app.requestSingleInstanceLock()) {
   handle('xbox:friends', () => xb().friends());
   handle('link:open', (url) => {
     // Only the Xbox key page can be opened from inside the app.
-    if (!['https://xbl.io', 'https://steamcommunity.com/dev/apikey', 'https://www.steamgriddb.com/profile/preferences/api'].includes(url)) throw new Error('Not allowed');
+    if (!['https://xbl.io', 'https://steamcommunity.com/dev/apikey', 'https://www.steamgriddb.com/profile/preferences/api', 'https://discord.com/developers/applications'].includes(url)) throw new Error('Not allowed');
     hideOverlay();
     return shell.openExternal(url).then(() => { placeNextWindow(10000); return true; });
   });
@@ -823,6 +824,26 @@ if (!app.requestSingleInstanceLock()) {
     if (!tries) return Promise.resolve(false);
     return new Promise((r) => setTimeout(() => r(bringDiscord(tries - 1)), 500));
   }
+  // Discord's own connection (your Discord app): who's in calls, join/leave, mute/deafen.
+  let dcRpc = null;
+  const dr = () => dcRpc || (dcRpc = createDiscordRpc(app.getPath('userData'), safeStorage));
+  const dcIds = (ids) => (Array.isArray(ids) ? ids : []).map(String).filter((x) => /^\d{5,25}$/.test(x)).slice(0, 10);
+  handle('dcrpc:status', () => ({ configured: dr().configured(), connected: dr().connected() }));
+  handle('dcrpc:connect', async (id, secret) => {
+    // Discord shows its "Authorize" box: bring Discord forward so it can be clicked.
+    const w = discordWindow();
+    if (w && w32) setTimeout(() => fillChosenDisplay(w), 800);
+    const r = await dr().connect(id, secret);
+    bringBack(false);
+    return r;
+  });
+  handle('dcrpc:disconnect', () => { dr().disconnect(); return true; });
+  handle('dcrpc:state', (ids) => dr().state(dcIds(ids)));
+  handle('dcrpc:join', (id) => dr().join(String(id)));
+  handle('dcrpc:leave', () => dr().leave());
+  handle('dcrpc:toggle', (w) => dr().toggle(w === 'deafen' ? 'deafen' : 'mute'));
+  app.on('will-quit', () => { if (dcRpc) dcRpc.close(); });
+
   // Whether you've added the mute/deafen keybinds in Discord (asked once).
   const dcFile = () => path.join(app.getPath('userData'), 'discord.json');
   handle('discord:setup', (set) => {
