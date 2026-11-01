@@ -42,7 +42,9 @@ function loadXInput() {
       const mod = GetModuleHandleW(dllName);
       const ptr = mod && GetProcAddress(mod, 100);
       if (ptr) {
-        const proto = koffi.proto('__stdcall', 'CL_XInputGetStateEx', 'uint32', ['uint32', koffi.out(koffi.pointer(stateType))]);
+        // The hidden call writes 4 bytes more than XInputGetState (dwPaddingReserved).
+        const stateExType = koffi.struct('CL_XINPUT_STATE_EX', { dwPacketNumber: 'uint32', Gamepad: pad, dwPaddingReserved: 'uint32' });
+        const proto = koffi.proto('__stdcall', 'CL_XInputGetStateEx', 'uint32', ['uint32', koffi.out(koffi.pointer(stateExType))]);
         if (typeof koffi.call === 'function') getStateEx = (i, st) => koffi.call(ptr, proto, i, st);
         else getStateEx = koffi.decode(ptr, proto);
       }
@@ -61,8 +63,8 @@ function loadXInput() {
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
-function createControllerWatcher({ onGuide, onCombo, onBack }) {
-  const off = { start() {}, stop() {}, setGameRunning() {}, available: false, guide: false };
+function createControllerWatcher({ onGuide, onCombo, onBack, onPress }) {
+  const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false };
   if (process.platform !== 'win32') return off;
   let x;
   try { x = loadXInput(); } catch (err) { return Object.assign(off, { error: String(err && err.message || err) }); }
@@ -71,6 +73,8 @@ function createControllerWatcher({ onGuide, onCombo, onBack }) {
   let gameRunning = false;
   let heldSince = 0, comboFired = false, guideWasDown = false, backWasDown = false;
   let exWorks = !!x.getStateEx;
+  let joining = false; // "Who's playing?" screen: report A presses per controller
+  const prevSlot = [0, 0, 0, 0];
 
   function read(i) {
     const st = {};
@@ -85,8 +89,10 @@ function createControllerWatcher({ onGuide, onCombo, onBack }) {
     let combo = false, guide = false, back = false;
     for (let i = 0; i < 4; i++) {
       const g = read(i);
-      if (!g) continue;
+      if (!g) { prevSlot[i] = 0; continue; }
       const b = g.wButtons;
+      if (joining && onPress && (b & 0x1000) && !(prevSlot[i] & 0x1000)) onPress(i);
+      prevSlot[i] = b;
       if ((b & BACK) && (b & START)) combo = true;
       if (b & GUIDE) guide = true;
       if (b & 0x2000) back = true; // B
@@ -108,7 +114,8 @@ function createControllerWatcher({ onGuide, onCombo, onBack }) {
     get guide() { return exWorks; },
     start() { if (!timer) timer = setInterval(poll, POLL_MS); },
     stop() { if (timer) { clearInterval(timer); timer = null; } },
-    setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; }
+    setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; },
+    setJoin(on) { joining = !!on; }
   };
 }
 

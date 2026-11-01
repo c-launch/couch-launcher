@@ -586,6 +586,19 @@ module.exports.isSwitchExtra = isSwitchExtra;
 module.exports.shortcutEmulator = shortcutEmulator;
 module.exports.scanMsStore = scanMsStore;
 module.exports.steamDownloads = steamDownloads;
+// A Steam game's install state (4 = fully installed), or null when it isn't there.
+module.exports.steamAppFlags = function steamAppFlags(appid, rootOverride) {
+  const root = rootOverride || steamRoot();
+  if (!root || !/^\d+$/.test(String(appid))) return null;
+  const libs = new Set([root]);
+  const vdf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
+  if (vdf) { const re = /"path"\s+"([^"]+)"/g; let m; while ((m = re.exec(vdf))) libs.add(path.normalize(m[1].replace(/\\\\/g, '\\'))); }
+  for (const lib of libs) {
+    const acf = readText(path.join(lib, 'steamapps', 'appmanifest_' + appid + '.acf'));
+    if (acf) return Number((acf.match(/"StateFlags"\s+"(\d+)"/) || [])[1] || 0);
+  }
+  return null;
+};
 module.exports.scanRoblox = scanRoblox;
 module.exports.storeAsset = storeAsset;
 

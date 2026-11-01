@@ -10,6 +10,8 @@ const { createPadMouse } = require('./padmouse');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
 const { createDiscordRpc } = require('./discordrpc');
+const players = require('./players');
+const { createDisplay } = require('./display');
 const { createSteam } = require('./steam');
 const { createMedia } = require('./media');
 const { createPauser } = require('./pause');
@@ -35,6 +37,7 @@ if (!app.requestSingleInstanceLock()) {
 
   // Xbox button opens the guide; View + Menu held during a game brings the launcher back.
   const controller = createControllerWatcher({
+    onPress: (slot) => send('pad:a', slot),
     onGuide: () => guidePressed(),
     onCombo: () => guidePressed(),
     // B on the boot screen while Steam/Epic has focus (the launcher can't hear it then).
@@ -413,6 +416,7 @@ if (!app.requestSingleInstanceLock()) {
   // Ends tracking of the current game, counts play time and returns to the launcher.
   function endGame(r, extra) {
     if (!r || running !== r) return;
+    restoreDisplay(r);
     if (r.cancelled) {
       if (r.watchTimer) clearInterval(r.watchTimer);
       running = null; controller.setGameRunning(false); pauser.resumeAll();
@@ -506,10 +510,14 @@ if (!app.requestSingleInstanceLock()) {
     if (!pids.length) return false;
     const r = running;
     r.closing = true; // a paused game can't answer "close", so wake it first
-    pauser.resumeAfterPending().then(() => {
+    pauser.resumeAfterPending().then(async () => {
+      // Dolphin: save a state first, so you can pick up right there next time.
+      if (!force && r.emu === 'dolphin' && lib.settings.saveStates !== false) { try { await saveDolphinState(r); } catch (_) { /* closes anyway */ } }
+      if (running !== r) return;
       killAll(pids, force);
       // Emulators answer "close" with their own "are you sure?" box, hidden behind the launcher.
       // Game progress lives in the game's saves, so finish the job if the emulator is still open.
+      if (!force) setTimeout(() => { if (running === r) r.closing = false; }, 8000); // it said no to closing
       if (!force && (r.isEmu || r.forceClose)) setTimeout(() => { if (running === r) killAll(running.child ? [running.child.pid] : (running.pids || pids), true); }, 4000);
     });
     return true;
@@ -522,11 +530,18 @@ if (!app.requestSingleInstanceLock()) {
     }
   }
 
-  function launchGame(gameId) {
+  function launchGame(gameId, opts) {
+    opts = opts || {};
     const g = lib.games.find((x) => x.id === gameId);
     if (!g) throw new Error('Game not found');
     if (canClose()) throw new Error('Another game is still running');
-    if (running) { if (running.watchTimer) clearInterval(running.watchTimer); running = null; }
+    if (running) {
+      restoreDisplay(running);
+      if (running.watchTimer) clearInterval(running.watchTimer);
+      if (running.fgWatch) clearInterval(running.fgWatch);
+      if (running.bootTimer) clearTimeout(running.bootTimer);
+      running = null;
+    }
     g.lastPlayed = Date.now();
     persist();
     const L = g.launch || {};
@@ -547,8 +562,14 @@ if (!app.requestSingleInstanceLock()) {
       if (!cfg.exe) throw new Error(emu.name + ' is not set up yet. Open Settings › Platforms.');
       if (!fs.existsSync(L.file)) throw new Error('Game file not found: ' + L.file);
       const extra = splitArgs(g.args);
-      startProcess(cfg.exe, extra.concat(emu.args(L.file)), path.dirname(cfg.exe), gameId);
+      // Dolphin: pick up where you left off (the save state made when you last closed it).
+      const st = L.emu === 'dolphin' && opts.resume ? savedState(gameId) : null;
+      // GameCube ports 2-4 are off by default in Dolphin: plug in one per player (this run only).
+      const ports = [];
+      if (L.emu === 'dolphin' && playerCount.dolphin) for (let p = 0; p < 4; p++) ports.push('-C', 'Dolphin.Core.SIDevice' + p + '=' + (p < playerCount.dolphin ? 6 : 0));
+      startProcess(cfg.exe, extra.concat(st ? ['-s', st] : [], ports, emu.args(L.file)), path.dirname(cfg.exe), gameId);
       running.isEmu = true;
+      running.emu = L.emu;
     } else if (L.type === 'exe') {
       startProcess(L.exe, splitArgs(g.args), path.dirname(L.exe || '.'), gameId);
     } else if (L.type === 'open') {
@@ -561,6 +582,7 @@ if (!app.requestSingleInstanceLock()) {
       throw new Error('This game has no launch target');
     }
     controller.setGameRunning(true);
+    applyDisplay(running, g);
     if (g.source === 'roblox') running.forceClose = true; // Roblox ignores a normal close; nothing to save
     running.audioDirs = L.type === 'url' || L.type === 'appx' ? [L.dir] : L.type === 'emu' ? [path.dirname(lib.platforms[L.emu].exe)] : L.type === 'exe' ? [path.dirname(L.exe)] : [];
     scheduleGameVolume(running);
@@ -591,12 +613,113 @@ if (!app.requestSingleInstanceLock()) {
   }
   handle('pads:get', () => pads);
 
+  // ---------- "Who's playing?": controllers into Player 1-4 of the emulator ----------
+  const emuOf = (gameId) => {
+    const g = lib.games.find((x) => x.id === gameId);
+    const L = g && g.launch;
+    if (!L || L.type !== 'emu') throw new Error('Not an emulator game');
+    const cfg = lib.platforms[L.emu] || {};
+    return { emu: L.emu, exe: cfg.exe };
+  };
+  const playerCount = {}; // emulator -> players set up for this session
+  handle('players:listen', (on) => { controller.setJoin(!!on); return true; });
+  handle('players:set', (gameId, slots) => {
+    const { emu, exe } = emuOf(gameId);
+    const list = (Array.isArray(slots) ? slots : []).map(Number).filter((n) => n >= 0 && n <= 3);
+    const connected = readPads().map((p) => p.slot);
+    const n = players.setPlayers(emu, exe, list, connected.length ? connected : list);
+    playerCount[emu] = n;
+    return n;
+  });
+  // One controller: make sure it's Player 1 (only once you've used "Who's playing?" for that
+  // emulator, so settings you never asked the launcher to touch stay as they are).
+  handle('players:solo', (gameId) => {
+    const { emu, exe } = emuOf(gameId);
+    const connected = readPads().map((p) => p.slot);
+    if (connected.length !== 1) return false;
+    const f = emu === 'ryujinx' ? players.ryujinxConfigPath(exe) : emu === 'rpcs3' ? players.rpcs3InputFile(exe)
+      : (players.dolphinUserDir(exe) ? path.join(players.dolphinUserDir(exe), 'Config', 'GCPadNew.ini') : null);
+    if (!f || !fs.existsSync(f + '.couch-original')) return false;
+    try { players.setPlayers(emu, exe, connected, connected); playerCount[emu] = 1; return true; } catch (_) { return false; }
+  });
+
   // Windows notification (shows over games too) plus a toast in the launcher.
   function notify(title, body) {
     try { if (Notification.isSupported()) new Notification({ title, body, silent: false }).show(); } catch (_) { /* not available */ }
     send('notice', { title, body });
   }
   function sendOverlay(ch, payload) { if (overlay && !overlay.isDestroyed()) overlay.webContents.send(ch, payload); }
+
+  // ---------- Dolphin save states: made when you close or switch, offered next time ----------
+  const statesFile = () => path.join(app.getPath('userData'), 'states.json');
+  const readStates = () => { try { return JSON.parse(fs.readFileSync(statesFile(), 'utf8')) || {}; } catch (_) { return {}; } };
+  function savedState(gameId) { const s = readStates()[gameId]; return s && s.file && fs.existsSync(s.file) ? s.file : null; }
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function saveDolphinState(r) {
+    if (!w32 || !r.child) return;
+    const user = players.dolphinUserDir((lib.platforms.dolphin || {}).exe);
+    if (!user) return;
+    const dir = path.join(user, 'StateSaves');
+    let h = [r.gameHwnd, r.backTo].find((x) => x && w32.exists(x));
+    if (!h) { try { h = w32.windowOfPids([r.child.pid]); } catch (_) { h = null; } }
+    if (!h) return;
+    const t0 = Date.now() - 500;
+    w32.forceForeground(h);
+    await wait(400);
+    await w32.keys([0x10], 0x79); // Shift+F10: Dolphin's "Save State Slot 10" (slot 1 is yours)
+    for (let i = 0; i < 16; i++) {
+      await wait(250);
+      let best = null;
+      try {
+        for (const n of fs.readdirSync(dir)) {
+          if (!/\.s10$/i.test(n)) continue;
+          const f = path.join(dir, n), m = fs.statSync(f).mtimeMs;
+          if (m >= t0 && (!best || m > best.m)) best = { f, m };
+        }
+      } catch (_) { best = null; }
+      if (best) {
+        await wait(300); // let Dolphin finish writing it
+        const all = readStates();
+        all[r.gameId] = { file: best.f, at: Date.now() };
+        try { fs.writeFileSync(statesFile(), JSON.stringify(all)); } catch (_) { /* not critical */ }
+        return;
+      }
+    }
+  }
+  handle('states:get', (gameId) => { const s = readStates()[String(gameId)]; return s && s.file && fs.existsSync(s.file) ? { at: s.at } : null; });
+
+  // ---------- Per-game TV / display settings ----------
+  let disp = null;
+  const dsp = () => (disp === null ? (disp = createDisplay() || false) : disp);
+  function displayDevice() { return dsp() ? dsp().deviceAt(toPx(targetDisplay().bounds)) : null; }
+  function applyDisplay(r, g) {
+    const want = g && g.display;
+    if (!want || !dsp() || !r) return;
+    try {
+      const dev = displayDevice();
+      if (!dev) return;
+      r.dispRestore = { name: dev.name };
+      if (want.w || want.hz) { if (dsp().setMode(dev.name, want)) r.dispRestore.mode = true; }
+      if (want.hdr === 'on' || want.hdr === 'off') {
+        const h = dsp().hdr(dev.name);
+        if (h && h.supported && h.enabled !== (want.hdr === 'on')) { dsp().setHdr(dev.name, want.hdr === 'on'); r.dispRestore.hdr = h.enabled; }
+      }
+    } catch (e) { send('notice', { title: String(e.message || e) }); }
+  }
+  function restoreDisplay(r) {
+    const x = r && r.dispRestore;
+    if (!x || !dsp()) return;
+    r.dispRestore = null;
+    try { if (x.mode) dsp().restoreMode(x.name); } catch (_) { /* fine */ }
+    try { if (typeof x.hdr === 'boolean') dsp().setHdr(x.name, x.hdr); } catch (_) { /* fine */ }
+    setTimeout(placeWindows, 800);
+  }
+  handle('display:modes', () => {
+    const dev = displayDevice();
+    if (!dev) return null;
+    return { current: dsp().current(dev.name), modes: dsp().modes(dev.name), hdr: dsp().hdr(dev.name) };
+  });
+  app.on('will-quit', () => { if (running) restoreDisplay(running); });
 
   // ---------- Game / music balance (like Xbox's game-chat mixer) ----------
   // -100 = all game (music turned down) … 0 = both full … 100 = all music (game turned down).
@@ -679,7 +802,7 @@ if (!app.requestSingleInstanceLock()) {
     persist();
     return { lib, results };
   });
-  handle('launch', (gameId) => launchGame(gameId));
+  handle('launch', (gameId, opts) => launchGame(gameId, opts && typeof opts === 'object' ? { resume: !!opts.resume } : {}));
   handle('launch:cancel', () => { cancelLaunch(); return true; });
   let updater = null;
   // Updates come from GitHub (downloaded into the app's own folder); zips in Downloads or
@@ -746,7 +869,7 @@ if (!app.requestSingleInstanceLock()) {
       try { list = scanners.steamDownloads(); } catch (_) { list = []; }
       const sig = JSON.stringify(list);
       if (sig === dlSig) return;
-      for (const d of downloads) if (!list.some((x) => x.appid === d.appid) && lib.settings.notifyDownloads !== false) notify(d.name + ' is ready to play', d.installing ? 'Finished installing.' : 'Update finished.');
+      for (const d of downloads) if (!list.some((x) => x.appid === d.appid) && scanners.steamAppFlags(d.appid) === 4 && lib.settings.notifyDownloads !== false) notify(d.name + ' is ready to play', d.installing ? 'Finished installing.' : 'Update finished.');
       dlSig = sig; downloads = list;
       send('downloads', list);
     };
@@ -1145,6 +1268,7 @@ if (!app.requestSingleInstanceLock()) {
     // Monitors plugged in or removed: stay on the chosen one, or fall back to the main one.
     screen.on('display-removed', () => placeWindows());
     screen.on('display-added', () => placeWindows());
+    screen.on('display-metrics-changed', () => { if (!running) placeWindows(); }); // games: re-placed when they end
     controller.start();
     padMouse.start();
     startPadWatch();

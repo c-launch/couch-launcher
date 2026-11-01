@@ -1,6 +1,6 @@
 {
- "version": "1.5.0",
- "notes": "Controller batteries in the top bar with a low-battery pop-up. Collections (group games your way). Steam achievements on Home and in the guide. Alerts when friends come online, people join/leave your Discord call, or a Steam download finishes. Steam download progress on game tiles. Softer shadow under the selected game.",
- "file": "CouchLauncher-update-1.5.0.zip",
- "size": 123162
+ "version": "1.6.0",
+ "notes": "Players: set up once in Settings › Controllers (everyone presses A), and every Ryujinx, Dolphin and RPCS3 game starts with those players; Ryujinx gets Player 1-4 profiles. Dolphin saves a state when you close or switch, and offers to pick up from it. TV settings per game: resolution, refresh rate and HDR, put back afterwards.",
+ "file": "CouchLauncher-update-1.6.0.zip",
+ "size": 135891
 }

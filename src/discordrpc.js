@@ -53,6 +53,7 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
 
   // ----- the pipe
   function drop(err) {
+    if (ready && ready.reject) { clearTimeout(ready.timer); const rj = ready.reject; ready.reject = null; rj(err || new Error('Discord closed the connection')); }
     if (sock) { try { sock.destroy(); } catch (_) { /* gone */ } }
     sock = null; ready = null; authed = false; buf = Buffer.alloc(0);
     for (const [, p] of pending) { clearTimeout(p.t); p.reject(err || new Error('Discord closed the connection')); }
@@ -69,7 +70,7 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
       if (op === 3) { try { sock.write(encode(4, msg || {})); } catch (_) { /* gone */ } continue; }
       if (op === 2) { drop(new Error((msg && msg.message) || 'Discord closed the connection')); return; }
       if (!msg) continue;
-      if (msg.cmd === 'DISPATCH' && msg.evt === 'READY' && ready && ready.resolve) { ready.resolve(msg.data || {}); continue; }
+      if (msg.cmd === 'DISPATCH' && msg.evt === 'READY' && ready && ready.resolve) { clearTimeout(ready.timer); ready.reject = null; ready.resolve(msg.data || {}); continue; }
       const p = msg.nonce && pending.get(msg.nonce);
       if (!p) continue;
       pending.delete(msg.nonce); clearTimeout(p.t);
@@ -88,24 +89,29 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
   async function open(clientId) {
     if (sock && ready && ready.done) return;
     if (ready && ready.promise) return ready.promise;
-    ready = {};
-    ready.promise = (async () => {
+    const mine = ready = {};
+    mine.promise = (async () => {
       let s = null;
       for (const p of (opts.paths || pipePaths())) { s = await tryPath(p); if (s) break; }
+      if (ready !== mine) { if (s) s.destroy(); throw new Error('Discord connection was restarted'); }
       if (!s) { ready = null; throw new Error('Discord isn’t running'); }
       sock = s;
-      sock.on('data', onData);
-      sock.on('error', () => drop());
-      sock.on('close', () => drop());
+      // Only react to this socket: a newer connection may already have replaced it.
+      s.on('data', (c) => { if (sock === s) onData(c); });
+      s.on('error', () => { if (sock === s) drop(); });
+      s.on('close', () => { if (sock === s) drop(); });
       const hello = new Promise((resolve, reject) => {
-        ready.resolve = resolve;
-        setTimeout(() => reject(new Error('Discord didn’t answer')), 10000);
+        mine.resolve = resolve; mine.reject = reject;
+        mine.timer = setTimeout(() => { if (mine.reject) { mine.reject = null; reject(new Error('Discord didn’t answer')); } }, 10000);
       });
-      sock.write(encode(0, { v: 1, client_id: String(clientId) }));
+      s.write(encode(0, { v: 1, client_id: String(clientId) }));
       await hello;
-      ready.done = true;
-    })().catch((e) => { drop(e); throw e; });
-    return ready.promise;
+      mine.done = true;
+      return s;
+    })();
+    const p = mine.promise;
+    p.catch(() => { if (ready === mine) drop(); });
+    return p;
   }
   function command(cmd, args, ms) {
     if (!sock) return Promise.reject(new Error('Discord isn’t connected'));
@@ -139,7 +145,16 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
     authed = true;
   }
   // Connects (and signs in with the saved token, refreshing it when it has expired).
-  async function ensure() {
+  // One at a time, and after a failed sign-in it waits a minute before trying Discord again.
+  let ensuring = null, failedAt = 0, failErr = null;
+  function ensure() {
+    if (authed && sock) return Promise.resolve();
+    if (ensuring) return ensuring;
+    if (failErr && Date.now() - failedAt < 60000) return Promise.reject(failErr);
+    ensuring = ensureOnce().then(() => { failErr = null; }, (e) => { failErr = e; failedAt = Date.now(); throw e; }).finally(() => { ensuring = null; });
+    return ensuring;
+  }
+  async function ensureOnce() {
     const c = read();
     if (!c.clientId || !c.secret) throw new Error('NOT_SET_UP');
     await open(c.clientId);
@@ -160,8 +175,9 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(secret)) throw new Error('That doesn’t look like a Client Secret (OAuth2 › Reset Secret, then copy)');
     const prev = read();
     if (prev.clientId !== clientId) drop();
+    failErr = null;
+    // Saved only once Discord approves, so cancelling keeps a working sign-in.
     const c = { clientId, secret, access: null, refresh: null };
-    write(c);
     await open(clientId);
     let code;
     try { code = (await command('AUTHORIZE', { client_id: clientId, scopes: SCOPES }, 120000)).code; }

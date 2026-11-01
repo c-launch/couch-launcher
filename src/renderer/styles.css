@@ -637,3 +637,16 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .home-tiles .row-inner { padding-bottom: 7rem; }
 .home-tiles { pointer-events: none; }
 .home-tiles .row-inner > * { pointer-events: auto; }
+
+/* Who's playing? */
+.whoplays { width: 96rem; }
+.pp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.4rem; margin: 1.6rem 0 0.6rem; }
+.pp { border-radius: var(--r-card); background: var(--chip); padding: 2rem 1.6rem; min-height: 15rem; display: flex; flex-direction: column; justify-content: space-between; border: 0.2rem solid transparent; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.pp.in { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--chip)); animation: ppIn 260ms var(--ease) both; }
+@keyframes ppIn { from { transform: scale(0.94); } to { transform: none; } }
+.pp-n { font-size: 2.2rem; font-weight: 800; }
+.pp-c { display: flex; align-items: center; gap: 0.8rem; font-size: 1.5rem; font-weight: 600; }
+.pp-c.wait { color: var(--sub); font-weight: 500; }
+.pp-c svg { width: 2.2rem; height: 2.2rem; }
+.pp-c .glyph { transform: scale(0.9); }
+.reduce-motion .pp.in { animation: none; }
