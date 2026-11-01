@@ -23,7 +23,8 @@ const DEFAULT_SETTINGS = {
   pauseGame: true,       // pause the game while the guide or launcher is in front
   customBg: null,        // your own Home background image (path)
   musicMouse: true,      // controller works as a mouse in Apple Music / Spotify / Discord
-  discordPins: []        // [{ name, url }] Discord channels / servers / invites shown in the guide
+  discordPins: [],       // [{ name, url }] Discord channels / servers / invites shown in the guide
+  autoCloseApps: true    // close stores the launcher opened when you press the Xbox button to come back
 };
 
 const DEFAULT_PLATFORMS = {

@@ -107,8 +107,40 @@ if (!app.requestSingleInstanceLock()) {
     if (overlayShown()) { hideOverlay(); return; }
     const gameHasScreen = running && (win.isMinimized() || !win.isFocused());
     if (gameHasScreen) { showOverlay(); return; }
-    if (!win.isFocused()) bringBack(false); // on the desktop or in another app: come to the front
+    if (!win.isFocused()) {
+      // Coming back from a store the launcher opened: close it (Settings › Controllers).
+      if (!running && openedApps.size && lib.settings.autoCloseApps !== false) closeOpenedApps();
+      bringBack(false); // on the desktop or in another app: come to the front
+    }
     send('guide');
+  }
+
+  // Stores opened from the launcher, closed when you press the Xbox button to come back.
+  // Music apps and Discord are left alone (music and calls keep going); so are emulator
+  // setup windows (unsaved settings).
+  const openedApps = new Map(); // kind -> { exes, title }
+  function closeOpenedApps() {
+    if (!w32) { openedApps.clear(); return; }
+    for (const [kind, a] of openedApps) {
+      if (a.stop) a.stop(); // stop putting its windows in front
+      if (kind === 'steam-bp') {
+        // Steam's own "leave Big Picture" link; if Big Picture is still up after a moment,
+        // close its window (like Alt+F4), which drops Steam back to its normal window.
+        shell.openExternal('steam://close/bigpicture').catch(() => {});
+        setTimeout(() => {
+          let h = null;
+          try { h = w32.findAppWindow(['steam.exe'], 'Steam Big Picture', true); } catch (_) { h = null; }
+          if (h) w32.close(h);
+        }, 1500);
+        // Steam's normal window pops up after Big Picture closes: stay in front of it.
+        for (const ms of [2500, 4500]) setTimeout(() => { if (!running) bringBack(false); }, ms);
+      } else {
+        let h = null;
+        try { h = w32.findAppWindow(a.exes, a.title); } catch (_) { h = null; }
+        if (h) w32.close(h);
+      }
+    }
+    openedApps.clear();
   }
 
   function bringBack(showGuide) {
@@ -128,6 +160,29 @@ if (!app.requestSingleInstanceLock()) {
     const all = screen.getAllDisplays();
     const id = lib && lib.settings && lib.settings.displayId;
     return all.find((d) => String(d.id) === String(id)) || screen.getPrimaryDisplay();
+  }
+  // Apps the launcher opens (music, Discord, stores, emulator setup) fill the chosen display.
+  function fillChosenDisplay(h) {
+    if (!w32 || !h) return;
+    const d = targetDisplay();
+    const area = process.platform === 'win32' && screen.dipToScreenRect ? screen.dipToScreenRect(null, d.workArea) : d.workArea;
+    try { w32.fill(h, area); } catch (_) { /* window went away */ }
+  }
+  // Watches for an app's window for a while (splash screens come first) and places each new one.
+  function presentApp(exes, titlePrefix, ms) {
+    let stopped = false;
+    if (!w32) return () => {};
+    const done = new Set();
+    const until = Date.now() + (ms || 20000);
+    const tick = () => {
+      if (stopped) return;
+      let h = null;
+      try { h = w32.findAppWindow(exes, titlePrefix); } catch (_) { h = null; }
+      if (h && !done.has(h)) { done.add(h); fillChosenDisplay(h); }
+      if (Date.now() < until) setTimeout(tick, 700);
+    };
+    tick();
+    return () => { stopped = true; };
   }
   function placeWindows() {
     const d = targetDisplay();
@@ -340,7 +395,8 @@ if (!app.requestSingleInstanceLock()) {
     return new Promise((resolve) => {
       if (process.platform !== 'win32' || !dir) return resolve(null);
       const d = dir.endsWith('\\') ? dir : dir + '\\';
-      const ps = "$d='" + d.replace(/'/g, "''") + "'; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $_.ProcessId }";
+      // Crash reporters (Roblox, Unity, Unreal...) keep running after a game closes: ignore them.
+      const ps = "$d='" + d.replace(/'/g, "''") + "'; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, [StringComparison]::OrdinalIgnoreCase) -and $_.Name -notmatch 'crash|bugreport|errorreport|crashpad|werfault' } | ForEach-Object { $_.ProcessId }";
       execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps],
         { windowsHide: true, timeout: 15000 },
         (err, out) => resolve(err ? null : String(out).split(/\s+/).map(Number).filter((n) => n > 0)));
@@ -401,7 +457,7 @@ if (!app.requestSingleInstanceLock()) {
       killAll(pids, force);
       // Emulators answer "close" with their own "are you sure?" box, hidden behind the launcher.
       // Game progress lives in the game's saves, so finish the job if the emulator is still open.
-      if (!force && r.isEmu) setTimeout(() => { if (running === r) killAll(pids, true); }, 4000);
+      if (!force && (r.isEmu || r.forceClose)) setTimeout(() => { if (running === r) killAll(running.child ? [running.child.pid] : (running.pids || pids), true); }, 4000);
     });
     return true;
   }
@@ -452,6 +508,7 @@ if (!app.requestSingleInstanceLock()) {
       throw new Error('This game has no launch target');
     }
     controller.setGameRunning(true);
+    if (g.source === 'roblox') running.forceClose = true; // Roblox ignores a normal close; nothing to save
     running.audioDirs = L.type === 'url' || L.type === 'appx' ? [L.dir] : L.type === 'emu' ? [path.dirname(lib.platforms[L.emu].exe)] : L.type === 'exe' ? [path.dirname(L.exe)] : [];
     scheduleGameVolume(running);
     return { ok: true, tracked: L.type === 'emu' || L.type === 'exe', watching: (L.type === 'url' || L.type === 'appx') && !!L.dir };
@@ -613,19 +670,9 @@ if (!app.requestSingleInstanceLock()) {
     const find = () => { try { return w32 ? w32.findAppWindow(exes, appName) : null; } catch (_) { return null; } };
     // Already open (even minimized)? Restore it and bring it forward; starting it again won't.
     const open = find();
-    if (open) { w32.show(open); return true; }
-    return md().launch(appName).then((ok) => {
-      // Just started: bring its window to the front once it appears (it can open behind us).
-      if (w32) {
-        let tries = 0;
-        const t = setInterval(() => {
-          const h = find();
-          if (h) { clearInterval(t); try { w32.show(h); } catch (_) { /* ignore */ } }
-          else if (++tries > 30) clearInterval(t);
-        }, 500);
-      }
-      return ok;
-    });
+    if (open) { fillChosenDisplay(open); return true; }
+    // Just started: put its window on the chosen display, full size and in front, once it appears.
+    return md().launch(appName).then((ok) => { presentApp(exes, appName, 20000); return ok; });
   });
 
   let artFinder = null;
@@ -641,6 +688,7 @@ if (!app.requestSingleInstanceLock()) {
     if (!scanners.EMULATORS[id] || !cfg || !cfg.exe || !fs.existsSync(cfg.exe)) throw new Error('Set the emulator program first');
     const child = spawn(cfg.exe, [], { cwd: path.dirname(cfg.exe), detached: true, stdio: 'ignore' });
     child.unref();
+    presentApp([path.basename(cfg.exe).toLowerCase()], scanners.EMULATORS[id].name, 15000);
     return true;
   });
   handle('game:status', () => (running ? { gameId: running.gameId, canClose: canClose(), seen: !!(running.child || running.seen) } : null));
@@ -663,18 +711,22 @@ if (!app.requestSingleInstanceLock()) {
     if (id === 'steam') {
       await shell.openExternal('steam://open/bigpicture');
       setTimeout(() => { shell.openExternal('steam://store').catch(() => {}); }, 2500);
+      const entry = { exes: ['steam.exe'], title: 'Steam Big Picture', stop: null };
+      openedApps.set('steam-bp', entry);
+      setTimeout(() => { if (openedApps.get('steam-bp') === entry) entry.stop = presentApp(['steam.exe'], 'Steam', 20000); }, 1500);
       return true;
     }
-    if (id === 'epic') { await shell.openExternal('com.epicgames.launcher://store'); return true; }
+    if (id === 'epic') { await shell.openExternal('com.epicgames.launcher://store'); openedApps.set('epic', { exes: ['epicgameslauncher.exe'], title: 'Epic Games', stop: presentApp(['epicgameslauncher.exe'], 'Epic Games', 30000) }); return true; }
     if (id === 'xbox') {
       // The Xbox app (Game Pass): look up its app ID in the Start menu.
       const ps = "(Get-StartApps | Where-Object { $_.Name -eq 'Xbox' } | Select-Object -First 1).AppID";
       const aumid = await new Promise((r) => execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 15000 }, (e, out) => r(e ? '' : String(out || '').trim())));
       if (!aumid) throw new Error('The Xbox app isn’t installed');
       execFile('explorer.exe', ['shell:AppsFolder\\' + aumid], { windowsHide: true }, () => {});
+      openedApps.set('xbox', { exes: ['xboxpcapp.exe'], title: 'Xbox', stop: presentApp(['xboxpcapp.exe'], 'Xbox', 20000) });
       return true;
     }
-    if (id === 'msstore') { await shell.openExternal('ms-windows-store://home'); return true; }
+    if (id === 'msstore') { await shell.openExternal('ms-windows-store://home'); openedApps.set('msstore', { exes: ['winstore.app.exe'], title: 'Microsoft Store', stop: presentApp(['winstore.app.exe'], 'Microsoft Store', 20000) }); return true; }
     throw new Error('Unknown store');
   });
 
@@ -699,6 +751,12 @@ if (!app.requestSingleInstanceLock()) {
     if (!tries) return Promise.resolve(false);
     return new Promise((r) => setTimeout(() => r(bringDiscord(tries - 1)), 500));
   }
+  // Whether you've added the mute/deafen keybinds in Discord (asked once).
+  const dcFile = () => path.join(app.getPath('userData'), 'discord.json');
+  handle('discord:setup', (set) => {
+    if (set === true) { try { fs.writeFileSync(dcFile(), JSON.stringify({ keys: true })); } catch (_) { /* asks again */ } return true; }
+    try { return !!JSON.parse(fs.readFileSync(dcFile(), 'utf8')).keys; } catch (_) { return false; }
+  });
   handle('discord:status', () => {
     const local = process.env.LOCALAPPDATA || '';
     const installed = ['Discord', 'DiscordPTB', 'DiscordCanary'].some((d) => fs.existsSync(path.join(local, d)));
@@ -706,20 +764,36 @@ if (!app.requestSingleInstanceLock()) {
   });
   handle('discord:check', (url) => { const l = discordLink(url); if (!l) throw new Error('That isn’t a Discord channel, server or invite link'); return l.kind; });
   handle('discord:clipboard', () => String(require('electron').clipboard.readText() || '').trim().slice(0, 300));
-  handle('discord:open', async (url) => {
+  // Discord doesn't let programs join a call for you. For a voice pin, the call screen opens and
+  // the pointer is put on its "Join Voice" button, so pressing A (controller as mouse) joins.
+  function pointAtJoin(tries) {
+    const h = discordWindow();
+    if (!h) { if (tries > 0) setTimeout(() => pointAtJoin(tries - 1), 600); return; }
+    setTimeout(() => {
+      const r = w32.rect(h);
+      if (!r) return;
+      const scale = w32.dpiScale(h);
+      const side = Math.round(312 * scale); // server list + channel list
+      w32.pointer(r.x + side + Math.round((r.width - side) / 2), r.y + Math.round(r.height * 0.56));
+    }, 1800); // let Discord switch to the call screen
+  }
+  handle('discord:open', async (url, join) => {
     const l = url ? discordLink(url) : null;
     if (url && !l) throw new Error('That isn’t a Discord link');
     hideOverlay();
     if (w32) w32.allowForeground();
-    if (!l && w32 && discordWindow()) { w32.show(discordWindow()); return true; }
+    if (!l && w32 && discordWindow()) { fillChosenDisplay(discordWindow()); return true; }
+    if (l && w32 && discordWindow()) fillChosenDisplay(discordWindow());
     await shell.openExternal(l ? l.app : 'discord://-/channels/@me');
-    if (w32) bringDiscord(30);
+    presentApp(DISCORD_EXES, 'Discord', 20000);
+    if (join && l && l.kind === 'channel' && w32) pointAtJoin(15);
     return true;
   });
   handle('discord:key', async (which) => {
     if (!w32) throw new Error('Needs Windows');
     if (!discordWindow()) throw new Error('Discord isn’t open');
-    // Discord's own shortcuts: Ctrl+Shift+M (mute) and Ctrl+Shift+D (deafen).
+    // Ctrl+Shift+M (mute) and Ctrl+Shift+D (deafen). Discord reacts to these from anywhere once
+    // they're added under Discord › Settings › Keybinds (the guide explains this the first time).
     w32.keys([0x11, 0x10], which === 'deafen' ? 0x44 : 0x4D);
     return true;
   });

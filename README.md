@@ -49,11 +49,13 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 
 - **Home**: back to the launcher's Home if a game opens or closes wrong (the game keeps running).
 - **Game / music balance**: while a game runs, slide toward the controller for more game, toward the note for more music.
-- **Discord** (Friends tab): pin channels, voice calls, servers or invites (in Discord: right-click › Copy Link, then *Pin* in the guide), open them in one press, mute/deafen, and type a message that's sent to the chat open in Discord. Mute and deafen use Discord's own shortcuts (Ctrl+Shift+M / Ctrl+Shift+D); to use them while a game has the screen, add them in Discord under **Settings › Keybinds**. The launcher never reads or sends anything as your account on its own.
+- **Discord** (Friends tab): pin channels, voice calls, servers or invites (in Discord: right-click › Copy Link, then *Pin* in the guide), open them in one press, mute/deafen, and type a message that's sent to the chat open in Discord. Mute and deafen need a one-time setup in Discord: **Settings › Keybinds › Add a Keybind**: *Toggle Mute* = Ctrl+Shift+M and *Toggle Deafen* = Ctrl+Shift+D (the guide reminds you the first time). Discord doesn't let other programs join calls, so a pin marked *Voice channel* opens the call screen with the pointer on **Join Voice**: press A. The launcher never reads or sends anything as your account on its own.
 
 ## Stores, Roblox, Microsoft Store
 
 - **Stores** card on Home: Steam Store (in Big Picture), Xbox app (Game Pass), Microsoft Store, Epic Games Store.
+- Stores, music apps, Discord and emulator setup windows open full screen on the display chosen in **Settings › Display**.
+- Press the Xbox button to come back from a store and it closes (Steam leaves Big Picture). Music apps and Discord keep running. Turn this off in **Settings › Controllers**.
 - Roblox and Microsoft Store / Xbox app (PC Game Pass) games are found automatically (Settings › Platforms).
 - EmuDeck's Steam shortcuts aren't listed twice: when the same game is found directly through its emulator, that one is kept.
 

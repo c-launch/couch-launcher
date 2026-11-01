@@ -4,7 +4,8 @@
 // X: play/pause · LB/RB: previous/next track · Menu: Enter.
 // Only Xbox-style (XInput) controllers; the Xbox button still opens the launcher's guide.
 
-const MUSIC_APPS = new Set(['applemusic.exe', 'spotify.exe', 'discord.exe', 'discordptb.exe', 'discordcanary.exe']);
+// Apps without controller support where the controller works as a mouse.
+const MUSIC_APPS = new Set(['applemusic.exe', 'spotify.exe', 'discord.exe', 'discordptb.exe', 'discordcanary.exe', 'epicgameslauncher.exe']);
 const B = { UP: 0x1, DOWN: 0x2, LEFT: 0x4, RIGHT: 0x8, START: 0x10, LB: 0x100, RB: 0x200, A: 0x1000, B: 0x2000, X: 0x4000 };
 const VK = { UP: 0x26, DOWN: 0x28, LEFT: 0x25, RIGHT: 0x27, ESC: 0x1B, ENTER: 0x0D, PLAY: 0xB3, PREV: 0xB1, NEXT: 0xB0 };
 
