@@ -1,6 +1,6 @@
 {
- "version": "1.7.1",
- "notes": "Couch Launcher has its own logo: a simple couch with a controller's buttons, in black and white. It shows in Settings › About and on the taskbar; reinstall with the new setup file to get it on your shortcuts too.",
- "file": "CouchLauncher-update-1.7.1.zip",
- "size": 152404
+ "version": "1.7.2",
+ "notes": "PlayStation controllers: the PS button opens the guide (also during games), Circle backs out of the start screen, Share + Options held brings the launcher back.",
+ "file": "CouchLauncher-update-1.7.2.zip",
+ "size": 156290
 }

@@ -1,0 +1,194 @@
+'use strict';
+// PlayStation controllers (DualShock 4, DualSense, DualSense Edge) read straight from Windows'
+// HID driver, so the PS button opens the guide even while a game has the screen. Windows'
+// Xbox controller system (XInput) never sees these pads, and Chromium only reads controllers
+// for the focused window.
+//
+// Each pad is opened shared (games and Steam keep reading it as usual) with one read always
+// waiting in the driver (overlapped I/O). Every poll picks up what arrived, without ever blocking.
+// If something can't be loaded (non-Windows, no koffi) this quietly reads nothing.
+
+const SONY = 0x054c;
+const DUALSENSE = new Set([0x0ce6, 0x0df2]); // DualSense, DualSense Edge
+const PADS = new Set([0x05c4, 0x09cc, 0x0ba0, 0x0ce6, 0x0df2]); // + DualShock 4 v1/v2, DS4 USB adapter
+const STATUS_PENDING = 0x103;
+const BUF = 1024; // any report fits (DS4 over Bluetooth is the biggest at 547)
+const RESCAN_MS = 3000;
+
+// One input report -> { ps, cross, circle, share, options } or null for reports we don't read.
+// The three button bytes sit at the same place in every layout, only shifted:
+//   DS4 USB / Bluetooth basic 0x01: 5 · DS4 Bluetooth full 0x11-0x19: 7
+//   DualSense USB 0x01 (64 bytes): 8 · DualSense Bluetooth basic 0x01: 5 · full 0x31: 9
+function parseReport(pid, b, n) {
+  if (!b || n < 10) return null;
+  const id = b[0];
+  let base;
+  if (DUALSENSE.has(pid)) {
+    if (id === 0x01) base = n === 64 ? 8 : 5;
+    else if (id === 0x31) base = 9;
+    else return null;
+  } else {
+    if (id === 0x01) base = 5;
+    else if (id >= 0x11 && id <= 0x19) base = 7;
+    else return null;
+  }
+  if (n < base + 3) return null;
+  const b1 = b[base], b2 = b[base + 1], b3 = b[base + 2];
+  return {
+    cross: !!(b1 & 0x20), circle: !!(b1 & 0x40),
+    share: !!(b2 & 0x10), options: !!(b2 & 0x20),
+    ps: !!(b3 & 0x01)
+  };
+}
+
+// The Windows calls, through koffi (loaded once: koffi type names must be unique).
+let apiCache = null;
+function loadApi() {
+  if (apiCache) return apiCache;
+  const koffi = require('koffi');
+  const k32 = koffi.load('kernel32.dll');
+  const hid = koffi.load('hid.dll');
+  const sapi = koffi.load('setupapi.dll');
+  const crt = koffi.load('msvcrt.dll');
+  const GUID = koffi.struct('CL_HID_GUID', { Data1: 'uint32', Data2: 'uint16', Data3: 'uint16', Data4: koffi.array('uint8', 8) });
+  const IFACE = koffi.struct('CL_SP_DEVICE_INTERFACE_DATA', { cbSize: 'uint32', InterfaceClassGuid: GUID, Flags: 'uint32', Reserved: 'uintptr_t' });
+  const ATTR = koffi.struct('CL_HIDD_ATTRIBUTES', { Size: 'uint32', VendorID: 'uint16', ProductID: 'uint16', VersionNumber: 'uint16' });
+
+  const HidD_GetHidGuid = hid.func('__stdcall', 'HidD_GetHidGuid', 'void', [koffi.out(koffi.pointer(GUID))]);
+  const HidD_GetAttributes = hid.func('__stdcall', 'HidD_GetAttributes', 'uint8', ['intptr_t', koffi.inout(koffi.pointer(ATTR))]);
+  const HidD_SetNumInputBuffers = hid.func('__stdcall', 'HidD_SetNumInputBuffers', 'uint8', ['intptr_t', 'uint32']);
+  const GetClassDevs = sapi.func('__stdcall', 'SetupDiGetClassDevsW', 'intptr_t', [koffi.pointer(GUID), 'void *', 'void *', 'uint32']);
+  const EnumIfaces = sapi.func('__stdcall', 'SetupDiEnumDeviceInterfaces', 'int', ['intptr_t', 'void *', koffi.pointer(GUID), 'uint32', koffi.inout(koffi.pointer(IFACE))]);
+  const IfaceDetail = sapi.func('__stdcall', 'SetupDiGetDeviceInterfaceDetailW', 'int', ['intptr_t', koffi.pointer(IFACE), 'void *', 'uint32', 'void *', 'void *']);
+  const DestroyList = sapi.func('__stdcall', 'SetupDiDestroyDeviceInfoList', 'int', ['intptr_t']);
+  const CreateFileW = k32.func('__stdcall', 'CreateFileW', 'intptr_t', ['str16', 'uint32', 'uint32', 'void *', 'uint32', 'uint32', 'intptr_t']);
+  const ReadFile = k32.func('__stdcall', 'ReadFile', 'int', ['intptr_t', 'void *', 'uint32', 'void *', 'void *']);
+  const GetOverlappedResult = k32.func('__stdcall', 'GetOverlappedResult', 'int', ['intptr_t', 'void *', koffi.out(koffi.pointer('uint32')), 'int']);
+  const CancelIoEx = k32.func('__stdcall', 'CancelIoEx', 'int', ['intptr_t', 'void *']);
+  const CloseHandle = k32.func('__stdcall', 'CloseHandle', 'int', ['intptr_t']);
+  const memset = crt.func('void * memset(void *, int, size_t)');
+
+  const guid = {};
+  HidD_GetHidGuid(guid);
+  const U16PATH = koffi.array('uint16', 4096 / 2);
+  const U8BUF = koffi.array('uint8', BUF);
+  const ifaceSize = koffi.sizeof(IFACE);
+  const DETAIL = 4096;
+
+  apiCache = {
+    // Device paths of the Sony controllers that are plugged in / paired and on.
+    list() {
+      const out = [];
+      const devs = GetClassDevs(guid, null, null, 0x02 | 0x10); // DIGCF_PRESENT | DIGCF_DEVICEINTERFACE
+      if (devs === -1 || devs === 0) return out;
+      const detail = koffi.alloc('uint8', DETAIL);
+      try {
+        for (let i = 0; i < 256; i++) {
+          const iface = { cbSize: ifaceSize };
+          if (!EnumIfaces(devs, null, guid, i, iface)) break;
+          memset(detail, 0, DETAIL);
+          memset(detail, 8, 1); // cbSize = 8 (SP_DEVICE_INTERFACE_DETAIL_DATA_W on 64-bit)
+          if (!IfaceDetail(devs, iface, detail, DETAIL, null, null)) continue;
+          const w = koffi.decode(detail, U16PATH);
+          let s = '';
+          for (let j = 2; j < w.length && w[j]; j++) s += String.fromCharCode(w[j]); // path starts at byte 4
+          if (/054c/i.test(s)) out.push(s); // USB "vid_054c", Bluetooth "vid&0002054c"
+        }
+      } finally { DestroyList(devs); koffi.free(detail); }
+      return out;
+    },
+    open(p) {
+      const OPEN = 3, OVERLAPPED = 0x40000000, SHARE = 3;
+      let h = CreateFileW(p, 0xC0000000, SHARE, null, OPEN, OVERLAPPED, 0); // read + write
+      if (h === -1 || h === 0) h = CreateFileW(p, 0x80000000, SHARE, null, OPEN, OVERLAPPED, 0); // read only
+      return h === -1 || h === 0 ? null : h;
+    },
+    ids(h) {
+      const a = { Size: koffi.sizeof(ATTR) };
+      if (!HidD_GetAttributes(h, a)) return null;
+      return { vid: a.VendorID, pid: a.ProductID };
+    },
+    fewBuffers(h) { try { HidD_SetNumInputBuffers(h, 2); } catch (_) { /* fine */ } },
+    alloc(n) { const p = koffi.alloc('uint8', n); memset(p, 0, n); return p; },
+    free(p) { try { koffi.free(p); } catch (_) { /* fine */ } },
+    zero(p, n) { memset(p, 0, n); },
+    // Start a read; true when it's in flight or already done (the poll checks which).
+    read(h, buf, n, ov) { ReadFile(h, buf, n, null, ov); return true; },
+    status(ov) { return koffi.decode(ov, 'uint32'); }, // OVERLAPPED.Internal
+    result(h, ov) { const n = [0]; return GetOverlappedResult(h, ov, n, 0) ? n[0] : -1; }, // never waits
+    bytes(buf) { return koffi.decode(buf, U8BUF); },
+    cancel(h, ov) { try { CancelIoEx(h, ov); } catch (_) { /* fine */ } },
+    close(h) { try { CloseHandle(h); } catch (_) { /* fine */ } }
+  };
+  return apiCache;
+}
+
+// read() -> one state per connected pad: [{ ps, cross, circle, share, options }]
+function createSonyPads(opts) {
+  opts = opts || {};
+  const none = { read: () => [], close() {}, available: false };
+  if (!opts.api && process.platform !== 'win32') return none;
+  let api;
+  try { api = opts.api || loadApi(); } catch (err) { return Object.assign(none, { error: String(err && err.message || err) }); }
+  const now = opts.now || Date.now;
+  const later = opts.later || setTimeout;
+  const pads = new Map(); // path -> { h, pid, buf, ov, state }
+  let lastScan = -Infinity;
+
+  function drop(path) {
+    const p = pads.get(path);
+    if (!p) return;
+    pads.delete(path);
+    // Closing cancels the waiting read; give Windows a moment to finish with its memory
+    // before freeing it (never wait for it here: that could freeze the launcher).
+    api.cancel(p.h, p.ov);
+    api.close(p.h);
+    const t = later(() => { api.free(p.buf); api.free(p.ov); }, 5000);
+    if (t && t.unref) t.unref();
+  }
+  function start(p) {
+    api.zero(p.ov, 32);
+    return api.read(p.h, p.buf, BUF, p.ov);
+  }
+  function scan() {
+    lastScan = now();
+    let paths;
+    try { paths = api.list(); } catch (_) { return; }
+    for (const path of [...pads.keys()]) {
+      // Gone, or the handle stopped answering (unplugged / switched off).
+      if (!paths.includes(path) || !api.ids(pads.get(path).h)) drop(path);
+    }
+    for (const path of paths) {
+      if (pads.has(path)) continue;
+      const h = api.open(path);
+      if (!h) continue;
+      const ids = api.ids(h);
+      if (!ids || ids.vid !== SONY || !PADS.has(ids.pid)) { api.close(h); continue; }
+      api.fewBuffers(h); // read fresh reports, not a backlog
+      const p = { h, pid: ids.pid, buf: api.alloc(BUF), ov: api.alloc(32), state: null };
+      pads.set(path, p);
+      start(p);
+    }
+  }
+  function read() {
+    if (now() - lastScan >= RESCAN_MS) scan();
+    const out = [];
+    for (const [path, p] of [...pads]) {
+      // Take every report that's waiting (a few at most), keeping the newest state.
+      for (let k = 0; k < 4; k++) {
+        if (api.status(p.ov) === STATUS_PENDING) break;
+        const n = api.result(p.h, p.ov);
+        if (n < 0) { drop(path); break; }
+        const st = n > 0 ? parseReport(p.pid, api.bytes(p.buf), n) : null;
+        if (st) p.state = st;
+        start(p);
+      }
+      if (pads.has(path) && p.state) out.push(p.state);
+    }
+    return out;
+  }
+  function close() { for (const path of [...pads.keys()]) drop(path); }
+  return { read, close, available: true, get count() { return pads.size; } };
+}
+
+module.exports = { createSonyPads, parseReport };
