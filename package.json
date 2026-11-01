@@ -1,0 +1,44 @@
+{
+  "name": "couch-launcher",
+  "productName": "Couch Launcher",
+  "version": "1.1.0",
+  "description": "A controller-first, console-style game launcher for Windows.",
+  "main": "src/boot.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --windowed",
+    "dist": "electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "koffi": "^2.9.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "local.couchlauncher",
+    "productName": "Couch Launcher",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "npmRebuild": false
+  },
+  "author": "Jahdiel"
+}

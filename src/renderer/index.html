@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Couch Launcher</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <div id="bg" aria-hidden="true">
+    <div class="bg-deco"><span class="c1"></span><span class="c2"></span><span class="c3"></span></div>
+    <div class="bg-art" id="bg-a"></div>
+    <div class="bg-art" id="bg-b"></div>
+    <div class="bg-fade"></div>
+  </div>
+  <header id="topbar"></header>
+  <main id="view"></main>
+  <footer id="prompts" aria-live="off"></footer>
+</div>
+<div id="layers"></div>
+<div id="toasts" role="status" aria-live="polite"></div>
+<script src="themes.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
