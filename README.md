@@ -34,6 +34,9 @@ Building it yourself instead: install **Node.js LTS**, then double-click **Build
 
 **Xbox button:** opens the guide (Games, Friends, Profile & system). During a game it brings the launcher back with the guide open, where you can resume, close the game, or switch to another game. If the Xbox button doesn't work on your PC, hold **View + Menu** for 1 second instead.
 
+**PlayStation controllers** (DualShock 4, DualSense, DualSense Edge, USB or Bluetooth): the **PS button** opens the guide the same way, also during games; Circle is B, and **Share/Create + Options** held is the View + Menu fallback.
+- If Steam is open, it may jump in front on the PS button too. To stop that: Steam › Settings › Controller › turn off **Guide Button Focuses Steam**.
+
 - Windows opens **Xbox Game Bar** on the Xbox button too. To stop that: Windows Settings › Gaming › Xbox Game Bar › turn off "Open Xbox Game Bar using this button on a controller".
 - Closing or switching games closes them the normal way, like clicking X, so games can save or ask first. For emulators to close without a pop-up, turn off **Confirm on Stop** in Dolphin (Config › Interface) and **Show "Confirm Exit" Dialog** in Ryujinx (Options › Settings › User Interface).
 - RPCS3 opens its own Home menu on the Xbox/PS button, on top of the guide. To stop that: in RPCS3 open **Configuration › Devices › Gamepads** (older versions: Configuration › Gamepads), right-click the **PS Button** mapping for each player and choose to clear it (do this for every player profile you use).

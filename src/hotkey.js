@@ -6,6 +6,9 @@
 //    the only way Windows exposes it. If that can't be loaded, this button isn't available.
 //  - View + Menu held for 1 second: fallback that always works with XInput.
 //
+//  - PlayStation pads (DualShock 4 / DualSense): read from Windows' HID driver (sonypads.js),
+//    PS = Xbox button, Circle = B, Share/Create + Options held = View + Menu.
+//
 // If XInput can't be loaded at all (non-Windows, missing package), this quietly does nothing.
 
 const BACK = 0x0020;
@@ -75,6 +78,8 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress }) {
   let exWorks = !!x.getStateEx;
   let joining = false; // "Who's playing?" screen: report A presses per controller
   const prevSlot = [0, 0, 0, 0];
+  let sony = null;
+  try { sony = require('./sonypads').createSonyPads(); } catch (_) { sony = null; }
 
   function read(i) {
     const st = {};
@@ -97,6 +102,15 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress }) {
       if (b & GUIDE) guide = true;
       if (b & 0x2000) back = true; // B
     }
+    if (sony) {
+      let states = [];
+      try { states = sony.read(); } catch (_) { states = []; }
+      for (const st of states) {
+        if (st.ps) guide = true;
+        if (st.circle) back = true;
+        if (st.share && st.options) combo = true;
+      }
+    }
     if (guide && !guideWasDown) onGuide();
     guideWasDown = guide;
     if (back && !backWasDown && gameRunning && onBack) onBack();
@@ -113,7 +127,7 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress }) {
     available: true,
     get guide() { return exWorks; },
     start() { if (!timer) timer = setInterval(poll, POLL_MS); },
-    stop() { if (timer) { clearInterval(timer); timer = null; } },
+    stop() { if (timer) { clearInterval(timer); timer = null; } if (sony) sony.close(); },
     setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; },
     setJoin(on) { joining = !!on; }
   };
