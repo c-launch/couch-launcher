@@ -52,6 +52,14 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 - **Discord calls** (Friends tab › *Connect Discord for calls*, set up once): see who's in your call and in each pinned voice channel, join a call by pressing its pin, leave, mute and deafen. It uses Discord's own connection through a free app you make on Discord's developer page; the launcher walks you through it. Discord asks you to approve it once.
 - **Discord** (Friends tab): pin channels, voice calls, servers or invites (in Discord: right-click › Copy Link, then *Pin* in the guide), open them in one press, mute/deafen, and type a message that's sent to the chat open in Discord. Mute and deafen need a one-time setup in Discord: **Settings › Keybinds › Add a Keybind**: *Toggle Mute* = Ctrl+Shift+M and *Toggle Deafen* = Ctrl+Shift+D (the guide reminds you the first time). Discord doesn't let other programs join calls, so a pin marked *Voice channel* opens the call screen with the pointer on **Join Voice**: press A. The launcher never reads or sends anything as your account on its own.
 
+## Couch extras
+
+- **Controllers**: each Xbox-style controller shows in the top bar (and guide › Profile & system) with its battery; you get a pop-up when one runs low.
+- **Collections**: open a game's options (Menu button) › Collections to group games ("Party games", "Racing"...). They show in the library and on Home › Collections.
+- **Steam achievements** for the selected game on Home and in the guide (needs Steam connected).
+- **Alerts** when a friend comes online, someone joins or leaves your Discord call, or a Steam download finishes. Turn each off in Settings › Controllers.
+- **Steam downloads**: installs and updates show a progress bar on the game's tile; new installs appear by themselves.
+
 ## Stores, Roblox, Microsoft Store
 
 - **Stores** card on Home: Steam Store (in Big Picture), Xbox app (Game Pass), Microsoft Store, Epic Games Store.

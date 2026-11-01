@@ -1,6 +1,6 @@
 {
- "version": "1.4.0",
- "notes": "Discord calls: connect once (Friends tab › Connect Discord for calls) to see who's in your call and in each pinned voice channel, join a call by pressing its pin, leave, mute and deafen for real.",
- "file": "CouchLauncher-update-1.4.0.zip",
- "size": 117841
+ "version": "1.5.0",
+ "notes": "Controller batteries in the top bar with a low-battery pop-up. Collections (group games your way). Steam achievements on Home and in the guide. Alerts when friends come online, people join/leave your Discord call, or a Steam download finishes. Steam download progress on game tiles. Softer shadow under the selected game.",
+ "file": "CouchLauncher-update-1.5.0.zip",
+ "size": 123162
 }

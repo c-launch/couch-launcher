@@ -1,11 +1,11 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, globalShortcut, Menu, safeStorage, dialog, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, globalShortcut, Menu, safeStorage, dialog, screen, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile } = require('child_process');
 const scanners = require('./scanners');
 const library = require('./library');
-const { createControllerWatcher, loadXInput } = require('./hotkey');
+const { createControllerWatcher, loadXInput, readPads } = require('./hotkey');
 const { createPadMouse } = require('./padmouse');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
@@ -567,6 +567,37 @@ if (!app.requestSingleInstanceLock()) {
     return { ok: true, tracked: L.type === 'emu' || L.type === 'exe', watching: (L.type === 'url' || L.type === 'appx') && !!L.dir };
   }
 
+  // ---------- Controllers: battery levels and a heads-up when one runs low ----------
+  let pads = [], padsSig = '';
+  const lowWarned = new Set();
+  function startPadWatch() {
+    const check = () => {
+      let list = [];
+      try { list = readPads(); } catch (_) { list = []; }
+      const sig = JSON.stringify(list);
+      if (sig !== padsSig) { padsSig = sig; pads = list; send('pads', pads); sendOverlay('pads', pads); }
+      for (const p of list) {
+        const low = p.power === 'battery' && p.level <= 1;
+        if (low && !lowWarned.has(p.slot) && lib.settings.notifyBattery !== false) {
+          lowWarned.add(p.slot);
+          notify('Controller ' + (p.slot + 1) + ' battery is ' + (p.level === 0 ? 'almost empty' : 'low'), 'Charge it or swap the batteries soon.');
+        }
+        if (!low) lowWarned.delete(p.slot);
+      }
+      for (const s of [...lowWarned]) if (!list.some((p) => p.slot === s)) lowWarned.delete(s);
+    };
+    check();
+    setInterval(check, 20000);
+  }
+  handle('pads:get', () => pads);
+
+  // Windows notification (shows over games too) plus a toast in the launcher.
+  function notify(title, body) {
+    try { if (Notification.isSupported()) new Notification({ title, body, silent: false }).show(); } catch (_) { /* not available */ }
+    send('notice', { title, body });
+  }
+  function sendOverlay(ch, payload) { if (overlay && !overlay.isDestroyed()) overlay.webContents.send(ch, payload); }
+
   // ---------- Game / music balance (like Xbox's game-chat mixer) ----------
   // -100 = all game (music turned down) … 0 = both full … 100 = all music (game turned down).
   const balanceFile = () => path.join(app.getPath('userData'), 'audio.json');
@@ -705,6 +736,73 @@ if (!app.requestSingleInstanceLock()) {
   handle('steam:disconnect', () => { st().disconnect(); return true; });
   handle('steam:friends', () => st().friends());
   handle('steam:me', () => st().me());
+
+  // ---------- Steam downloads: progress on tiles, "ready to play" when done ----------
+  let downloads = [], dlSig = '';
+  function startDownloadWatch() {
+    const check = () => {
+      if (!lib.platforms.steam || lib.platforms.steam.enabled === false) return;
+      let list = [];
+      try { list = scanners.steamDownloads(); } catch (_) { list = []; }
+      const sig = JSON.stringify(list);
+      if (sig === dlSig) return;
+      for (const d of downloads) if (!list.some((x) => x.appid === d.appid) && lib.settings.notifyDownloads !== false) notify(d.name + ' is ready to play', d.installing ? 'Finished installing.' : 'Update finished.');
+      dlSig = sig; downloads = list;
+      send('downloads', list);
+    };
+    check();
+    setInterval(check, 15000);
+  }
+  handle('downloads:get', () => downloads);
+
+  // ---------- Alerts: friends coming online, people joining / leaving your Discord call ----------
+  function startAlerts() {
+    const seen = { xbox: null, steam: null };
+    const friendId = (f) => f.xuid || f.steamid || f.id || f.gamertag;
+    async function friendsCheck() {
+      const fresh = [];
+      for (const [svc, mod] of [['xbox', xb], ['steam', st]]) {
+        let list = null;
+        try { if (mod().connected()) list = await mod().friends(); } catch (_) { list = null; }
+        if (!list) continue;
+        const online = new Set(list.filter((f) => f.online).map(friendId));
+        // The first check only learns who's online; after that, newcomers get a heads-up.
+        if (seen[svc]) for (const f of list) if (f.online && !seen[svc].has(friendId(f))) fresh.push(f);
+        seen[svc] = online;
+      }
+      if (!fresh.length || lib.settings.notifyFriends === false) return;
+      const names = fresh.map((f) => f.gamertag);
+      const title = names.length === 1 ? names[0] + ' is online' : names.length === 2 ? names[0] + ' and ' + names[1] + ' are online' : names[0] + ' and ' + (names.length - 1) + ' others are online';
+      notify(title, fresh.length === 1 && fresh[0].status && fresh[0].status !== 'Online' ? fresh[0].status : 'Say hi from the guide › Friends.');
+    }
+    let callId = null, callPeople = null;
+    async function callCheck() {
+      if (!dcRpc && !dr().configured()) return;
+      let s;
+      try { s = await dr().state([]); } catch (_) { callId = null; callPeople = null; return; }
+      if (!s.call) { callId = null; callPeople = null; return; }
+      const now = new Map(s.call.people.map((p) => [p.id, p.name]));
+      if (callId === s.call.id && callPeople && lib.settings.notifyCalls !== false) {
+        const me = s.me && s.me.id;
+        for (const [id, name] of now) if (!callPeople.has(id) && id !== me) notify(name + ' joined ' + s.call.name, 'Discord');
+        for (const [id, name] of callPeople) if (!now.has(id) && id !== me) notify(name + ' left ' + s.call.name, 'Discord');
+      }
+      callId = s.call.id; callPeople = now;
+    }
+    friendsCheck(); callCheck();
+    setInterval(friendsCheck, 3 * 60 * 1000);
+    setInterval(callCheck, 15000);
+  }
+  const achCache = new Map(); // appid -> { at, value }
+  handle('steam:achievements', async (appid) => {
+    const id = String(appid || '');
+    const c = achCache.get(id);
+    if (c && Date.now() - c.at < 10 * 60 * 1000) return c.value;
+    if (!st().connected()) return null;
+    const value = await st().achievements(id);
+    achCache.set(id, { at: Date.now(), value });
+    return value;
+  });
 
   let media = null;
   const md = () => media || (media = createMedia(app.getPath('userData')));
@@ -1049,6 +1147,9 @@ if (!app.requestSingleInstanceLock()) {
     screen.on('display-added', () => placeWindows());
     controller.start();
     padMouse.start();
+    startPadWatch();
+    setTimeout(startAlerts, 15000);
+    startDownloadWatch();
     // Look for an update a few seconds after starting, then every 3 hours (never mid-game).
     let offered = null;
     const autoCheck = async () => {

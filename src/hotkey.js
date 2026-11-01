@@ -48,7 +48,15 @@ function loadXInput() {
       }
     } catch (_) { getStateEx = null; }
   }
-  xinputCache = { getState, getStateEx };
+  // Battery level (xinput1_4 / 1_3 only).
+  let getBattery = null;
+  if (dllName !== 'xinput9_1_0.dll') {
+    try {
+      const bat = koffi.struct('CL_XINPUT_BATTERY', { BatteryType: 'uint8', BatteryLevel: 'uint8' });
+      getBattery = lib.func('__stdcall', 'XInputGetBatteryInformation', 'uint32', ['uint32', 'uint8', koffi.out(koffi.pointer(bat))]);
+    } catch (_) { getBattery = null; }
+  }
+  xinputCache = { getState, getStateEx, getBattery };
   return xinputCache;
 }
 
@@ -104,4 +112,31 @@ function createControllerWatcher({ onGuide, onCombo, onBack }) {
   };
 }
 
-module.exports = { createControllerWatcher, loadXInput };
+// Connected Xbox-style controllers with their battery: [{ slot, power: 'wired'|'battery'|'unknown', level: 0-3 }]
+// (level: 0 empty, 1 low, 2 medium, 3 full).
+function readPads() {
+  if (process.platform !== 'win32') return [];
+  let x;
+  try { x = loadXInput(); } catch (_) { return []; }
+  const out = [];
+  for (let i = 0; i < 4; i++) {
+    const st = {};
+    let rc = 1;
+    try { rc = x.getState(i, st); } catch (_) { rc = 1; }
+    if (rc !== 0) continue;
+    let power = 'unknown', level = 3;
+    if (x.getBattery) {
+      const b = {};
+      try {
+        if (x.getBattery(i, 0, b) === 0) {
+          power = b.BatteryType === 1 ? 'wired' : (b.BatteryType === 2 || b.BatteryType === 3) ? 'battery' : 'unknown';
+          level = b.BatteryLevel;
+        }
+      } catch (_) { /* unknown */ }
+    }
+    out.push({ slot: i, power, level });
+  }
+  return out;
+}
+
+module.exports = { createControllerWatcher, loadXInput, readPads };
