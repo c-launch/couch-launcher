@@ -111,14 +111,33 @@ function createWin32() {
         return best ? best.hwnd : null;
       },
       // Moves a window onto a screen area (physical pixels) and maximizes it there.
-      fill(h, area) {
+      fill(h, area, focus) {
         if (IsIconic(h) || IsZoomed(h)) ShowWindow(h, 9); // restore first, or Windows keeps the old spot
         SetWindowPos(h, 0, area.x + 60, area.y + 60, Math.max(480, area.width - 120), Math.max(360, area.height - 120), 0x4 | 0x10);
         ShowWindow(h, 3); // SW_MAXIMIZE, on the monitor it's now on
-        this.forceForeground(h);
+        if (focus !== false) this.forceForeground(h);
       },
+      isZoomed: (h) => !!IsZoomed(h),
+      isIconic: (h) => !!IsIconic(h),
       pointer: (x, y) => SetCursorPos(x, y),
       dpiScale: (h) => { try { const d = GetDpiForWindow ? GetDpiForWindow(h) : 96; return d ? d / 96 : 1; } catch (_) { return 1; } },
+      // The biggest visible main window owned by any of these processes.
+      windowOfPids(pids) {
+        const want = new Set(pids.map(Number));
+        let h = 0, best = null, bestArea = -1;
+        for (let i = 0; i < 2000; i++) {
+          h = Number(FindWindowExW(0, h, null, null));
+          if (!h) break;
+          if (!IsWindowVisible(h) || Number(GetWindow(h, 4))) continue;
+          const pid = [0];
+          GetWindowThreadProcessId(h, pid);
+          if (!want.has(pid[0])) continue;
+          const r = this.rect(h);
+          const area = r ? r.width * r.height : 0;
+          if (area > bestArea) { bestArea = area; best = h; }
+        }
+        return best;
+      },
       // Asks a window to close, like its X button / Alt+F4.
       close: (h) => PostMessageW(h, 0x10, 0, 0),
       // Un-minimizes a window and brings it to the front.

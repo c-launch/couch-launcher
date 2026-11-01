@@ -86,6 +86,13 @@ if (!app.requestSingleInstanceLock()) {
   const overlayShown = () => !!(overlay && !overlay.isDestroyed() && overlay.isVisible());
   function showOverlay() {
     if (!overlay || overlay.isDestroyed()) createOverlay();
+    // Remember the window that had the screen (the game's own), to give it focus back after.
+    if (w32 && running) {
+      try {
+        const fg = w32.foreground();
+        if (fg && fg.pid !== process.pid && !(overlay && !overlay.isDestroyed() && fg.hwnd === w32.hwndOf(overlay))) running.backTo = fg.hwnd;
+      } catch (_) { /* fine */ }
+    }
     overlay.setBounds(targetDisplay().bounds);
     overlay.webContents.send('overlay:open', { gameId: running ? running.gameId : null, canClose: canClose() });
     overlay.show();
@@ -95,16 +102,34 @@ if (!app.requestSingleInstanceLock()) {
     setTimeout(updatePause, 150); // after the game has seen it lost focus
   }
   // Hiding it hands focus back to the game underneath.
-  function hideOverlay() {
+  // refocus: back to the game (B / Resume / Xbox button). Not when something else opens next.
+  function hideOverlay(refocus) {
     if (!overlayShown()) return;
     overlay.webContents.send('overlay:closed');
+    const r = running;
     // Unpause first, so the game is awake when it gets focus back.
-    pauser.resumeAfterPending().then(() => { if (overlay && !overlay.isDestroyed()) overlay.hide(); setTimeout(updatePause, 100); });
+    pauser.resumeAfterPending().then(() => {
+      if (overlay && !overlay.isDestroyed()) overlay.hide();
+      if (refocus && r && running === r) focusGame(r);
+      setTimeout(updatePause, 100);
+    });
+  }
+  // Gives the game its focus back. Some games (Roblox) don't take it back when the guide hides.
+  function focusGame(r) {
+    if (!w32) return;
+    let h = [r.backTo, r.gameHwnd].find((x) => x && w32.exists(x));
+    if (!h && (r.pids || []).length) { try { h = w32.windowOfPids(r.pids); } catch (_) { h = null; } }
+    if (!h && r.child) { try { h = w32.windowOfPids([r.child.pid]); } catch (_) { h = null; } }
+    if (!h) return;
+    r.gameHwnd = h;
+    w32.forceForeground(h);
+    // Ask once more a moment later, in case the game was still waking up.
+    setTimeout(() => { try { const fg = w32.foreground(); if (running === r && w32.exists(h) && (!fg || fg.hwnd !== h)) w32.forceForeground(h); } catch (_) { /* fine */ } }, 250);
   }
   // Xbox button / View + Menu / Ctrl+Alt+Home.
   function guidePressed() {
     if (!win || win.isDestroyed()) return;
-    if (overlayShown()) { hideOverlay(); return; }
+    if (overlayShown()) { hideOverlay(true); return; }
     const gameHasScreen = running && (win.isMinimized() || !win.isFocused());
     if (gameHasScreen) { showOverlay(); return; }
     if (!win.isFocused()) {
@@ -162,23 +187,50 @@ if (!app.requestSingleInstanceLock()) {
     return all.find((d) => String(d.id) === String(id)) || screen.getPrimaryDisplay();
   }
   // Apps the launcher opens (music, Discord, stores, emulator setup) fill the chosen display.
-  function fillChosenDisplay(h) {
+  const toPx = (rect) => (process.platform === 'win32' && screen.dipToScreenRect ? screen.dipToScreenRect(null, rect) : rect);
+  const toDip = (rect) => (process.platform === 'win32' && screen.screenToDipRect ? screen.screenToDipRect(null, rect) : rect);
+  // Is this window on the chosen display (its middle)?
+  function onChosenDisplay(h) {
+    const r = w32.rect(h);
+    if (!r || w32.isIconic(h)) return false;
+    const b = toPx(targetDisplay().bounds), cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+    return cx >= b.x && cx < b.x + b.width && cy >= b.y && cy < b.y + b.height;
+  }
+  // Normal windows are maximized on the chosen display. Borderless full-screen windows (Steam
+  // Big Picture, some launchers) are given the display's exact size and spot instead.
+  function fillChosenDisplay(h, focus) {
     if (!w32 || !h) return;
-    const d = targetDisplay();
-    const area = process.platform === 'win32' && screen.dipToScreenRect ? screen.dipToScreenRect(null, d.workArea) : d.workArea;
-    try { w32.fill(h, area); } catch (_) { /* window went away */ }
+    try {
+      const d = targetDisplay();
+      const cur = w32.rect(h);
+      let fullScreen = false;
+      if (cur && !w32.isIconic(h) && !w32.isZoomed(h)) {
+        const on = toPx(screen.getDisplayMatching(toDip(cur)).bounds);
+        fullScreen = cur.width >= on.width * 0.95 && cur.height >= on.height * 0.95;
+      }
+      if (fullScreen) {
+        const b = toPx(d.bounds);
+        w32.move(h, b.x, b.y, b.width, b.height);
+        if (focus !== false) w32.forceForeground(h);
+      } else {
+        w32.fill(h, toPx(d.workArea), focus);
+      }
+    } catch (_) { /* window went away */ }
   }
   // Watches for an app's window for a while (splash screens come first) and places each new one.
   function presentApp(exes, titlePrefix, ms) {
     let stopped = false;
     if (!w32) return () => {};
-    const done = new Set();
+    const done = new Map(); // window -> times placed
     const until = Date.now() + (ms || 20000);
     const tick = () => {
       if (stopped) return;
       let h = null;
       try { h = w32.findAppWindow(exes, titlePrefix); } catch (_) { h = null; }
-      if (h && !done.has(h)) { done.add(h); fillChosenDisplay(h); }
+      if (h && !done.has(h)) { done.set(h, 1); fillChosenDisplay(h); }
+      // Apps that move themselves back to "their" screen while loading (Steam Big Picture)
+      // get put back, a few times at most.
+      else if (h && done.get(h) < 6 && !onChosenDisplay(h)) { done.set(h, done.get(h) + 1); fillChosenDisplay(h, false); }
       if (Date.now() < until) setTimeout(tick, 700);
     };
     tick();
@@ -553,8 +605,23 @@ if (!app.requestSingleInstanceLock()) {
   handle('link:open', (url) => {
     // Only the Xbox key page can be opened from inside the app.
     if (!['https://xbl.io', 'https://steamcommunity.com/dev/apikey', 'https://www.steamgriddb.com/profile/preferences/api'].includes(url)) throw new Error('Not allowed');
-    return shell.openExternal(url);
+    hideOverlay();
+    return shell.openExternal(url).then(() => { placeNextWindow(10000); return true; });
   });
+  // Whatever window comes up next (e.g. the web browser for an account page) goes on the
+  // chosen display too.
+  function placeNextWindow(ms) {
+    if (!w32) return;
+    const until = Date.now() + ms;
+    const tick = () => {
+      let fg = null;
+      try { fg = w32.foreground(); } catch (_) { fg = null; }
+      const ours = fg && (fg.pid === process.pid || (overlay && !overlay.isDestroyed() && fg.hwnd === w32.hwndOf(overlay)));
+      if (fg && !ours) { if (!onChosenDisplay(fg.hwnd)) fillChosenDisplay(fg.hwnd); return; }
+      if (Date.now() < until) setTimeout(tick, 400);
+    };
+    setTimeout(tick, 300);
+  }
   handle('lib:save', (data) => {
     const next = library.normalize(data);
     // Delete art files that no game uses any more.
@@ -694,16 +761,21 @@ if (!app.requestSingleInstanceLock()) {
   handle('game:status', () => (running ? { gameId: running.gameId, canClose: canClose(), seen: !!(running.child || running.seen) } : null));
   handle('game:close', (force) => closeRunning(!!force));
   handle('game:resume', () => {
-    if (overlayShown()) { hideOverlay(); return true; }
+    if (overlayShown()) { hideOverlay(true); return true; }
     if (!win || win.isDestroyed()) return true;
     const r = running;
     pauser.resumeAfterPending().then(() => {
-      if (r && r.gameHwnd && w32 && w32.exists(r.gameHwnd)) { w32.placeBelow(w32.hwndOf(win), r.gameHwnd); w32.focus(r.gameHwnd); }
+      let h = null;
+      if (r && w32) {
+        h = [r.gameHwnd, r.backTo].find((x) => x && w32.exists(x)) || null;
+        if (!h) { try { h = w32.windowOfPids(r.child ? [r.child.pid] : (r.pids || [])); } catch (_) { h = null; } }
+      }
+      if (h) { r.gameHwnd = h; w32.placeBelow(w32.hwndOf(win), h); w32.forceForeground(h); }
       else win.minimize();
     });
     return true;
   });
-  handle('overlay:hide', () => { hideOverlay(); return true; });
+  handle('overlay:hide', () => { hideOverlay(true); return true; });
   // Stores, opened the controller-friendly way where there is one (Steam: Big Picture).
   handle('store:open', async (id) => {
     hideOverlay();
