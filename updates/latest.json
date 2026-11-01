@@ -1,6 +1,6 @@
 {
- "version": "1.6.1",
- "notes": "Couch Launcher now has a setup wizard: download CouchLauncher-Setup.exe from the Releases page to install it on any PC. New app icon.",
- "file": "CouchLauncher-update-1.6.1.zip",
- "size": 135770
+ "version": "1.6.2",
+ "notes": "Fixes 1.6.0/1.6.1 not starting (the launcher fell back to its original version). Includes everything from 1.6: players, Dolphin saves, TV settings per game, and the setup wizard.",
+ "file": "CouchLauncher-update-1.6.2.zip",
+ "size": 135888
 }

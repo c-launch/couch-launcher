@@ -744,9 +744,13 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   // ---------- IPC ----------
-  const handle = (ch, fn) => ipcMain.handle(ch, async (_e, ...args) => {
-    try { return { ok: true, value: await fn(...args) }; } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
-  });
+  // A function declaration (not a const), so features anywhere in this file can register
+  // their handlers no matter where they sit: an ordering mistake here stopped 1.6.x starting.
+  function handle(ch, fn) {
+    return ipcMain.handle(ch, async (_e, ...args) => {
+      try { return { ok: true, value: await fn(...args) }; } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+    });
+  }
 
   handle('lib:load', () => lib);
 
