@@ -1,6 +1,6 @@
 {
- "version": "1.7.0",
- "notes": "Gaming news below Home (scroll down from the cards), refreshed every couple of hours, in a magazine layout. Clips: your Medal clips in the dock and in the guide, with a controller-friendly player. Find all art replaces every game's art.",
- "file": "CouchLauncher-update-1.7.0.zip",
- "size": 146224
+ "version": "1.7.1",
+ "notes": "Couch Launcher has its own logo: a simple couch with a controller's buttons, in black and white. It shows in Settings › About and on the taskbar; reinstall with the new setup file to get it on your shortcuts too.",
+ "file": "CouchLauncher-update-1.7.1.zip",
+ "size": 152404
 }

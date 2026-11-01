@@ -737,3 +737,7 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .ncard.wide .nbody { justify-content: center; padding: 2rem 2.4rem; }
 .ncard.wide .ntitle { font-size: 2.1rem; -webkit-line-clamp: 4; }
 .ncard.focused.big, .ncard.focused.wide { transform: scale(1.02); }
+
+/* The launcher's logo (Settings › About) */
+.about-h { align-items: center; justify-content: flex-start; gap: 2.4rem; }
+.about-logo { width: 9.6rem; height: 9.6rem; border-radius: 2.2rem; box-shadow: 0 1rem 3rem rgba(0,0,0,0.35); }

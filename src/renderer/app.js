@@ -833,7 +833,7 @@
         '<button class="btn big" data-nav data-key="pw-restart" data-zone="body" data-action="power" data-p="restart">' + icon('restart') + 'Restart</button>' +
         '<button class="btn big" data-nav data-key="pw-off" data-zone="body" data-action="power" data-p="shutdown">' + icon('power') + 'Shut down</button></div>';
     }
-    return '<div class="sect-h"><div><h2>About</h2><p>Couch Launcher ' + esc(S.info.version || '') + '</p></div></div><dl class="kv">' +
+    return '<div class="sect-h about-h"><img class="about-logo" src="logo.png" alt=""><div><h2>Couch Launcher</h2><p>Version ' + esc(S.info.version || '') + '</p></div></div><dl class="kv">' +
       '<dt>Games</dt><dd>' + games().length + '</dd><dt>Controllers</dt><dd>' + padCount() + ' connected</dd>' +
       '<dt>Full screen</dt><dd>' + (S.info.windowed ? 'Off (windowed mode)' : 'On') + '</dd></dl>' +
       '<div class="btn-row" style="margin-top:3rem"><button class="btn big primary" data-nav data-key="ab-update" data-zone="body" data-action="update-check">' + icon('refresh') + 'Check for update</button>' +
