@@ -819,6 +819,7 @@
         toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
         toggleHTML('c-ncall', 'Tell me when someone joins or leaves my Discord call', S.lib.settings.notifyCalls !== false, 'Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="notifyCalls"') +
         toggleHTML('c-ndl', 'Tell me when a Steam download finishes', S.lib.settings.notifyDownloads !== false, 'Installs and updates.', 'set-toggle', 'data-k="notifyDownloads"') +
+        toggleHTML('c-pspads', 'Read PlayStation controllers in the background', S.lib.settings.psPads !== false, 'The PS button opens the guide, also during games (DualShock 4, DualSense). Turn off if a PlayStation controller acts up.', 'set-toggle', 'data-k="psPads"') +
         toggleHTML('c-autoclose', 'Close stores when you press the Xbox button to come back', S.lib.settings.autoCloseApps !== false, 'Steam Big Picture, Epic Games, the Xbox app and Microsoft Store close when you return to the launcher. Music apps and Discord keep running.', 'set-toggle', 'data-k="autoCloseApps"') + '</div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;

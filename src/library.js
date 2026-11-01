@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
   customBg: null,        // your own Home background image (path)
   musicMouse: true,      // controller works as a mouse in Apple Music / Spotify / Discord
   discordPins: [],       // [{ name, url }] Discord channels / servers / invites shown in the guide
+  psPads: true,          // read PlayStation pads from the app core (PS button opens the guide)
   autoCloseApps: true,   // close stores the launcher opened when you press the Xbox button to come back
   notifyBattery: true,   // pop-up when a controller battery runs low
   notifyFriends: true,   // pop-up when a friend comes online

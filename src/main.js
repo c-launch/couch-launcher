@@ -42,6 +42,7 @@ if (!app.requestSingleInstanceLock()) {
     onPress: (slot) => send('pad:a', slot),
     onGuide: () => guidePressed(),
     onCombo: () => guidePressed(),
+    usePs: () => !(lib && lib.settings && lib.settings.psPads === false),
     // B on the boot screen while Steam/Epic has focus (the launcher can't hear it then).
     onBack: () => {
       const r = running;

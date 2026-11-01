@@ -1,6 +1,6 @@
 {
- "version": "1.7.2",
- "notes": "PlayStation controllers: the PS button opens the guide (also during games), Circle backs out of the start screen, Share + Options held brings the launcher back.",
- "file": "CouchLauncher-update-1.7.2.zip",
- "size": 156290
+ "version": "1.7.3",
+ "notes": "Fixed: a DualSense on USB could open the guide over and over. A misbehaving PlayStation controller is now ignored instead, and Settings › Controllers can turn PlayStation reading off.",
+ "file": "CouchLauncher-update-1.7.3.zip",
+ "size": 157084
 }

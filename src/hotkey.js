@@ -66,7 +66,7 @@ function loadXInput() {
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
-function createControllerWatcher({ onGuide, onCombo, onBack, onPress }) {
+function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs }) {
   const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false };
   if (process.platform !== 'win32') return off;
   let x;
@@ -102,7 +102,8 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress }) {
       if (b & GUIDE) guide = true;
       if (b & 0x2000) back = true; // B
     }
-    if (sony) {
+    if (sony && usePs && !usePs()) { if (sony.count) sony.close(); }
+    else if (sony) {
       let states = [];
       try { states = sony.read(); } catch (_) { states = []; }
       for (const st of states) {
