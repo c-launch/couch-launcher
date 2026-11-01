@@ -11,7 +11,9 @@ contextBridge.exposeInMainWorld('launcher', {
   load: () => call('lib:load'),
   save: (lib) => call('lib:save', lib),
   scan: (source) => call('scan', source || null),
-  launch: (id) => call('launch', id),
+  launch: (id, opts) => call('launch', id, opts || {}),
+  savedState: (id) => call('states:get', String(id || '')),
+  displayModes: () => call('display:modes'),
   cancelLaunch: () => call('launch:cancel'),
   closeGame: (force) => call('game:close', !!force),
   gameStatus: () => call('game:status'),
@@ -39,6 +41,9 @@ contextBridge.exposeInMainWorld('launcher', {
   hideOverlay: () => call('overlay:hide'),
   goHome: () => call('app:home'),
   pads: () => call('pads:get'),
+  playersListen: (on) => call('players:listen', !!on),
+  playersSet: (gameId, slots) => call('players:set', String(gameId || ''), Array.isArray(slots) ? slots.map(Number) : []),
+  playersSolo: (gameId) => call('players:solo', String(gameId || '')),
   downloads: () => call('downloads:get'),
   openStore: (id) => call('store:open', String(id || '')),
   discordStatus: () => call('discord:status'),
@@ -75,7 +80,7 @@ contextBridge.exposeInMainWorld('launcher', {
   xboxFriends: () => call('xbox:friends'),
   openXblSite: () => call('link:open', 'https://xbl.io'),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

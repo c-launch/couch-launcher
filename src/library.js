@@ -28,7 +28,10 @@ const DEFAULT_SETTINGS = {
   notifyBattery: true,   // pop-up when a controller battery runs low
   notifyFriends: true,   // pop-up when a friend comes online
   notifyCalls: true,     // pop-up when someone joins / leaves your Discord call
-  notifyDownloads: true  // pop-up when a Steam download finishes
+  notifyDownloads: true, // pop-up when a Steam download finishes
+  pickPlayers: 'saved',  // emulator players: 'saved' (use the players set up in Settings) | 'ask' (screen each time, 2+ controllers) | 'off'
+  playerSlots: [],       // saved players: controller slot for Player 1, 2, 3, 4
+  saveStates: true       // Dolphin: save a state when closing / switching, offer to resume
 };
 
 const DEFAULT_PLATFORMS = {

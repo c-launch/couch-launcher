@@ -60,6 +60,13 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 - **Alerts** when a friend comes online, someone joins or leaves your Discord call, or a Steam download finishes. Turn each off in Settings › Controllers.
 - **Steam downloads**: installs and updates show a progress bar on the game's tile; new installs appear by themselves.
 
+## Players, saves and TV settings
+
+- **Players** (Settings › Controllers › Players, or guide › Profile & system › Set up players): everyone presses A once on their controller, in player order. Every Ryujinx, Dolphin and RPCS3 game then starts with those players, no extra screen. For Xbox-style controllers; Player 1 needs to be set up with a controller in each emulator once (your button layout is copied to the other players). The launcher keeps a backup of each emulator setting it changes (`.couch-original` / `.couch-backup` next to the file). Prefer to pick every time? Settings › Controllers › Players in emulator games › Ask every time.
+- Ryujinx also gets controller profiles **Player 1–4**, copies of your setup, to load by hand if you like.
+- **Dolphin saves**: closing or switching a Dolphin game makes a save state first (slot 10, so your own slot-1 save is never touched); next time you're asked whether to pick up from there. Ryujinx and RPCS3 use your in-game saves.
+- **TV settings per game**: a game's options (Menu button) › TV settings: resolution, refresh rate and HDR for the chosen display, switched when the game starts and put back when it ends. Windows' own settings aren't changed, so a restart always brings your normal setup back.
+
 ## Stores, Roblox, Microsoft Store
 
 - **Stores** card on Home: Steam Store (in Big Picture), Xbox app (Game Pass), Microsoft Store, Epic Games Store.

@@ -649,6 +649,10 @@
         toggleHTML('c-pause', 'Pause the game while the guide is open', S.lib.settings.pauseGame !== false, 'Stops the controller from also moving you in the game. Turn off for online matches, since a paused game can’t stay connected.', 'set-toggle', 'data-k="pauseGame"') + '</div>' +
         '<div class="sub-h">Music apps</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('c-mmouse', 'Use the controller as a mouse in Apple Music, Spotify, Discord and Epic Games', S.lib.settings.musicMouse !== false, 'Left stick moves the pointer, A clicks, right stick scrolls, B goes back, X plays/pauses. Xbox-style controllers.', 'set-toggle', 'data-k="musicMouse"') +
+        '<button class="toggle-row" data-nav data-key="c-players" data-zone="body" data-action="players-setup"><span><div>Players</div><div class="d">' + esc(playersLabel()) + '</div></span><span class="status ok">Set up</span></button>' +
+        '<button class="toggle-row" data-nav data-key="c-pick" data-zone="body" data-action="pick-mode"><span><div>Players in emulator games</div><div class="d">Ryujinx, Dolphin and RPCS3 (Xbox-style controllers).</div></span><span class="status ok">' +
+          ({ saved: 'Use my saved players', ask: 'Ask every time', auto: 'Ask every time', always: 'Ask every time', off: 'Leave as set in the emulator' }[S.lib.settings.pickPlayers || 'saved']) + '</span></button>' +
+        toggleHTML('c-states', 'Save Dolphin games when closing or switching', S.lib.settings.saveStates !== false, 'Makes a save state first, and offers to pick up from it next time. (Ryujinx and RPCS3 use your in-game saves.)', 'set-toggle', 'data-k="saveStates"') +
         toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
         toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
         toggleHTML('c-ncall', 'Tell me when someone joins or leaves my Discord call', S.lib.settings.notifyCalls !== false, 'Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="notifyCalls"') +
@@ -1172,6 +1176,95 @@
     return '';
   }
 
+  // ---- "Who's playing?": each friend presses A on their controller, in player order.
+  async function setUpPlayers(g) {
+    let mode = S.lib.settings.pickPlayers || 'saved';
+    if (mode === 'auto' || mode === 'always') mode = 'ask'; // older names
+    if (mode === 'off') return true;
+    const pads = Array.isArray(S.pads) ? S.pads : null;
+    const n = pads ? pads.length : padCount();
+    if (mode === 'saved') {
+      // The players from Settings › Controllers, minus any controller that isn't connected now.
+      const saved = (S.lib.settings.playerSlots || []).filter((sl) => !pads || pads.some((p) => p.slot === sl));
+      if (saved.length) { try { await api.playersSet(g.id, saved); } catch (e) { toast(e.message, true); } }
+      else if (n === 1) { try { await api.playersSolo(g.id); } catch (_) { /* leave as is */ } }
+      return true;
+    }
+    if (n < 2) {
+      if (n === 1) { try { await api.playersSolo(g.id); } catch (_) { /* leave as is */ } }
+      return true;
+    }
+    const slots = await whoIsPlaying(g, pads);
+    if (slots === null) return false;
+    if (slots.length) {
+      try { const k = await api.playersSet(g.id, slots); toast(k + (k === 1 ? ' player' : ' players') + ' set up'); }
+      catch (e) { toast(e.message, true); }
+    }
+    return true;
+  }
+  function playersLabel() {
+    const sl = S.lib.settings.playerSlots || [];
+    if (!sl.length) return 'Not set up yet: everyone presses A once, and emulator games use those players';
+    return sl.map((x, i) => 'P' + (i + 1) + ': Controller ' + (x + 1)).join(' · ');
+  }
+  // Settings › Controllers › Players (also in the guide): pick once, used for every emulator game.
+  async function setUpPlayersNow() {
+    const pads = Array.isArray(S.pads) ? S.pads : null;
+    const slots = await whoIsPlaying({ title: 'Saved for every emulator game', setup: true }, pads);
+    if (!slots || !slots.length) return;
+    S.lib.settings.playerSlots = slots;
+    save();
+    if (S.view === 'settings') refreshContent();
+    toast(slots.length + (slots.length === 1 ? ' player' : ' players') + ' saved');
+  }
+  function whoIsPlaying(g, pads) {
+    return new Promise((resolve) => {
+      const joined = [];
+      let result = null, startTimer = null;
+      const card = (i) => {
+        const slot = joined[i];
+        const pd = pads && slot != null ? pads.find((p) => p.slot === slot) : null;
+        return '<div class="pp' + (slot != null ? ' in' : '') + '"><div class="pp-n">Player ' + (i + 1) + '</div>' +
+          (slot != null ? '<div class="pp-c">' + icon('pad') + '<span>Controller ' + (slot + 1) + '</span>' + (pd ? batteryHTML(pd) : '') + '</div>'
+            : '<div class="pp-c wait">' + glyph('A') + '<span>Press A to join</span></div>') + '</div>';
+      };
+      const html = () => '<div class="dialog whoplays"><h2>Who’s playing?</h2><p class="hint">' + esc(g.title) +
+        ' · Everyone presses <b>A</b> on their controller, in player order.' + (pads ? ' ' + pads.length + ' controller' + (pads.length === 1 ? '' : 's') + ' connected.' : '') + '</p>' +
+        '<div class="pp-grid">' + [0, 1, 2, 3].map(card).join('') + '</div>' +
+        '<div class="dialog-foot">' + (g.setup ? '<button class="btn big" data-nav data-key="wp-keep" data-act="cancel">Cancel</button>' : '<button class="btn big" data-nav data-key="wp-keep" data-act="keep">Keep usual setup</button>') +
+        '<button class="btn big primary" data-nav data-key="wp-go" data-act="go">' + icon(g.setup ? 'check' : 'play') + (g.setup ? 'Save' : 'Start') + '</button></div></div>';
+      const draw = () => { $('.whoplays', layer.el).outerHTML = html(); setFocus($('[data-key="wp-go"]', layer.el), { instant: true }); };
+      const done = (r) => { result = r; clearTimeout(startTimer); closeLayer(layer); };
+      const join = (slot) => {
+        if (joined.includes(slot) || joined.length >= 4) return;
+        joined.push(slot);
+        draw();
+        // Everyone's in: start on its own.
+        if (pads && joined.length >= pads.length) { clearTimeout(startTimer); startTimer = setTimeout(() => done(joined.slice()), 900); }
+      };
+      const layer = openLayer({
+        html: html(),
+        focus: 'wp-go',
+        // Controller buttons are handled here: A presses come from the app core, which knows
+        // which controller pressed them.
+        onButton: (b) => {
+          if (b === 'A') { if (!pads) join(joined.length); return true; }
+          if (b === 'MENU') { if (joined.length) done(joined.slice()); return true; }
+          if (b === 'Y') { if (!g.setup) done([]); return true; }
+          if (b === 'X') { joined.length = 0; clearTimeout(startTimer); draw(); return true; }
+          if (b === 'B') { done(null); return true; }
+          return true;
+        },
+        onActivate: (el) => { if (el.dataset.act === 'cancel') done(null); else if (el.dataset.act === 'keep') done([]); else if (el.dataset.act === 'go') { if (joined.length) done(joined.slice()); else toast('Press A on a controller to join first'); } },
+        onBack: () => done(null),
+        onClose: () => { S.onPadA = null; api.playersListen(false).catch(() => {}); resolve(result); },
+        prompts: () => (g.setup ? [['A', 'Join'], ['MENU', 'Save'], ['X', 'Start over'], ['B', 'Cancel']] : [['A', 'Join'], ['MENU', 'Start'], ['Y', 'Keep usual setup'], ['X', 'Start over'], ['B', 'Cancel']])
+      });
+      S.onPadA = join;
+      api.playersListen(true).catch(() => {});
+    });
+  }
+
   async function play(id) {
     const g = byId(id);
     if (!g) return;
@@ -1182,6 +1275,14 @@
       if (st && st.canClose) { await switchTo(id); return; }
       try { await api.cancelLaunch(); } catch (_) { /* ignore */ }
       S.playing = null;
+    }
+    if (g.launch && g.launch.type === 'emu' && !(await setUpPlayers(g))) return; // cancelled on "Who's playing?"
+    // Dolphin: offer the save state made when you last closed it.
+    const opts = {};
+    if (g.launch && g.launch.type === 'emu' && g.launch.emu === 'dolphin' && S.lib.settings.saveStates !== false) {
+      let info = null;
+      try { info = await api.savedState(id); } catch (_) { info = null; }
+      if (info) opts.resume = await confirmBox('Pick up where you left off?', 'There’s a save from when you closed ' + g.title + (info.at ? ' (' + fmtWhen(info.at).replace(/^Played /, '').toLowerCase() + ')' : '') + '. Start over loads your normal in-game save instead.', 'Resume', false, { cancelLabel: 'Start over', focusOk: true });
     }
     S.playing = { id, tracked: null, at: Date.now() };
     // Boot screen: the game's background art fills the screen. With only a tile image, it's blurred behind the tile.
@@ -1210,7 +1311,7 @@
     await wait(reduce() ? 0 : 600);
     if (!S.playing || S.playing.id !== id) return;
     try {
-      const r = await enqueue(() => api.launch(id));
+      const r = await enqueue(() => api.launch(id, opts));
       if (!S.playing) { try { await api.cancelLaunch(); } catch (_) { /* ignore */ } return; } // cancelled while it was starting
       if (S.playing.id !== id) return;
       S.playing.tracked = r.tracked;
@@ -1346,6 +1447,7 @@
         (s.xbox ? '' : item('s-connect', 'link', 'Connect Xbox account', 'data-act="connect"')) +
         (Array.isArray(S.pads) && S.pads.length ? '<div class="glabel">Controllers</div><div class="gpads">' + padsHTML() + '</div>' : '') +
         '<div class="gsep"></div>' +
+        item('s-players', 'users', 'Set up players', 'data-act="players-setup"') +
         item('s-settings', 'gear', 'Settings', 'data-act="settings"') +
         item('s-themes', 'palette', 'Themes', 'data-act="themes"') +
         item('s-platforms', 'refresh', 'Platforms & rescan', 'data-act="platforms"') +
@@ -1627,6 +1729,7 @@
         if (act === 'friends-retry') { friends = null; redraw(); return loadFriends(); }
         if (act === 'dc-add') { closeLayer(layer); return discordPins(); }
         if (act === 'dc-setup') { closeLayer(layer); return discordConnect(); }
+        if (act === 'players-setup') { closeLayer(layer); return setUpPlayersNow(); }
         if (act === 'profile') { openProfile(); return; }
         if (act === 'settings') { closeLayer(layer); S.setTab = 'platforms'; return go('settings', 't-platforms'); }
         if (act === 'themes') { closeLayer(layer); S.setTab = 'themes'; return go('settings', 't-themes'); }
@@ -1721,7 +1824,8 @@
       { id: 'fav', label: g.favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'star' },
       { id: 'pin', label: g.pinned ? 'Unpin from Home' : 'Pin to Home', icon: 'pin' },
       { id: 'coop', label: g.coop ? 'Not a co-op game' : 'Mark as co-op', icon: 'users' },
-      { id: 'cols', label: 'Collections' + ((g.collections || []).length ? ' (' + g.collections.join(', ') + ')' : ''), icon: 'grid' }
+      { id: 'cols', label: 'Collections' + ((g.collections || []).length ? ' (' + g.collections.join(', ') + ')' : ''), icon: 'grid' },
+      { id: 'tv', label: 'TV settings for this game' + (g.display ? ' (' + displayLabel(g.display) + ')' : ''), icon: 'monitor' }
     ];
     items.push(g.hidden ? { id: 'unhide', label: 'Unhide', icon: 'refresh' } : { id: 'hide', label: 'Hide from library', icon: 'x' });
     if (g.source === 'custom') items.push({ id: 'remove', label: 'Remove from library', icon: 'trash', danger: true });
@@ -1730,6 +1834,7 @@
     if (pick === 'play') return play(g.id);
     if (pick === 'edit') return openEdit(g);
     if (pick === 'cols') return editCollections(g);
+    if (pick === 'tv') return displaySettings(g);
     if (pick === 'fav') { g.favorite = !g.favorite; toast(g.favorite ? 'Added to favorites' : 'Removed from favorites'); }
     if (pick === 'pin') { g.pinned = !g.pinned; toast(g.pinned ? 'Pinned to Home' : 'Unpinned'); }
     if (pick === 'coop') { g.coop = !g.coop; toast(g.coop ? 'Marked as co-op' : 'Removed from co-op'); }
@@ -2268,6 +2373,46 @@
     });
   }
 
+  // Per-game resolution / refresh rate / HDR on the chosen display (put back when the game ends).
+  const displayLabel = (d) => [d.w ? d.w + '×' + d.h : '', d.hz ? d.hz + ' Hz' : '', d.hdr === 'on' ? 'HDR on' : d.hdr === 'off' ? 'HDR off' : ''].filter(Boolean).join(', ') || 'Normal';
+  async function displaySettings(g) {
+    let info = null;
+    try { info = await api.displayModes(); } catch (_) { info = null; }
+    if (!info || !info.modes || !info.modes.length) { toast('Display settings need Windows', true); return; }
+    for (;;) {
+      const d = g.display || {};
+      const pick = await openMenu('TV settings · ' + g.title, [
+        { id: 'res', label: 'Resolution: ' + (d.w ? d.w + '×' + d.h : 'Normal (' + info.current.w + '×' + info.current.h + ')'), icon: 'monitor' },
+        { id: 'hz', label: 'Refresh rate: ' + (d.hz ? d.hz + ' Hz' : 'Normal (' + info.current.hz + ' Hz)'), icon: 'refresh' }
+      ].concat(info.hdr && info.hdr.supported ? [{ id: 'hdr', label: 'HDR: ' + (d.hdr === 'on' ? 'On' : d.hdr === 'off' ? 'Off' : 'Normal (' + (info.hdr.enabled ? 'on' : 'off') + ')'), icon: 'palette' }] : [])
+        .concat(g.display ? [{ id: 'reset', label: 'Back to normal for this game', icon: 'x' }] : []));
+      if (!pick) return;
+      const nd = Object.assign({}, d);
+      if (pick === 'reset') { delete g.display; save(); toast('This game uses your normal display settings'); return; }
+      if (pick === 'res') {
+        const sizes = []; for (const m of info.modes) if (!sizes.some((x) => x.w === m.w && x.h === m.h)) sizes.push({ w: m.w, h: m.h });
+        const r = await openMenu('Resolution', [{ id: 'n', label: 'Normal', icon: 'check' }].concat(sizes.slice(0, 14).map((x) => ({ id: x.w + 'x' + x.h, label: x.w + ' × ' + x.h, icon: 'monitor' }))));
+        if (!r) continue;
+        if (r === 'n') { delete nd.w; delete nd.h; } else { const [w, h] = r.split('x').map(Number); nd.w = w; nd.h = h; if (nd.hz && !info.modes.some((m) => m.w === w && m.h === h && m.hz === nd.hz)) delete nd.hz; }
+      }
+      if (pick === 'hz') {
+        const w = nd.w || info.current.w, h = nd.h || info.current.h;
+        const rates = [...new Set(info.modes.filter((m) => m.w === w && m.h === h).map((m) => m.hz))].sort((a, b) => b - a);
+        const r = await openMenu('Refresh rate', [{ id: 'n', label: 'Normal', icon: 'check' }].concat(rates.map((hz) => ({ id: String(hz), label: hz + ' Hz', icon: 'refresh' }))));
+        if (!r) continue;
+        if (r === 'n') delete nd.hz; else nd.hz = Number(r);
+      }
+      if (pick === 'hdr') {
+        const r = await openMenu('HDR', [{ id: 'n', label: 'Normal', icon: 'check' }, { id: 'on', label: 'On for this game', icon: 'palette' }, { id: 'off', label: 'Off for this game', icon: 'x' }]);
+        if (!r) continue;
+        if (r === 'n') delete nd.hdr; else nd.hdr = r;
+      }
+      if (Object.keys(nd).length) g.display = nd; else delete g.display;
+      save();
+      toast('Saved. It switches when ' + g.title + ' starts and goes back when it ends.');
+    }
+  }
+
   async function powerMenu() {
     const pick = await openMenu('Power', [
       { id: 'settings', label: 'Settings', icon: 'gear' },
@@ -2311,6 +2456,12 @@
       case 'add': return openEdit(null);
       case 'profile': return openProfile();
       case 'stores': return storesMenu();
+      case 'pick-mode': {
+        const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
+        if (m) { s.pickPlayers = m; save(); refreshContent(); }
+        return;
+      }
+      case 'players-setup': return setUpPlayersNow();
       case 'collections': return collectionsMenu();
       case 'coop': S.libFilter = 'coop'; return go('library', 'f-coop');
       case 'go-settings': S.setTab = el.dataset.tab || 'platforms'; return go('settings', 't-' + S.setTab);
@@ -2586,6 +2737,7 @@
     if (t === 'home') return go('home', S.playing ? 'h-' + S.playing.id : null);
     if (t === 'dc-add') return discordPins();
     if (t === 'dc-setup') return discordConnect();
+    if (t === 'players-setup') return setUpPlayersNow();
     if (t === 'library') return go('library');
     if (t === 'add') return openEdit(null);
     if (t === 'profile') return openProfile();
@@ -2624,6 +2776,7 @@
     paintDownloads();
   });
   (async () => { try { S.downloads = await api.downloads(); paintDownloads(); } catch (_) { /* not available */ } })();
+  api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
   api.on('pads', (list) => { S.pads = Array.isArray(list) ? list : null; const p = $('#padcount'); if (p) p.innerHTML = padsHTML(); if (S.onPads) S.onPads(); });
   api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.title); });
   (async () => { try { S.pads = await api.pads(); tickClock(); } catch (_) { /* not available */ } })();
