@@ -34,7 +34,7 @@ jobs:
 
       - name: Build the setup wizard
         # On GitHub's machines the app's icon and details can be written into the program.
-        run: npx electron-builder --win nsis --publish never -c.win.signAndEditExecutable=true
+        run: npx electron-builder --win nsis --publish never --config.win.signAndEditExecutable=true
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
