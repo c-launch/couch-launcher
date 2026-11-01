@@ -1,0 +1,53 @@
+# Builds the Windows setup wizard (CouchLauncher-Setup-<version>.exe) on GitHub's own Windows
+# machines whenever a new version is published, and attaches it to a release.
+name: Build installer
+
+on:
+  push:
+    branches: [main]
+    paths: ['updates/latest.json']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read the version
+        id: v
+        shell: pwsh
+        run: |
+          $v = (Get-Content updates/latest.json -Raw | ConvertFrom-Json).version
+          "version=$v" >> $env:GITHUB_OUTPUT
+          npm version $v --no-git-tag-version --allow-same-version
+
+      - name: Install
+        run: npm install
+
+      - name: Build the setup wizard
+        # On GitHub's machines the app's icon and details can be written into the program.
+        run: npx electron-builder --win nsis --publish never -c.win.signAndEditExecutable=true
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Publish it
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Couch Launcher ${{ steps.v.outputs.version }}
+          files: dist/CouchLauncher-Setup-*.exe
+          make_latest: true
+          body: |
+            Download **CouchLauncher-Setup-${{ steps.v.outputs.version }}.exe** below and run it.
+
+            Windows may say "Windows protected your PC" because the installer isn't signed by a known publisher: choose **More info › Run anyway**.
+
+            Already installed? You don't need this: the launcher updates itself.
