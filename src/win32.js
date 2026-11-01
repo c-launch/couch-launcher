@@ -41,6 +41,10 @@ function createWin32() {
     };
     const titleOf = (h) => { const buf = Buffer.alloc(512); const n = GetWindowTextW(h, buf, 256); return n > 0 ? buf.toString('utf16le', 0, n * 2) : ''; };
     const keybd_event = u.func('__stdcall', 'keybd_event', 'void', ['uint8', 'uint8', 'uint32', 'uintptr_t']);
+    const PostMessageW = u.func('__stdcall', 'PostMessageW', 'bool', ['uintptr_t', 'uint32', 'uintptr_t', 'intptr_t']);
+    const SetCursorPos = u.func('__stdcall', 'SetCursorPos', 'bool', ['int', 'int']);
+    let GetDpiForWindow = null;
+    try { GetDpiForWindow = u.func('__stdcall', 'GetDpiForWindow', 'uint32', ['uintptr_t']); } catch (_) { /* older Windows */ }
     const SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
     return {
       hwndOf(browserWindow) {
@@ -82,7 +86,8 @@ function createWin32() {
       },
       // The main window of a running program (by exe name), including minimized ones.
       // Store-app windows can belong to ApplicationFrameHost, so those match by title instead.
-      findAppWindow(exeNames, titlePrefix) {
+      // mustTitle: only windows whose title starts with titlePrefix (e.g. Steam's Big Picture window).
+      findAppWindow(exeNames, titlePrefix, mustTitle) {
         const want = new Set(exeNames.map((n) => n.toLowerCase()));
         const cache = new Map();
         let h = 0, best = null;
@@ -96,7 +101,8 @@ function createWin32() {
           GetWindowThreadProcessId(h, pid);
           if (!cache.has(pid[0])) cache.set(pid[0], exeOf(pid[0]));
           const exe = cache.get(pid[0]);
-          const match = want.has(exe) || (exe === 'applicationframehost.exe' && titlePrefix && title.toLowerCase().startsWith(titlePrefix.toLowerCase()));
+          const titled = !!titlePrefix && title.toLowerCase().startsWith(titlePrefix.toLowerCase());
+          const match = (want.has(exe) && (!mustTitle || titled)) || (exe === 'applicationframehost.exe' && titled);
           if (!match) continue;
           const r = this.rect(h);
           const area = r ? r.width * r.height : 0;
@@ -104,6 +110,17 @@ function createWin32() {
         }
         return best ? best.hwnd : null;
       },
+      // Moves a window onto a screen area (physical pixels) and maximizes it there.
+      fill(h, area) {
+        if (IsIconic(h) || IsZoomed(h)) ShowWindow(h, 9); // restore first, or Windows keeps the old spot
+        SetWindowPos(h, 0, area.x + 60, area.y + 60, Math.max(480, area.width - 120), Math.max(360, area.height - 120), 0x4 | 0x10);
+        ShowWindow(h, 3); // SW_MAXIMIZE, on the monitor it's now on
+        this.forceForeground(h);
+      },
+      pointer: (x, y) => SetCursorPos(x, y),
+      dpiScale: (h) => { try { const d = GetDpiForWindow ? GetDpiForWindow(h) : 96; return d ? d / 96 : 1; } catch (_) { return 1; } },
+      // Asks a window to close, like its X button / Alt+F4.
+      close: (h) => PostMessageW(h, 0x10, 0, 0),
       // Un-minimizes a window and brings it to the front.
       show(h) {
         if (IsIconic(h)) ShowWindow(h, 9); // SW_RESTORE

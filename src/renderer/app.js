@@ -582,7 +582,8 @@
         '<div class="sub-h">Guide</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('c-pause', 'Pause the game while the guide is open', S.lib.settings.pauseGame !== false, 'Stops the controller from also moving you in the game. Turn off for online matches, since a paused game can’t stay connected.', 'set-toggle', 'data-k="pauseGame"') + '</div>' +
         '<div class="sub-h">Music apps</div><div class="toggles" style="grid-template-columns:1fr">' +
-        toggleHTML('c-mmouse', 'Use the controller as a mouse in Apple Music, Spotify and Discord', S.lib.settings.musicMouse !== false, 'Left stick moves the pointer, A clicks, right stick scrolls, B goes back, X plays/pauses. Xbox-style controllers.', 'set-toggle', 'data-k="musicMouse"') + '</div>' +
+        toggleHTML('c-mmouse', 'Use the controller as a mouse in Apple Music, Spotify, Discord and Epic Games', S.lib.settings.musicMouse !== false, 'Left stick moves the pointer, A clicks, right stick scrolls, B goes back, X plays/pauses. Xbox-style controllers.', 'set-toggle', 'data-k="musicMouse"') +
+        toggleHTML('c-autoclose', 'Close stores when you press the Xbox button to come back', S.lib.settings.autoCloseApps !== false, 'Steam Big Picture, Epic Games, the Xbox app and Microsoft Store close when you return to the launcher. Music apps and Discord keep running.', 'set-toggle', 'data-k="autoCloseApps"') + '</div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;
     }
@@ -1353,7 +1354,7 @@
       let h = '<div class="gdiscord"><div class="gm-head">' + icon('chat') + '<span>Discord</span><span class="gm-note">' + note + '</span></div>' +
         '<div class="gmrow">' + pill('dc-open', 'link', dc && dc.running ? 'Show' : 'Open', 'data-act="dc-open"') + pill('dc-msg', 'chat', 'Message', 'data-act="dc-msg"') +
         pill('dc-mute', 'mic', 'Mute', 'data-act="dc-mute"') + pill('dc-deaf', 'headset', 'Deafen', 'data-act="dc-deaf"') + '</div>';
-      h += pins.map((p, i) => '<button class="mitem" data-nav data-key="dc-pin-' + i + '" data-zone="gbody" data-act="dc-pin" data-i="' + i + '">' + icon(p.kind === 'channel' ? 'chat' : 'users') + '<span>' + esc(p.name) + '</span></button>').join('');
+      h += pins.map((p, i) => '<button class="mitem" data-nav data-key="dc-pin-' + i + '" data-zone="gbody" data-act="dc-pin" data-i="' + i + '">' + icon(p.voice ? 'headset' : p.kind === 'channel' ? 'chat' : 'users') + '<span>' + esc(p.name) + '</span></button>').join('');
       h += '<button class="mitem" data-nav data-key="dc-add" data-zone="gbody" data-act="dc-add">' + icon('plus') + '<span>' + (pins.length ? 'Pins: add or remove' : 'Pin a server, channel or call') + '</span></button>';
       return h + '</div><div class="gsep"></div>';
     }
@@ -1425,10 +1426,21 @@
         // Over the game: anything that needs the full launcher is handed to it.
         if (act === 'dc-open' || act === 'dc-pin') {
           const pin = act === 'dc-pin' ? (S.lib.settings.discordPins || [])[Number(el.dataset.i)] : null;
-          try { await api.discordOpen(pin ? pin.url : null); if (!OVERLAY) toast(pin ? 'Opening ' + pin.name : 'Opening Discord'); } catch (e) { toast(e.message, true); }
+          try {
+            await api.discordOpen(pin ? pin.url : null, !!(pin && pin.voice));
+            if (pin && pin.voice) toast('Press A to join the call');
+            else if (!OVERLAY) toast(pin ? 'Opening ' + pin.name : 'Opening Discord');
+          } catch (e) { toast(e.message, true); }
           return;
         }
         if (act === 'dc-mute' || act === 'dc-deaf') {
+          let keysOk = false;
+          try { keysOk = await api.discordSetup(null); } catch (_) { keysOk = false; }
+          if (!keysOk) {
+            const ok = await confirmBox('One-time Discord setup', 'Discord only listens to mute/deafen shortcuts from other programs once you add them: in Discord open Settings › Keybinds › Add a Keybind, choose Toggle Mute and press Ctrl+Shift+M, then add Toggle Deafen with Ctrl+Shift+D. Done that?', 'Done, it’s set up', false, { cancelLabel: 'Not yet', focusOk: true });
+            if (!ok) return;
+            try { await api.discordSetup(true); } catch (_) { /* asks again next time */ }
+          }
           try { await api.discordKey(act === 'dc-deaf' ? 'deafen' : 'mute'); toast(act === 'dc-deaf' ? 'Deafen switched' : 'Mute switched'); }
           catch (e) { toast(e.message, true); }
           return;
@@ -2052,9 +2064,15 @@
       await confirmBox('Copy a link in Discord first', 'In Discord, right-click a text channel, voice channel or server and choose Copy Link (or copy an invite link). Then come back and choose Paste again.', 'OK');
       return;
     }
-    const name = await osk('Name this pin', kind === 'invite' ? 'Invite' : kind === 'server' ? 'Server' : 'Channel', 'like Squad voice');
+    let voice = false;
+    if (kind === 'channel') {
+      const t = await openMenu('What is this channel?', [{ id: 'voice', label: 'Voice channel (call)', icon: 'headset' }, { id: 'text', label: 'Text chat', icon: 'chat' }]);
+      if (!t) return;
+      voice = t === 'voice';
+    }
+    const name = await osk('Name this pin', kind === 'invite' ? 'Invite' : kind === 'server' ? 'Server' : voice ? 'Voice' : 'Channel', 'like Squad voice');
     if (!name || !name.trim()) return;
-    pins.push({ name: name.trim().slice(0, 40), url, kind });
+    pins.push({ name: name.trim().slice(0, 40), url, kind, voice });
     save();
     toast('Pinned ' + name.trim());
   }
@@ -2150,7 +2168,7 @@
       case 'theme': s.theme = el.dataset.id; s.accent = null; return themeChanged();
       case 'corners': s.corners = el.dataset.id; return themeChanged();
       case 'accent': s.accent = el.dataset.c || null; return themeChanged();
-      case 'set-toggle': s[el.dataset.k] = !s[el.dataset.k]; if (el.dataset.k === 'useArtBackground') currentBg = undefined; return themeChanged();
+      case 'set-toggle': s[el.dataset.k] = el.getAttribute('aria-checked') !== 'true'; if (el.dataset.k === 'useArtBackground') currentBg = undefined; return themeChanged();
       case 'autostart': {
         const want = !s.autostart;
         try { const real = await api.setAutostart(want); s.autostart = want; if (S.info.platform === 'win32' && real !== want) toast('Windows didn’t accept the change', true); }
