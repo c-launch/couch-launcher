@@ -1,0 +1,76 @@
+'use strict';
+// Pauses (suspends) a game's processes while the guide or launcher is in front, so the controller
+// only drives the menu. Windows lets every program read the controller, so pausing is the only
+// reliable way to keep a game from reacting. Every pause is undone exactly once.
+const { execFile } = require('child_process');
+
+function createPauser() {
+  const off = { available: false, async pause() {}, resumeAll() {}, isPaused: () => false };
+  if (process.platform !== 'win32') return off;
+  let api;
+  try {
+    const koffi = require('koffi');
+    const k32 = koffi.load('kernel32.dll');
+    const nt = koffi.load('ntdll.dll');
+    api = {
+      OpenProcess: k32.func('__stdcall', 'OpenProcess', 'void *', ['uint32', 'bool', 'uint32']),
+      CloseHandle: k32.func('__stdcall', 'CloseHandle', 'bool', ['void *']),
+      Suspend: nt.func('__stdcall', 'NtSuspendProcess', 'int32', ['void *']),
+      Resume: nt.func('__stdcall', 'NtResumeProcess', 'int32', ['void *'])
+    };
+  } catch (_) { return off; }
+
+  const PROCESS_SUSPEND_RESUME = 0x0800;
+  const paused = new Set();
+
+  function act(pid, fn) {
+    const h = api.OpenProcess(PROCESS_SUSPEND_RESUME, false, pid);
+    if (!h) return false;
+    try { return fn(h) >= 0; } finally { api.CloseHandle(h); }
+  }
+
+  // A game started by an .exe may run its real game in a child process: include the whole family.
+  function familyOf(rootPids) {
+    return new Promise((resolve) => {
+      const ps = 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }';
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 10000 }, (err, out) => {
+        const all = new Set(rootPids);
+        if (!err) {
+          const kids = new Map();
+          for (const line of String(out).split(/\r?\n/)) {
+            const [p, pp] = line.trim().split(/\s+/).map(Number);
+            if (p && pp) { if (!kids.has(pp)) kids.set(pp, []); kids.get(pp).push(p); }
+          }
+          const stack = [...rootPids];
+          while (stack.length) for (const k of kids.get(stack.pop()) || []) if (!all.has(k) && k !== process.pid) { all.add(k); stack.push(k); }
+        }
+        resolve([...all]);
+      });
+    });
+  }
+
+  let busy = Promise.resolve();
+  return {
+    available: true,
+    isPaused: () => paused.size > 0,
+    // stillWanted(): checked again right before pausing, in case you went back to the game meanwhile.
+    pause(rootPids, stillWanted) {
+      busy = busy.then(async () => {
+        if (!rootPids.filter(Boolean).length) return;
+        const pids = (await familyOf(rootPids.filter(Boolean))).filter((p) => p !== process.pid && !paused.has(p));
+        if (stillWanted && !stillWanted()) return;
+        for (const pid of pids) if (act(pid, api.Suspend)) paused.add(pid);
+      }).catch(() => {});
+      return busy;
+    },
+    // Synchronous on purpose: also used while the app is quitting.
+    resumeAll() {
+      for (const pid of paused) act(pid, api.Resume);
+      paused.clear();
+    },
+    // Waits for any pause still being set up, then undoes everything.
+    resumeAfterPending() { return busy.then(() => this.resumeAll()); }
+  };
+}
+
+module.exports = { createPauser };
