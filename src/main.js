@@ -256,6 +256,7 @@ if (!app.requestSingleInstanceLock()) {
   function createWindow() {
     const d0 = targetDisplay().bounds;
     win = new BrowserWindow({
+      icon: path.join(__dirname, 'renderer', 'logo.png'), // taskbar icon while running
       x: WINDOWED ? d0.x + 60 : d0.x,
       y: WINDOWED ? d0.y + 60 : d0.y,
       width: 1600,
