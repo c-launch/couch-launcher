@@ -12,6 +12,8 @@ const { createUpdater } = require('./updater');
 const { createDiscordRpc } = require('./discordrpc');
 const players = require('./players');
 const { createDisplay } = require('./display');
+const { createNews } = require('./news');
+const clipsMod = require('./clips');
 const { createSteam } = require('./steam');
 const { createMedia } = require('./media');
 const { createPauser } = require('./pause');
@@ -864,6 +866,44 @@ if (!app.requestSingleInstanceLock()) {
   handle('steam:friends', () => st().friends());
   handle('steam:me', () => st().me());
 
+  // ---------- Gaming news (Home) ----------
+  let newsMod = null;
+  const nw = () => newsMod || (newsMod = createNews(app.getPath('userData')));
+  handle('news:get', (force) => nw().get(!!force));
+  handle('news:open', async (link) => {
+    link = String(link || '');
+    if (!nw().has(link)) throw new Error('Not a news link');
+    hideOverlay();
+    await shell.openExternal(link);
+    placeNextWindow(10000);
+    return true;
+  });
+  function startNewsWatch() {
+    const tick = async () => { try { send('news', await nw().get(false)); } catch (_) { /* offline: try later */ } };
+    setTimeout(tick, 8000);
+    setInterval(tick, 20 * 60 * 1000); // fetches only when the news is a couple of hours old
+  }
+
+  // ---------- Medal clips ----------
+  function clipsFolder() {
+    const folders = clipsMod.findMedalFolders(process.env, lib.settings.clipsFolder || null);
+    if (lib.settings.clipsFolder && folders[0] === lib.settings.clipsFolder) return folders[0];
+    return folders.find((f) => clipsMod.listClips(f, 1).length) || folders[0] || null;
+  }
+  handle('clips:list', () => {
+    const folder = clipsFolder();
+    return { folder, clips: folder ? clipsMod.listClips(folder, 400) : [] };
+  });
+  handle('clips:show', (file) => {
+    const folder = clipsFolder();
+    const f = path.resolve(String(file || ''));
+    if (!folder || !f.toLowerCase().startsWith(path.resolve(folder).toLowerCase() + path.sep) || !fs.existsSync(f)) throw new Error('Clip not found');
+    hideOverlay();
+    shell.showItemInFolder(f);
+    placeNextWindow(8000);
+    return true;
+  });
+
   // ---------- Steam downloads: progress on tiles, "ready to play" when done ----------
   let downloads = [], dlSig = '';
   function startDownloadWatch() {
@@ -1278,6 +1318,7 @@ if (!app.requestSingleInstanceLock()) {
     startPadWatch();
     setTimeout(startAlerts, 15000);
     startDownloadWatch();
+    startNewsWatch();
     // Look for an update a few seconds after starting, then every 3 hours (never mid-game).
     let offered = null;
     const autoCheck = async () => {
