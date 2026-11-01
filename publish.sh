@@ -5,13 +5,14 @@
 set -e
 V="$1"; NOTES="$2"; REPO="${REPO:-/home/claude/gh-couch-launcher}"
 [ -n "$V" ] && [ -n "$NOTES" ] || { echo "usage: ./publish.sh VERSION NOTES"; exit 1; }
+python3 -c "import json,sys; p='package.json'; d=json.load(open(p)); d['version']=sys.argv[1]; open(p,'w').write(json.dumps(d, indent=2)+'\\n')" "$V"
 ./make-update.sh "$V" "$NOTES" >/dev/null
 Z="CouchLauncher-update-$V.zip"
 mkdir -p "$REPO/updates"
 rm -f "$REPO"/updates/CouchLauncher-update-*.zip
 cp "$Z" "$REPO/updates/"
 python3 -c "import json,os,sys; json.dump({'version':sys.argv[1],'notes':sys.argv[2],'file':sys.argv[3],'size':os.path.getsize(sys.argv[4])}, open(sys.argv[5],'w'), ensure_ascii=False, indent=1)" "$V" "$NOTES" "$Z" "$Z" "$REPO/updates/latest.json"
-rm -rf "$REPO/src"; cp -r src README.md Build.bat "Try it (windowed).bat" make-update.sh publish.sh package.json "$REPO/"
+rm -rf "$REPO/src" "$REPO/build"; cp -r src build .github README.md Build.bat "Try it (windowed).bat" make-update.sh publish.sh package.json "$REPO/"
 cd "$REPO"
 git add -A
 git commit -q -m "Couch Launcher $V

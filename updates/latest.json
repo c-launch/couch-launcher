@@ -1,6 +1,6 @@
 {
- "version": "1.6.0",
- "notes": "Players: set up once in Settings › Controllers (everyone presses A), and every Ryujinx, Dolphin and RPCS3 game starts with those players; Ryujinx gets Player 1-4 profiles. Dolphin saves a state when you close or switch, and offers to pick up from it. TV settings per game: resolution, refresh rate and HDR, put back afterwards.",
- "file": "CouchLauncher-update-1.6.0.zip",
- "size": 135891
+ "version": "1.6.1",
+ "notes": "Couch Launcher now has a setup wizard: download CouchLauncher-Setup.exe from the Releases page to install it on any PC. New app icon.",
+ "file": "CouchLauncher-update-1.6.1.zip",
+ "size": 135770
 }

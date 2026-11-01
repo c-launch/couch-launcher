@@ -2,15 +2,15 @@
 
 A controller-first, console-style game launcher for Windows. It starts full screen when you sign in, finds your Steam and Epic games, runs Dolphin, RPCS3 and Ryujinx games, and lets you add anything else with your own artwork.
 
-## Build it (one time)
+## Install
 
-1. Install **Node.js LTS** from https://nodejs.org if you don't have it.
-2. Double-click **Build.bat**. It downloads Electron (about 100 MB) and builds the app.
-3. When it's done, the `dist` folder opens with two files:
-   - **Couch Launcher Setup 1.0.0.exe** installs it like a normal program (recommended, so it can start with Windows).
-   - **Couch Launcher 1.0.0.exe** is portable and runs from anywhere.
+1. Open this page's **Releases** (right side of the repo page) and download **CouchLauncher-Setup-<version>.exe**.
+2. Run it. If Windows says "Windows protected your PC", choose **More info › Run anyway** (the installer isn't signed by a known publisher).
+3. The setup wizard lets you pick the folder and shortcuts, then starts Couch Launcher.
 
-To try it in a window before installing, double-click **Try it (windowed).bat** after building.
+After that it updates itself. Uninstall it from Windows' **Settings › Apps** like any program; your library and settings stay unless you delete `%APPDATA%\Couch Launcher`.
+
+Building it yourself instead: install **Node.js LTS**, then double-click **Build.bat**; the setup file appears in `dist`. **Try it (windowed).bat** runs it in a window.
 
 ## First run
 
