@@ -607,3 +607,33 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .gpill.on svg { color: var(--danger, #E2506B); }
 .dc-status.bad { color: var(--danger, #E2506B); }
 .dc-connect .dialog-foot { flex-wrap: wrap; }
+
+/* Controllers + battery (top bar, guide) */
+.clock .pads { gap: 1.4rem; }
+.padb { display: inline-flex; align-items: center; gap: 0.4rem; }
+.padb b { font-size: 1.3rem; font-weight: 700; }
+.bat { display: inline-flex; align-items: center; gap: 0.15rem; height: 1.2rem; padding: 0.15rem; border: 0.15rem solid currentColor; border-radius: 0.3rem; opacity: 0.9; }
+.bat i { display: block; width: 0.45rem; height: 100%; border-radius: 0.1rem; background: transparent; }
+.bat i.on { background: currentColor; }
+.bat.lv1, .bat.lv0 { color: var(--danger, #E2506B); }
+.bat.wired { border: none; padding: 0; height: auto; }
+.bat.wired svg { width: 1.6rem !important; height: 1.6rem !important; }
+.gpads { display: flex; flex-wrap: wrap; gap: 1.6rem; padding: 0.2rem 1rem 0.6rem; color: var(--sub); font-size: 1.4rem; }
+.gpads svg { width: 2rem; height: 2rem; }
+
+/* Steam achievements */
+.ach { display: inline-flex; align-items: center; gap: 0.4rem; }
+.ach svg { width: 1.6rem; height: 1.6rem; color: var(--accent); }
+.gnow-t small.ach { display: flex; font-size: 1.3rem; font-weight: 500; color: var(--sub); margin-top: 0.3rem; }
+
+/* Steam download progress on a tile */
+.tile .dl { position: absolute; left: 0.8rem; right: 0.8rem; bottom: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem 0.8rem; border-radius: 0.8rem; background: rgba(0,0,0,0.72); color: #fff; z-index: 3; pointer-events: none; }
+.tile .dl b { font-size: 1.2rem; font-weight: 700; }
+.tile .dl > span { height: 0.4rem; border-radius: 0.2rem; background: rgba(255,255,255,0.25); overflow: hidden; }
+.tile .dl i { display: block; height: 100%; background: var(--accent); transition: width 0.6s ease; }
+
+/* Home tiles: room below the row so the focused tile's shadow fades out instead of being
+   cut off by the scrolling row's edge. The extra space doesn't block the cards under it. */
+.home-tiles .row-inner { padding-bottom: 7rem; }
+.home-tiles { pointer-events: none; }
+.home-tiles .row-inner > * { pointer-events: auto; }

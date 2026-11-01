@@ -178,6 +178,34 @@ function scanSteam(rootOverride) {
   return { found: true, root, games };
 }
 
+// Steam games downloading right now (installs and updates): [{ appid, name, pct, installing }].
+// Steam keeps the byte counts in each game's appmanifest while it downloads.
+function steamDownloads(rootOverride) {
+  const root = rootOverride || steamRoot();
+  if (!root) return [];
+  const libs = new Set([root]);
+  const vdf = readText(path.join(root, 'steamapps', 'libraryfolders.vdf'));
+  if (vdf) { const re = /"path"\s+"([^"]+)"/g; let m; while ((m = re.exec(vdf))) libs.add(path.normalize(m[1].replace(/\\\\/g, '\\'))); }
+  const out = [];
+  for (const lib of libs) {
+    const apps = path.join(lib, 'steamapps');
+    for (const ent of listDir(apps)) {
+      if (!ent.isFile() || !/^appmanifest_\d+\.acf$/.test(ent.name)) continue;
+      const acf = readText(path.join(apps, ent.name));
+      if (!acf) continue;
+      const num = (k) => Number((acf.match(new RegExp('"' + k + '"\\s+"(\\d+)"')) || [])[1] || 0);
+      const flags = num('StateFlags');
+      const total = num('BytesToDownload'), done = num('BytesDownloaded');
+      if (flags === 4 || !total || done >= total) continue; // 4 = fully installed, nothing pending
+      const id = (acf.match(/"appid"\s+"(\d+)"/) || [])[1];
+      const name = (acf.match(/"name"\s+"([^"]+)"/) || [])[1] || 'A game';
+      if (!id || STEAM_SKIP.test(name)) continue;
+      out.push({ appid: id, name, pct: Math.max(0, Math.min(99, Math.floor((done / total) * 100))), installing: !(flags & 4) });
+    }
+  }
+  return out;
+}
+
 // ---------- Steam: non-Steam games (Library › Add a Non-Steam Game) ----------
 // Steam keeps them in userdata/<account>/config/shortcuts.vdf, a small binary file.
 function readBinaryVdf(buf) {
@@ -557,6 +585,7 @@ module.exports.dirsOf = dirsOf;
 module.exports.isSwitchExtra = isSwitchExtra;
 module.exports.shortcutEmulator = shortcutEmulator;
 module.exports.scanMsStore = scanMsStore;
+module.exports.steamDownloads = steamDownloads;
 module.exports.scanRoblox = scanRoblox;
 module.exports.storeAsset = storeAsset;
 

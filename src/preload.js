@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('launcher', {
   steamDisconnect: () => call('steam:disconnect'),
   steamFriends: () => call('steam:friends'),
   steamMe: () => call('steam:me'),
+  steamAchievements: (appid) => call('steam:achievements', String(appid || '')),
   media: (cmd, prefer) => call('media:run', cmd, prefer || ''),
   launchMusic: (app) => call('media:launch', app),
   musicRunning: () => call('media:running'),
@@ -37,6 +38,8 @@ contextBridge.exposeInMainWorld('launcher', {
   exeFromScript: (file) => call('emu:fromScript', file),
   hideOverlay: () => call('overlay:hide'),
   goHome: () => call('app:home'),
+  pads: () => call('pads:get'),
+  downloads: () => call('downloads:get'),
   openStore: (id) => call('store:open', String(id || '')),
   discordStatus: () => call('discord:status'),
   dcRpcStatus: () => call('dcrpc:status'),
@@ -72,7 +75,7 @@ contextBridge.exposeInMainWorld('launcher', {
   xboxFriends: () => call('xbox:friends'),
   openXblSite: () => call('link:open', 'https://xbl.io'),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

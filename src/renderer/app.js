@@ -87,6 +87,7 @@
   // ---------------------------------------------------------------- icons
   const I = {
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
+    plug: '<path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 0 1-10 0zM12 17v5"/>',
     level: '<circle cx="12" cy="12" r="9"/><path d="M8 14l4-4 4 4"/>',
     store: '<path d="M4 8h16l-1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -226,11 +227,59 @@
     if (recent) { all.splice(all.indexOf(recent), 1); all.unshift(recent); }
     return all.slice(0, 12);
   }
+  // Steam achievement progress for a Steam game (null when there's none or Steam isn't connected).
+  const steamAppId = (g) => (g && g.source === 'steam' && /^steam:(\d+)$/.exec(g.key || '') || [])[1] || null;
+  async function steamAch(g) {
+    const id = steamAppId(g);
+    if (!id) return null;
+    try { return await api.steamAchievements(id); } catch (_) { return null; }
+  }
+
+  // Your own groups ("Party games", "Racing"...), kept on each game.
+  function collections() {
+    const set = new Set();
+    for (const g of allGames()) for (const c of (g.collections || [])) set.add(c);
+    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+  async function editCollections(g) {
+    for (;;) {
+      const cols = collections();
+      const has = (c) => (g.collections || []).includes(c);
+      const pick = await openMenu('Collections · ' + g.title, cols.map((c) => ({ id: 'c:' + c, label: (has(c) ? '✓ ' : '') + c, icon: has(c) ? 'check' : 'grid' }))
+        .concat([{ id: 'new', label: 'New collection', icon: 'plus' }]));
+      if (!pick) return;
+      g.collections = g.collections || [];
+      if (pick === 'new') {
+        const name = await osk('Name the collection', '', 'like Party games');
+        if (!name || !name.trim()) continue;
+        const n = name.trim().slice(0, 40);
+        if (!g.collections.includes(n)) g.collections.push(n);
+        toast('Added to ' + n);
+      } else {
+        const c = pick.slice(2);
+        if (has(c)) { g.collections = g.collections.filter((x) => x !== c); toast('Removed from ' + c); }
+        else { g.collections.push(c); toast('Added to ' + c); }
+      }
+      save();
+      rerenderKeepFocus();
+    }
+  }
+  async function collectionsMenu() {
+    const gs = games();
+    const cols = collections();
+    const pick = await openMenu('Collections', [{ id: 'coop', label: 'Co-op (' + gs.filter((g) => g.coop).length + ')', icon: 'users' }, { id: 'fav', label: 'Favorites (' + gs.filter((g) => g.favorite).length + ')', icon: 'star' }]
+      .concat(cols.map((c) => ({ id: 'col:' + c, label: c + ' (' + gs.filter((g) => (g.collections || []).includes(c)).length + ')', icon: 'grid' }))));
+    if (!pick) return;
+    S.libFilter = pick;
+    go('library', 'f-' + pick);
+    if (!cols.length && pick === 'coop') toast('Tip: open a game’s options (Menu button) › Collections to make your own');
+  }
   function libList() {
     const f = S.libFilter;
     let gs = f === 'hidden' ? allGames().filter((g) => g.hidden) : games().slice();
     if (f === 'fav') gs = gs.filter((g) => g.favorite);
     else if (f === 'coop') gs = gs.filter((g) => g.coop);
+    else if (f.startsWith('col:')) gs = gs.filter((g) => (g.collections || []).includes(f.slice(4)));
     else if (f !== 'all' && f !== 'hidden') gs = gs.filter((g) => g.source === f);
     if (S.libSearch) { const q = S.libSearch.toLowerCase(); gs = gs.filter((g) => g.title.toLowerCase().includes(q)); }
     if (S.libSort === 'az') gs.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }));
@@ -256,6 +305,17 @@
   document.addEventListener('error', (e) => { if (e.target && e.target.tagName === 'IMG') e.target.remove(); }, true);
 
   // ---------------------------------------------------------------- top bar & prompts
+  // Controllers with their battery (from the app core); falls back to a simple count.
+  const LEVELS = ['Empty', 'Low', 'Medium', 'Full'];
+  function batteryHTML(pd) {
+    if (pd.power !== 'battery') return '<span class="bat wired" title="Wired">' + icon('plug') + '</span>';
+    return '<span class="bat lv' + pd.level + '" title="Battery: ' + LEVELS[pd.level] + '">' + [1, 2, 3].map((i) => '<i class="' + (pd.level >= i ? 'on' : '') + '"></i>').join('') + '</span>';
+  }
+  function padsHTML() {
+    if (Array.isArray(S.pads) && S.pads.length) return S.pads.map((pd) => '<span class="padb" title="Controller ' + (pd.slot + 1) + '">' + icon('pad') + '<b>' + (pd.slot + 1) + '</b>' + batteryHTML(pd) + '</span>').join('');
+    const n = padCount();
+    return n ? icon('pad') + n : '';
+  }
   function padCount() {
     try { return Array.from(navigator.getGamepads()).filter((p) => p && p.connected).length; } catch (_) { return 0; }
   }
@@ -303,7 +363,7 @@
   }
   function tickClock() {
     const c = $('#clock'); if (c) c.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const p = $('#padcount'); if (p) { const n = padCount(); p.innerHTML = n ? icon('pad') + n : ''; }
+    const p = $('#padcount'); if (p) p.innerHTML = padsHTML();
   }
 
   const GLYPHS = {
@@ -354,6 +414,7 @@
       setFocus(target || $('[data-nav]', next) || $('[data-nav]', $('#topbar')), { instant: true });
     }
     if (S.view === 'home') updateHero(true);
+    if (S.downloads && S.downloads.length) paintDownloads();
     updatePrompts();
   }
   function cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/"/g, '\\"'); }
@@ -385,7 +446,7 @@
       ['c-lib', 'grid', 'My library', n + ' game' + (n === 1 ? '' : 's'), 'data-action="nav" data-to="library"'],
       ['c-store', 'store', 'Stores', 'Steam, Xbox, Epic', 'data-action="stores"'],
       ['c-add', 'plus', 'Add a game', 'Any program or game file', 'data-action="add"'],
-      ['c-coop', 'users', 'Co-op games', coop ? coop + ' for the couch' : 'Mark games as co-op', 'data-action="coop"'],
+      ['c-coop', 'users', 'Collections', (coop ? coop + ' co-op' : 'Co-op') + (collections().length ? ' · ' + collections().length + ' more' : ', your groups'), 'data-action="collections"'],
       ['c-set', 'palette', 'Customize', 'Themes, platforms, startup', 'data-action="go-settings" data-tab="themes"']
     ];
     return '<div class="hero"><div class="eyebrow" id="hero-eyebrow"></div><h1 id="hero-title"></h1><div class="meta" id="hero-meta"></div></div>' +
@@ -419,6 +480,8 @@
         eb.textContent = first && first.id === g.id && g.lastPlayed ? 'Continue playing' : g.pinned ? 'Pinned' : g.favorite ? 'Favorite' : (SOURCES[g.source] || SOURCES.custom).name;
         ti.textContent = g.title;
         me.textContent = [fmtWhen(g.lastPlayed), fmtPlay(g.playtime)].filter(Boolean).join(' · ') || (g.coop ? 'Co-op' : 'Ready to play');
+        // Steam achievements, filled in when they arrive.
+        steamAch(g).then((a) => { if (a && S.heroId === g.id && $('#hero-meta') === me) me.innerHTML = esc(me.textContent) + ' · <span class="ach">' + icon('trophy') + a.got + '/' + a.total + '</span>'; });
       }
       for (const n of [eb, ti, me]) { n.classList.remove('swap'); void n.offsetWidth; n.classList.add('swap'); }
       setBackground((g && S.lib.settings.useArtBackground && g.art && g.art.hero) || S.lib.settings.customBg || null);
@@ -455,6 +518,7 @@
     const gs = games();
     const count = (fn) => gs.filter(fn).length;
     const filters = [['all', 'All games', gs.length], ['fav', 'Favorites', count((g) => g.favorite)], ['coop', 'Co-op', count((g) => g.coop)]];
+    for (const c of collections()) filters.push(['col:' + c, c, count((g) => (g.collections || []).includes(c))]);
     for (const k of Object.keys(SOURCES)) { const c = count((g) => g.source === k); if (c) filters.push([k, SOURCES[k].name, c]); }
     const hiddenCount = allGames().filter((g) => g.hidden).length;
     if (hiddenCount) filters.push(['hidden', 'Hidden', hiddenCount]);
@@ -585,6 +649,10 @@
         toggleHTML('c-pause', 'Pause the game while the guide is open', S.lib.settings.pauseGame !== false, 'Stops the controller from also moving you in the game. Turn off for online matches, since a paused game can’t stay connected.', 'set-toggle', 'data-k="pauseGame"') + '</div>' +
         '<div class="sub-h">Music apps</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('c-mmouse', 'Use the controller as a mouse in Apple Music, Spotify, Discord and Epic Games', S.lib.settings.musicMouse !== false, 'Left stick moves the pointer, A clicks, right stick scrolls, B goes back, X plays/pauses. Xbox-style controllers.', 'set-toggle', 'data-k="musicMouse"') +
+        toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
+        toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
+        toggleHTML('c-ncall', 'Tell me when someone joins or leaves my Discord call', S.lib.settings.notifyCalls !== false, 'Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="notifyCalls"') +
+        toggleHTML('c-ndl', 'Tell me when a Steam download finishes', S.lib.settings.notifyDownloads !== false, 'Installs and updates.', 'set-toggle', 'data-k="notifyDownloads"') +
         toggleHTML('c-autoclose', 'Close stores when you press the Xbox button to come back', S.lib.settings.autoCloseApps !== false, 'Steam Big Picture, Epic Games, the Xbox app and Microsoft Store close when you return to the launcher. Music apps and Discord keep running.', 'set-toggle', 'data-k="autoCloseApps"') + '</div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;
@@ -621,6 +689,7 @@
     const focusedKey = currentFocus() ? currentFocus().dataset.key : null;
     c.innerHTML = S.view === 'library' ? libraryContentHTML() : settingsContentHTML();
     c.scrollTop = scroll;
+    if (S.downloads && S.downloads.length) paintDownloads();
     if (focusedKey && !layers.length) {
       const el = $('[data-key="' + cssEsc(focusedKey) + '"]', $('#app'));
       if (el) setFocus(el, { instant: true, noScroll: true });
@@ -1245,7 +1314,7 @@
     for (const l of layers.slice().reverse()) if (l.className === 'launching') closeLayer(l);
     let tab = opts.tab || 'games';
     let status = null;
-    let friends = null, friendsErr = null, xboxOn = false;
+    let friends = null, friendsErr = null, xboxOn = false, ach = null;
     const TABS_G = [['games', 'grid', 'Games'], ['friends', 'users', 'Friends'], ['system', 'user', 'Profile & system']];
     let music = null, musicErr = null, musicTimer = null;
     const item = (key, ic, label, attrs, cls) => '<button class="mitem' + (cls ? ' ' + cls : '') + '" data-nav data-key="' + key + '" data-zone="gbody" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
@@ -1255,7 +1324,8 @@
         let h = item('g-home', 'home', 'Home', 'data-act="home" data-top') + '<div class="gsep"></div>' + musicHTML();
         const cur = S.playing && byId(S.playing.id);
         if (cur) {
-          h += '<div class="glabel">Now playing</div><div class="gnow">' + thumb(cur) + '<div class="gnow-t">' + esc(cur.title) + '</div></div>' +
+          h += '<div class="glabel">Now playing</div><div class="gnow">' + thumb(cur) + '<div class="gnow-t">' + esc(cur.title) +
+            (ach && ach.id === cur.id && ach.v ? '<small class="ach">' + icon('trophy') + ach.v.got + '/' + ach.v.total + ' achievements' + (ach.v.recent.length ? ' · latest: ' + esc(ach.v.recent[0]) : '') + '</small>' : '') + '</div></div>' +
             item('g-resume', 'resume', 'Resume game', 'data-act="resume"') +
             (status && status.canClose ? item('g-close', 'x', 'Close game', 'data-act="close"', 'danger') : '') + '<div class="gsep"></div>';
         }
@@ -1274,6 +1344,7 @@
         '<span><span class="gp-name">' + esc(displayName()) + '</span><span class="gp-sub">' +
         (s.xbox ? icon('trophy') + Number(s.xbox.gamerscore || 0).toLocaleString() : 'Edit profile') + '</span></span></button>' +
         (s.xbox ? '' : item('s-connect', 'link', 'Connect Xbox account', 'data-act="connect"')) +
+        (Array.isArray(S.pads) && S.pads.length ? '<div class="glabel">Controllers</div><div class="gpads">' + padsHTML() + '</div>' : '') +
         '<div class="gsep"></div>' +
         item('s-settings', 'gear', 'Settings', 'data-act="settings"') +
         item('s-themes', 'palette', 'Themes', 'data-act="themes"') +
@@ -1584,6 +1655,10 @@
     try { status = await api.gameStatus(); } catch (_) { status = null; }
     try { xboxOn = await api.xboxStatus(); } catch (_) { xboxOn = false; }
     if (S.playing) { try { const v = await api.balance(null); bal = balLevels(v.balance); } catch (_) { bal = null; } }
+    if (S.playing) {
+      const pg = byId(S.playing.id);
+      steamAch(pg).then((v) => { if (v && pg) { ach = { id: pg.id, v }; if (layers.indexOf(layer) >= 0 && tab === 'games') redraw(); } });
+    }
     if (layers.indexOf(layer) < 0) return;
     redraw();
     // Mouse: click or drag along the balance slider.
@@ -1645,7 +1720,8 @@
       { id: 'edit', label: 'Edit game', icon: 'edit' },
       { id: 'fav', label: g.favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'star' },
       { id: 'pin', label: g.pinned ? 'Unpin from Home' : 'Pin to Home', icon: 'pin' },
-      { id: 'coop', label: g.coop ? 'Not a co-op game' : 'Mark as co-op', icon: 'users' }
+      { id: 'coop', label: g.coop ? 'Not a co-op game' : 'Mark as co-op', icon: 'users' },
+      { id: 'cols', label: 'Collections' + ((g.collections || []).length ? ' (' + g.collections.join(', ') + ')' : ''), icon: 'grid' }
     ];
     items.push(g.hidden ? { id: 'unhide', label: 'Unhide', icon: 'refresh' } : { id: 'hide', label: 'Hide from library', icon: 'x' });
     if (g.source === 'custom') items.push({ id: 'remove', label: 'Remove from library', icon: 'trash', danger: true });
@@ -1653,6 +1729,7 @@
     if (!pick) return;
     if (pick === 'play') return play(g.id);
     if (pick === 'edit') return openEdit(g);
+    if (pick === 'cols') return editCollections(g);
     if (pick === 'fav') { g.favorite = !g.favorite; toast(g.favorite ? 'Added to favorites' : 'Removed from favorites'); }
     if (pick === 'pin') { g.pinned = !g.pinned; toast(g.pinned ? 'Pinned to Home' : 'Unpinned'); }
     if (pick === 'coop') { g.coop = !g.coop; toast(g.coop ? 'Marked as co-op' : 'Removed from co-op'); }
@@ -2234,6 +2311,7 @@
       case 'add': return openEdit(null);
       case 'profile': return openProfile();
       case 'stores': return storesMenu();
+      case 'collections': return collectionsMenu();
       case 'coop': S.libFilter = 'coop'; return go('library', 'f-coop');
       case 'go-settings': S.setTab = el.dataset.tab || 'platforms'; return go('settings', 't-' + S.setTab);
       case 'filter': S.libFilter = el.dataset.f; refreshContent(); $('#content').scrollTop = 0; { const first = $('#content .grid [data-nav]'); if (first) setFocus(first); } return;
@@ -2522,6 +2600,33 @@
     S.playing = null;
     toast('Cancelled');
   });
+  // Steam downloads: progress bars on tiles; a new install shows up in the library by itself.
+  S.downloads = [];
+  const dlSeen = new Set();
+  function paintDownloads() {
+    const byApp = new Map((S.downloads || []).map((d) => [d.appid, d]));
+    for (const t of $$('.tile[data-game]')) {
+      const g = byId(t.dataset.game);
+      const d = byApp.get(steamAppId(g));
+      let bar = $('.dl', t);
+      if (!d) { if (bar) bar.remove(); continue; }
+      if (!bar) { bar = document.createElement('span'); bar.className = 'dl'; bar.innerHTML = '<b></b><span><i></i></span>'; t.appendChild(bar); }
+      $('b', bar).textContent = (d.installing ? 'Installing ' : 'Updating ') + d.pct + '%';
+      $('i', bar).style.width = d.pct + '%';
+    }
+  }
+  api.on('downloads', (list) => {
+    S.downloads = Array.isArray(list) ? list : [];
+    const known = new Set(allGames().map(steamAppId).filter(Boolean));
+    const fresh = S.downloads.filter((d) => !known.has(d.appid) && !dlSeen.has(d.appid));
+    for (const d of fresh) dlSeen.add(d.appid);
+    if (fresh.length && !OVERLAY) rescan('steam', true);
+    paintDownloads();
+  });
+  (async () => { try { S.downloads = await api.downloads(); paintDownloads(); } catch (_) { /* not available */ } })();
+  api.on('pads', (list) => { S.pads = Array.isArray(list) ? list : null; const p = $('#padcount'); if (p) p.innerHTML = padsHTML(); if (S.onPads) S.onPads(); });
+  api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.title); });
+  (async () => { try { S.pads = await api.pads(); tickClock(); } catch (_) { /* not available */ } })();
   api.on('game:started', (p) => { if (S.playing && p && S.playing.id === p.gameId) S.playing.started = true; });
   api.on('update:found', (r) => { if (!S.playing) checkForUpdate(true, r); });
   api.on('overlay', () => { suppressUntilRelease = true; setInput('pad'); openGuide({ fromGame: true }); });

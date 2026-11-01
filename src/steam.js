@@ -99,6 +99,19 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
       return { name: me[0].personaname, steamid };
     },
     disconnect() { try { fs.unlinkSync(file); } catch (_) { /* already gone */ } },
+    // Your achievement progress in one Steam game: { got, total, recent: [names] } or null.
+    async achievements(appid) {
+      const c = read();
+      if (!c) throw new Error('Steam not connected');
+      if (!/^\d{1,10}$/.test(String(appid))) return null;
+      let j;
+      try { j = await get(API + '/ISteamUserStats/GetPlayerAchievements/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + c.steamid + '&appid=' + appid + '&l=english'); }
+      catch (_) { return null; } // game has no achievements, or your game details are private
+      const list = (j.playerstats && j.playerstats.achievements) || [];
+      if (!list.length) return null;
+      const got = list.filter((a) => a.achieved === 1);
+      return { got: got.length, total: list.length, recent: got.sort((a, b) => (b.unlocktime || 0) - (a.unlocktime || 0)).slice(0, 3).map((a) => a.name || a.apiname) };
+    },
     // Your own Steam name, picture, level and game count (for the launcher's profile).
     async me() {
       const c = read();
