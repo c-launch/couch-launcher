@@ -1,7 +1,7 @@
 {
   "name": "couch-launcher",
   "productName": "Couch Launcher",
-  "version": "1.14.6",
+  "version": "1.14.7",
   "description": "A controller-first, console-style game launcher for Windows.",
   "main": "src/boot.js",
   "private": true,

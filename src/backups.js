@@ -81,17 +81,44 @@ function destinations(env, drives) {
 }
 
 // A quick fingerprint of a folder: how many files, total size, newest change.
+// Links are followed: EmuDeck keeps saves in Emulation\saves and links the emulators' own save
+// folders there (Windows junctions), so the saves are often behind a link. (Skipping links
+// made those folders look empty, so they were never backed up.)
 function fingerprint(dir) {
   let files = 0, bytes = 0, newest = 0;
+  const seen = new Set();
   (function go(d, depth) {
     if (depth > 12) return;
+    let real = d;
+    try { real = fs.realpathSync(d); } catch (_) { return; }
+    if (seen.has(real)) return; // a link back up the tree
+    seen.add(real);
     for (const ent of listDir(d)) {
       const full = path.join(d, ent.name);
-      if (ent.isDirectory()) go(full, depth + 1);
-      else if (ent.isFile()) { try { const st = fs.statSync(full); files++; bytes += st.size; if (st.mtimeMs > newest) newest = st.mtimeMs; } catch (_) { /* skip */ } }
+      let isDir = ent.isDirectory(), isFile = ent.isFile();
+      if (ent.isSymbolicLink()) { try { const st = fs.statSync(full); isDir = st.isDirectory(); isFile = st.isFile(); } catch (_) { continue; } }
+      if (isDir) go(full, depth + 1);
+      else if (isFile) { try { const st = fs.statSync(full); files++; bytes += st.size; if (st.mtimeMs > newest) newest = st.mtimeMs; } catch (_) { /* skip */ } }
     }
   })(dir, 0);
   return { files, bytes, newest: Math.round(newest) };
+}
+// Copies a folder, following links (and never going round a link that points back up), and
+// writing through links at the other end (so a restore lands in the real save folder).
+async function copyTree(from, to, seen) {
+  seen = seen || new Set();
+  let real;
+  try { real = await fs.promises.realpath(from); } catch (_) { return; }
+  if (seen.has(real)) return;
+  seen.add(real);
+  await fs.promises.mkdir(to, { recursive: true });
+  for (const ent of await fs.promises.readdir(from, { withFileTypes: true })) {
+    const a = path.join(from, ent.name), b = path.join(to, ent.name);
+    let st;
+    try { st = await fs.promises.stat(a); } catch (_) { continue; } // a broken link
+    if (st.isDirectory()) await copyTree(a, b, seen);
+    else if (st.isFile()) await fs.promises.copyFile(a, b);
+  }
 }
 const stamp = (t) => { const d = new Date(t); const p = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + '-' + p(d.getMinutes()) + '-' + p(d.getSeconds()); };
 
@@ -126,7 +153,8 @@ function createBackups({ root, keep, now }) {
       let dir = path.join(b, id, stamp(at));
       for (let n = 2; exists(dir); n++) dir = path.join(b, id, stamp(at) + ' (' + n + ')'); // never reuse a copy's folder
       await fs.promises.mkdir(dir, { recursive: true });
-      for (const s of sources) await fs.promises.cp(s.path, path.join(dir, s.label), { recursive: true, force: true, errorOnExist: false });
+      // What links point to (the saves) is copied, not the links themselves.
+      for (const s of sources) await copyTree(s.path, path.join(dir, s.label));
       await fs.promises.writeFile(path.join(dir, 'backup.json'), JSON.stringify({ at, why, sig, sources }));
       // Keep the newest ones (never the copy that's about to be put back).
       const all = snapshots(id).filter((x) => x.id !== protect);
@@ -144,12 +172,11 @@ function createBackups({ root, keep, now }) {
     for (const s of snap.sources || []) {
       const from = path.join(snap.dir, s.label);
       if (!isDir(from)) continue;
-      await fs.promises.mkdir(s.path, { recursive: true });
-      await fs.promises.cp(from, s.path, { recursive: true, force: true });
+      await copyTree(from, s.path);
     }
     return true;
   }
   return { backup, restore, snapshots, base };
 }
 
-module.exports = { createBackups, saveDirs, destinations, fingerprint, deckRoot, DECK };
+module.exports = { createBackups, saveDirs, destinations, fingerprint, deckRoot, copyTree, DECK };

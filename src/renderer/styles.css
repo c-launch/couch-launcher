@@ -943,3 +943,4 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .sharetest .st-yes { color: #3CC48A; font-weight: 800; }
 .guide .mitem.gsound span small { display: block; }
 .mvbtn.on { background: color-mix(in srgb, var(--danger, #E2506B) 28%, var(--chip)); }
+.bk-why { color: var(--warn, #E8A33D) !important; }

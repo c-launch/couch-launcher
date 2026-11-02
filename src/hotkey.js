@@ -66,7 +66,7 @@ function loadXInput() {
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
-function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onCapture }) {
+function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onCapture, shareMap }) {
   const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false };
   if (process.platform !== 'win32') return off;
   let x;
@@ -79,7 +79,7 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
   let joining = false; // "Who's playing?" screen: report A presses per controller
   const prevSlot = [0, 0, 0, 0];
   let sony = null;
-  try { sony = require('./sonypads').createSonyPads({ wantPs: () => !usePs || usePs() }); } catch (_) { sony = null; }
+  try { sony = require('./sonypads').createSonyPads({ wantPs: () => !usePs || usePs(), shareMap: () => (shareMap ? shareMap() : null) }); } catch (_) { sony = null; }
 
   function read(i) {
     const st = {};
@@ -130,7 +130,7 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
     }
     if (onButtons) { try { onButtons(all & ~0x0400, lx, ly); } catch (_) { /* never stop the watcher */ } }
     if (onCapture) {
-      cap.xShareReadable = !!(sony && sony.xboxCount);
+      cap.xShareReadable = !!(sony && (sony.xboxShareReadable !== undefined ? sony.xboxShareReadable : sony.xboxCount));
       cap.xView = !!(xmask & 0x20); cap.xLB = !!(xmask & 0x100); cap.xRB = !!(xmask & 0x200);
       try { onCapture(cap); } catch (_) { /* never stop the watcher */ }
     }
@@ -153,8 +153,9 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
     stop() { if (timer) { clearInterval(timer); timer = null; } if (sony) sony.close(); },
     setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; },
     setJoin(on) { joining = !!on; },
-    get xboxShareReadable() { return !!(sony && sony.xboxCount); },
-    shareDebug() { return sony && sony.debug ? sony.debug() : { xbox: [], otherMicrosoft: [], unavailable: true }; }
+    get xboxShareReadable() { return !!(sony && (sony.xboxShareReadable !== undefined ? sony.xboxShareReadable : sony.xboxCount)); },
+    shareDebug() { return sony && sony.debug ? sony.debug() : { xbox: [], otherMicrosoft: [], unavailable: true }; },
+    learnShare(ms) { return !!(sony && sony.startLearn && sony.startLearn(ms)); }
   };
 }
 

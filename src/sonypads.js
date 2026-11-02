@@ -75,8 +75,19 @@ function parseReport(pid, b, size) {
 // Xbox Series over Bluetooth, report 0x01: Share is bit 0 of byte 16 or 17, depending on the
 // controller's firmware. Which one is learned: the first time one of them turns on while every
 // other button is at rest, that's Share. A bit that keeps flipping by itself isn't a button.
-function parseXbox(p, b, size, t) {
-  if (!b || b[0] !== 0x01 || size < 17) return null;
+//
+// Windows' own Xbox Bluetooth driver (xinputhid) sends a different, 16-byte report with no report
+// ID (sticks, both triggers on one axis, buttons, d-pad). Where Share sits in that one isn't the
+// same everywhere, so it's learned once: Settings › Controllers › Test the Share button › Find
+// Share, you press only Share, and the bit that turns on is remembered (shareMap).
+function parseXbox(p, b, size, t, shareMap) {
+  if (!b) return null;
+  if (b[0] !== 0x01 || size < 17) {
+    // The Windows report: a learned Share bit, if there is one for this controller.
+    const m = shareMap && shareMap.pid === p.pid && shareMap.size === size ? shareMap : null;
+    const xshare = !!(m && m.byte < size && ((b[m.byte] | 0) & m.mask));
+    return { kind: 'xbox', xshare, mask: 0, lx: 0, ly: 0, generic: true };
+  }
   const x = p.x || (p.x = { lock: null, last: {}, flips: { 16: [], 17: [] }, bad: {} });
   const rest = (b[13] | 0) === 0 && (b[14] | 0) === 0 && (b[15] | 0) === 0;
   for (const c of [16, 17]) {
@@ -209,6 +220,10 @@ function createSonyPads(opts) {
   let lastScan = -Infinity;
   // PlayStation pads can be switched off in Settings; Xbox Share reading stays on either way.
   const wantPs = opts.wantPs || (() => true);
+  const shareMap = opts.shareMap || (() => null);
+  // Finding Share in Windows' report: while on, the first single bit (in the button bytes) that
+  // turns on is taken as Share.
+  let learn = null; // { until, found }
   const seenMs = new Map(); // other Microsoft controllers seen (for the Share button test)
 
   function drop(path) {
@@ -262,7 +277,8 @@ function createSonyPads(opts) {
         const n = api.result(p.h, p.ov);
         if (n < 0) { drop(path); break; }
         const bytes = n > 0 ? api.bytes(p.buf, p.size) : null;
-        const st = !bytes ? null : p.kind === 'xbox' ? parseXbox(p, bytes, p.size, now()) : parseReport(p.pid, bytes, p.size);
+        const st = !bytes ? null : p.kind === 'xbox' ? parseXbox(p, bytes, p.size, now(), shareMap()) : parseReport(p.pid, bytes, p.size);
+        if (bytes && p.kind === 'xbox' && learn && !learn.found && now() < learn.until) learnFrom(p, bytes);
         if (bytes && p.kind === 'xbox') { p.last = Array.from(bytes); if (!p.first) p.first = p.last.slice(); p.reports = (p.reports || 0) + 1; }
         if (st && p.kind === 'xbox') { p.state = st; start(p); continue; }
         if (st) {
@@ -283,19 +299,42 @@ function createSonyPads(opts) {
   function close() { for (const path of [...pads.keys()]) drop(path); }
   // PlayStation pads off: drop them (Xbox ones stay).
   function closePs() { for (const [path, p] of [...pads]) if (p.kind === 'ps') drop(path); }
+  // Buttons live after the sticks (bytes 1-8) and the triggers (9-10) in Windows' report.
+  function learnFrom(p, bytes) {
+    const from = bytes[0] === 0x01 && p.size >= 17 ? 13 : 11;
+    if (!learn.base) learn.base = {};
+    const base = learn.base[p.pid] || (learn.base[p.pid] = Array.from(bytes));
+    const on = [];
+    for (let i = from; i < p.size; i++) {
+      const diff = ((bytes[i] | 0) & ~(base[i] | 0)) & 0xff;
+      for (let bit = 0; bit < 8; bit++) if (diff & (1 << bit)) on.push({ byte: i, mask: 1 << bit });
+    }
+    // Exactly one new bit: that's the button being pressed. (More than one: something else is held.)
+    if (on.length === 1) learn.found = { pid: p.pid, size: p.size, byte: on[0].byte, mask: on[0].mask };
+    else if (on.length > 1) learn.base[p.pid] = Array.from(bytes).map((v, i) => (i >= from ? (base[i] | 0) | (v | 0) : v));
+  }
+  function startLearn(ms) { learn = { until: now() + (ms || 15000), found: null, base: null }; return true; }
+  function learnResult() { return learn ? { found: learn.found, waiting: !learn.found && now() < learn.until, timedOut: !learn.found && now() >= learn.until } : null; }
   // For Settings › Controllers › Test the Share button.
   function debug() {
     const xbox = [...pads.values()].filter((p) => p.kind === 'xbox').map((p) => ({
       pid: p.pid, size: p.size, reports: p.reports || 0, shareAt: p.x && p.x.lock != null ? p.x.lock : null,
+      windowsReport: !!(p.state && p.state.generic), learned: (() => { const m = shareMap(); return m && m.pid === p.pid && m.size === p.size ? m : null; })(),
       bad: p.x ? Object.keys(p.x.bad || {}).map(Number) : [], share: !!(p.state && p.state.xshare),
       last: p.last || null, first: p.first || null
     }));
-    return { xbox, otherMicrosoft: [...seenMs.keys()] };
+    return { xbox, otherMicrosoft: [...seenMs.keys()], learn: learnResult() };
   }
   return {
-    read, close, closePs, debug, available: true,
+    read, close, closePs, debug, startLearn, learnResult, available: true,
     get count() { return pads.size; },
-    get xboxCount() { return [...pads.values()].filter((p) => p.kind === 'xbox').length; }
+    get xboxCount() { return [...pads.values()].filter((p) => p.kind === 'xbox').length; },
+    // An Xbox pad whose Share button can actually be read: its own report, or Windows' report
+    // once Share has been found in it. (Otherwise the View + RB combo stays on.)
+    get xboxShareReadable() {
+      const m = shareMap();
+      return [...pads.values()].some((p) => p.kind === 'xbox' && p.state && (!p.state.generic || (m && m.pid === p.pid && m.size === p.size)));
+    }
   };
 }
 
