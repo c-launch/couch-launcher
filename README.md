@@ -32,6 +32,8 @@ Building it yourself instead: install **Node.js LTS**, then double-click **Build
 | LB / RB | Q / E | Home, Library, Settings |
 | LT / RT | Page Up / Down | Jump through long lists |
 
+**On-screen keyboard:** X deletes (hold to keep deleting), Y adds a space, LB/RB move the cursor, LT is Shift (one letter; tap twice for caps lock), RT switches to symbols, ☰ finishes. Rows wrap around at the ends. Searching your games suggests matching titles above the keys.
+
 **LB / RB:** step through every icon in the top dock. Home, My library and Settings slide over to that page; Search, Clips, Movies & TV, YouTube and Friends are highlighted with their name, and **A** opens them.
 
 **Xbox button:** opens the guide (Games, Friends, Profile & system). During a game it brings the launcher back with the guide open, where you can resume, close the game, or switch to another game. If the Xbox button doesn't work on your PC, hold **View + Menu** for 1 second instead.

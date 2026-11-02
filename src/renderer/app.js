@@ -535,10 +535,10 @@
   }
 
   const GLYPHS = {
-    xbox: { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', MENU: '☰', VIEW: '⧉' },
-    ps: { A: '✕', B: '○', X: '□', Y: '△', LB: 'L1', RB: 'R1', MENU: 'OPTIONS', VIEW: 'SHARE' },
-    nin: { A: 'B', B: 'A', X: 'Y', Y: 'X', LB: 'L', RB: 'R', MENU: '+', VIEW: '−' },
-    key: { A: 'Enter', B: 'Esc', X: 'Del', Y: 'F2', LB: 'Q', RB: 'E', MENU: 'M', VIEW: 'Tab' }
+    xbox: { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', MENU: '☰', VIEW: '⧉' },
+    ps: { A: '✕', B: '○', X: '□', Y: '△', LB: 'L1', RB: 'R1', LT: 'L2', RT: 'R2', MENU: 'OPTIONS', VIEW: 'SHARE' },
+    nin: { A: 'B', B: 'A', X: 'Y', Y: 'X', LB: 'L', RB: 'R', LT: 'ZL', RT: 'ZR', MENU: '+', VIEW: '−' },
+    key: { A: 'Enter', B: 'Esc', X: 'Del', Y: 'F2', LB: 'Q', RB: 'E', LT: 'PgUp', RT: 'PgDn', MENU: 'M', VIEW: 'Tab' }
   };
   function glyph(b) {
     const set = S.input === 'pad' ? S.glyphs : 'key';
@@ -1264,38 +1264,62 @@
   // Shift also turns the number row into symbols.
   const SHIFTED = { 1: '!', 2: '@', 3: '#', 4: '$', 5: '%', 6: '^', 7: '&', 8: '*', 9: '(', 0: ')', '-': '_', '.': ',', "'": '"' };
   const shiftOf = (k) => (SHIFTED[k] != null ? SHIFTED[k] : k.length === 1 ? k.toUpperCase() : k);
+  // On-screen keyboard. Console style: letters / symbols pages, one-tap Shift (double-tap for
+  // caps lock), rows wrap around at the ends, and button shortcuts:
+  //   X delete (hold to keep deleting) · Y space · LB/RB move the cursor · LT Shift · RT symbols · ☰ done.
+  // opts: { email, secret, suggest(text) -> [strings] (picking one finishes) }
   function osk(title, value, placeholder, opts) {
     opts = opts || {};
     return new Promise((resolve) => {
       let result = null;
-      let shift = false;
-      const rows = [
-        '1234567890'.split(''),
-        'qwertyuiop'.split(''),
-        "asdfghjkl'".split(''),
-        ['SHIFT'].concat('zxcvbnm'.split(''), ['-', '.']),
-        ['BKSP', 'SPACE', 'CLEAR', 'DONE']
-      ];
-      if (opts.email) rows.splice(4, 0, ['@', '_', '.com', '+', '/', ':']);
-      const keyHTML = (k) => {
-        if (k === 'SHIFT') return '<button class="key" data-nav data-key="k-shift" data-k="SHIFT" aria-label="Shift">' + icon('shift') + '</button>';
-        if (k === 'BKSP') return '<button class="key w2" data-nav data-key="k-bksp" data-k="BKSP" aria-label="Backspace">' + icon('bksp') + '</button>';
-        if (k === 'SPACE') return '<button class="key w5" data-nav data-key="k-space" data-k="SPACE"><small>Space</small></button>';
-        if (k === 'CLEAR') return '<button class="key w2" data-nav data-key="k-clear" data-k="CLEAR"><small>Clear</small></button>';
-        if (k === 'DONE') return '<button class="key w3" data-nav data-key="k-done" data-k="DONE" style="background:var(--accent);color:var(--on-accent)"><small>Done</small></button>';
-        return '<button class="key" data-nav data-key="k-' + esc(k) + '" data-k="' + esc(k) + '">' + esc(k) + '</button>';
+      let shift = false, caps = false, sym = false, lastShiftAt = 0;
+      const LETTERS = ['1234567890'.split(''), 'qwertyuiop'.split(''), "asdfghjkl'".split(''), ['SHIFT'].concat('zxcvbnm'.split(''), ['-', '.'])];
+      const SYMBOLS = ['1234567890'.split(''), '!@#$%^&*()'.split(''), ['-', '_', '=', '+', ':', ';', '"', "'", '/', '?'], ['SHIFT', '[', ']', '{', '}', '<', '>', '\\', ',', '.']];
+      const special = {
+        SHIFT: () => '<button class="key wide' + (caps ? ' on lock' : shift ? ' on' : '') + '" data-nav data-key="k-shift" data-k="SHIFT" aria-label="Shift">' + icon('shift') + '</button>',
+        SYM: () => '<button class="key w2' + (sym ? ' on' : '') + '" data-nav data-key="k-sym" data-k="SYM"><small>' + (sym ? 'abc' : '&amp;123') + '</small></button>',
+        BKSP: () => '<button class="key w2" data-nav data-key="k-bksp" data-k="BKSP" aria-label="Backspace">' + icon('bksp') + '</button>',
+        SPACE: () => '<button class="key w5" data-nav data-key="k-space" data-k="SPACE"><small>Space</small></button>',
+        LEFT: () => '<button class="key" data-nav data-key="k-left" data-k="LEFT" aria-label="Cursor left">‹</button>',
+        RIGHT: () => '<button class="key" data-nav data-key="k-right" data-k="RIGHT" aria-label="Cursor right">›</button>',
+        DONE: () => '<button class="key w2 done" data-nav data-key="k-done" data-k="DONE"><small>Done</small></button>'
       };
+      const label = (k) => (shift || caps ? shiftOf(k) : k);
+      function rows() {
+        const r = (sym ? SYMBOLS : LETTERS).map((row) => row.slice());
+        if (opts.email && !sym) r.push(['@', '.com', '_', '+', '/', ':']);
+        r.push(['SYM', 'LEFT', 'SPACE', 'RIGHT', 'BKSP', 'DONE']);
+        return r;
+      }
+      const keysHTML = () => rows().map((row, ri) => '<div class="krow">' + row.map((k, ci) => special[k] ? special[k]()
+        : '<button class="key" data-nav data-key="k-' + ri + '-' + ci + '" data-k="' + esc(k) + '">' + esc(label(k)) + '</button>').join('') + '</div>').join('');
       const layer = openLayer({
-        html: '<div class="dialog osk"><h2>' + esc(title) + '</h2><input class="osk-input" type="' + (opts.secret ? 'password' : 'text') + '" spellcheck="false" autocomplete="off" maxlength="200" placeholder="' + esc(placeholder || '') + '" aria-label="' + esc(title) + '">' +
-          '<div class="keys">' + rows.map((r) => '<div class="krow">' + r.map(keyHTML).join('') + '</div>').join('') + '</div></div>',
-        focus: 'k-q',
-        onActivate: (el) => press(el.dataset.k),
+        className: 'osk-layer',
+        html: '<div class="dialog osk"><div class="osk-top"><h2>' + esc(title) + '</h2><span class="osk-count"></span></div>' +
+          '<input class="osk-input" type="' + (opts.secret ? 'password' : 'text') + '" spellcheck="false" autocomplete="off" maxlength="200" placeholder="' + esc(placeholder || '') + '" aria-label="' + esc(title) + '">' +
+          '<div class="osk-sugg"></div><div class="keys">' + keysHTML() + '</div>' +
+          '<div class="osk-help">' + glyph('X') + 'Delete ' + glyph('Y') + 'Space ' + glyph('LB') + glyph('RB') + 'Cursor ' + glyph('LT') + 'Shift ' + glyph('RT') + 'Symbols ' + glyph('MENU') + 'Done</div></div>',
+        focus: 'k-1-0',
+        repeat: ['X', 'LB', 'RB'],
+        onActivate: (el) => { if (el.dataset.sugg != null) return pick(el.dataset.sugg); press(el.dataset.k); },
         onBack: () => closeLayer(layer),
+        // Rows wrap around: left from the first key goes to the last one, and the other way.
+        onMove: (dir, el) => {
+          if (!el || !el.classList.contains('key') || (dir !== 'left' && dir !== 'right')) return false;
+          const row = Array.from(el.parentElement.children);
+          const i = row.indexOf(el);
+          if (dir === 'left' && i === 0) { setFocus(row[row.length - 1]); return true; }
+          if (dir === 'right' && i === row.length - 1) { setFocus(row[0]); return true; }
+          return false;
+        },
         onButton: (b) => {
           if (b === 'X') { press('BKSP'); return true; }
           if (b === 'Y') { press('SPACE'); return true; }
           if (b === 'MENU') { press('DONE'); return true; }
-          if (b === 'VIEW' || b === 'LB') { press('SHIFT'); return true; }
+          if (b === 'LB') { press('LEFT'); return true; }
+          if (b === 'RB') { press('RIGHT'); return true; }
+          if (b === 'VIEW' || b === 'LT') { press('SHIFT'); return true; }
+          if (b === 'RT') { press('SYM'); return true; }
           return false;
         },
         onKey: (e) => {
@@ -1306,43 +1330,85 @@
             if (e.key === 'Backspace') { press('BKSP'); return true; }
             if (e.key.length === 1) { input.focus({ preventScroll: true }); insert(e.key); return true; }
           }
+          if (e.target === input) setTimeout(changed, 0);
           return false;
         },
         onClose: () => resolve(result),
         prompts: () => S.input === 'pad'
-          ? [['A', 'Type'], ['X', 'Delete'], ['Y', 'Space'], ['MENU', 'Done'], ['B', 'Cancel']]
+          ? [['A', 'Type'], ['B', 'Cancel']]
           : [['A', 'Done'], ['B', 'Cancel']]
       });
       const input = $('.osk-input', layer.el);
+      const keysEl = $('.keys', layer.el), suggEl = $('.osk-sugg', layer.el), countEl = $('.osk-count', layer.el);
       input.value = value || '';
       const caretEnd = () => { const n = input.value.length; try { input.setSelectionRange(n, n); } catch (_) { /* ignore */ } };
       caretEnd();
       setTimeout(() => { input.focus({ preventScroll: true }); caretEnd(); }, 30);
-      function insert(text) {
-        const s = input.selectionStart == null ? input.value.length : input.selectionStart;
-        const e = input.selectionEnd == null ? s : input.selectionEnd;
-        input.value = input.value.slice(0, s) + text + input.value.slice(e);
-        const p = s + text.length;
-        try { input.setSelectionRange(p, p); } catch (_) { /* ignore */ }
+      input.addEventListener('input', () => changed());
+      let sugTimer = null;
+      function changed() {
+        countEl.textContent = opts.secret || input.value.length < 150 ? '' : input.value.length + ' / 200'; // only near the limit
+        if (!opts.suggest) return;
+        clearTimeout(sugTimer);
+        sugTimer = setTimeout(() => {
+          const list = (opts.suggest(input.value) || []).slice(0, 5);
+          const f = currentFocus();
+          const keep = f && f.dataset.sugg != null ? f.dataset.key : null;
+          suggEl.innerHTML = list.map((t, i) => '<button class="osk-chip" data-nav data-key="sg-' + i + '" data-sugg="' + esc(t) + '">' + icon('search') + '<span>' + esc(t) + '</span></button>').join('');
+          if (keep) { const el = $('[data-key="' + keep + '"]', suggEl) || $('[data-nav]', suggEl) || $('[data-key="k-1-0"]', keysEl); if (el) setFocus(el, { instant: true }); }
+        }, 60);
       }
+      changed();
+      function redrawKeys() {
+        const f = currentFocus();
+        const key = f && f.dataset.key;
+        keysEl.innerHTML = keysHTML();
+        const el = key && $('[data-key="' + cssEsc(key) + '"]', layer.el);
+        if (el) setFocus(el, { instant: true });
+        else if (f && keysEl.contains(f) === false && f.dataset.sugg == null) setFocus($('[data-key="k-1-0"]', keysEl), { instant: true });
+      }
+      function insert(text) {
+        const s0 = input.selectionStart == null ? input.value.length : input.selectionStart;
+        const e0 = input.selectionEnd == null ? s0 : input.selectionEnd;
+        if ((input.value.length - (e0 - s0) + text.length) > 200) return;
+        input.value = input.value.slice(0, s0) + text + input.value.slice(e0);
+        const p2 = s0 + text.length;
+        try { input.setSelectionRange(p2, p2); } catch (_) { /* ignore */ }
+        changed();
+      }
+      function bump(el) { if (!el || reduce()) return; el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }
+      function pick(text) { input.value = text; result = text.trim(); closeLayer(layer); }
       function press(k) {
+        bump($('[data-k="' + cssEsc(k) + '"]', layer.el));
         if (k === 'DONE') { result = input.value.trim(); closeLayer(layer); return; }
         if (k === 'SHIFT') {
-          shift = !shift;
-          $$('.key[data-k]', layer.el).forEach((b) => { const v = b.dataset.k; if (v.length === 1 && (/[a-z]/i.test(v) || SHIFTED[v] != null)) { b.textContent = shift ? shiftOf(v) : v; } });
-          $('[data-k="SHIFT"]', layer.el).classList.toggle('on', shift);
+          const t = Date.now();
+          if (caps) { caps = false; shift = false; }
+          else if (shift && t - lastShiftAt < 450) { caps = true; } // double tap: caps lock
+          else shift = !shift;
+          lastShiftAt = t;
+          redrawKeys();
+          return;
+        }
+        if (k === 'SYM') { sym = !sym; redrawKeys(); return; }
+        const pos = () => (input.selectionStart == null ? input.value.length : input.selectionStart);
+        if (k === 'LEFT' || k === 'RIGHT') {
+          const n = Math.max(0, Math.min(input.value.length, pos() + (k === 'LEFT' ? -1 : 1)));
+          try { input.focus({ preventScroll: true }); input.setSelectionRange(n, n); } catch (_) { /* ignore */ }
           return;
         }
         if (k === 'BKSP') {
-          const s = input.selectionStart == null ? input.value.length : input.selectionStart;
-          const e = input.selectionEnd == null ? s : input.selectionEnd;
-          if (s !== e) { input.value = input.value.slice(0, s) + input.value.slice(e); try { input.setSelectionRange(s, s); } catch (_) { /* ignore */ } }
-          else if (s > 0) { input.value = input.value.slice(0, s - 1) + input.value.slice(s); try { input.setSelectionRange(s - 1, s - 1); } catch (_) { /* ignore */ } }
+          const s0 = pos();
+          const e0 = input.selectionEnd == null ? s0 : input.selectionEnd;
+          if (s0 !== e0) { input.value = input.value.slice(0, s0) + input.value.slice(e0); try { input.setSelectionRange(s0, s0); } catch (_) { /* ignore */ } }
+          else if (s0 > 0) { input.value = input.value.slice(0, s0 - 1) + input.value.slice(s0); try { input.setSelectionRange(s0 - 1, s0 - 1); } catch (_) { /* ignore */ } }
+          changed();
           return;
         }
-        if (k === 'CLEAR') { input.value = ''; return; }
         if (k === 'SPACE') { insert(' '); return; }
-        insert(shift ? shiftOf(k) : k);
+        insert(shift || caps ? shiftOf(k) : k);
+        // Shift is for one letter (unless caps lock is on).
+        if (shift && !caps) { shift = false; redrawKeys(); }
       }
     });
   }
@@ -3284,7 +3350,10 @@
     }
   }
   async function searchPrompt() {
-    const v = await osk('Search your games', S.libSearch, 'Game name');
+    const titles = games().map((g) => g.title);
+    const v = await osk('Search your games', S.libSearch, 'Game name', {
+      suggest: (t) => { const q = t.trim().toLowerCase(); if (!q) return []; return titles.filter((x) => x.toLowerCase().includes(q)).sort((a, b) => (b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q)) || a.length - b.length); }
+    });
     if (v === null) return;
     S.libSearch = v;
     S.baseFocus = 's-search';
@@ -3358,6 +3427,7 @@
   const DIRS = { 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
   const prevButtons = new Set();
   const held = { dir: null, since: 0, next: 0, count: 0 };
+  const heldBtn = { b: null, since: 0, next: 0 };
   let suppressUntilRelease = true; // ignore buttons already held when the app starts / regains focus
 
   function setInput(kind, padId) {
@@ -3397,7 +3467,14 @@
       return;
     }
     if (activePad) setInput('pad', activePad.id);
-    for (const b of down) if (!prevButtons.has(b)) button(b);
+    for (const b of down) if (!prevButtons.has(b)) { button(b); heldBtn.b = b; heldBtn.next = now + 420; heldBtn.since = now; }
+    // Some screens repeat a held button (the keyboard: X keeps deleting, LB/RB keep moving).
+    const rl = topLayer();
+    if (heldBtn.b && down.has(heldBtn.b) && rl && rl.repeat && rl.repeat.includes(heldBtn.b) && now >= heldBtn.next) {
+      button(heldBtn.b);
+      heldBtn.next = now + Math.max(45, 110 - (now - heldBtn.since) / 20);
+    }
+    if (heldBtn.b && !down.has(heldBtn.b)) heldBtn.b = null;
     prevButtons.clear(); for (const b of down) prevButtons.add(b);
 
     // Held directions repeat, starting slow and speeding up the longer you hold.

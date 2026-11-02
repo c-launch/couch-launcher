@@ -266,16 +266,33 @@ img { -webkit-user-drag: none; }
 .fitem.dir svg { color: var(--accent); }
 
 /* On-screen keyboard */
-.osk { width: 104rem; }
-.osk-input { height: 6rem; border-radius: calc(var(--r-card) * 0.8); border: 0.2rem solid var(--accent); background: var(--field); color: var(--text); font: inherit; font-size: 2.2rem; padding: 0 2rem; width: 100%; outline: none; }
-.keys { display: flex; flex-direction: column; gap: 0.8rem; }
-.krow { display: flex; gap: 0.8rem; justify-content: center; }
-.key { width: 7.6rem; height: 6.2rem; border-radius: calc(var(--r-card) * 0.7); background: var(--chip); border: 1px solid var(--border); font-size: 2rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 0.8rem; outline-offset: 0.2rem !important; }
-.key.w2 { width: 16rem; } .key.w3 { width: 24.4rem; } .key.w5 { width: 41.2rem; }
+.layer.osk-layer { align-items: flex-end; padding-bottom: 4.8rem; }
+.osk { width: 86rem; gap: 1.2rem; padding: 2.4rem 2.8rem 2rem; }
+.osk-top { display: flex; align-items: baseline; gap: 1.6rem; }
+.osk-top h2 { margin: 0; font-size: 2.2rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.osk-count { font-size: 1.3rem; color: var(--sub); font-weight: 600; }
+.osk-input { height: 5.2rem; border-radius: calc(var(--r-card) * 0.8); border: 0.2rem solid var(--accent); background: var(--field); color: var(--text); font: inherit; font-size: 2rem; padding: 0 1.8rem; width: 100%; outline: none; caret-color: var(--accent); }
+.osk-sugg { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+.osk-sugg:empty { display: none; }
+.osk-chip { display: inline-flex; align-items: center; gap: 0.7rem; height: 3.8rem; padding: 0 1.4rem; border-radius: var(--r-pill); background: var(--chip); border: 1px solid var(--border); font-size: 1.5rem; font-weight: 700; max-width: 100%; outline-offset: 0.2rem !important; }
+.osk-chip svg { width: 1.6rem; height: 1.6rem; opacity: 0.7; flex-shrink: 0; }
+.osk-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.osk-chip.focused { background: var(--accent); color: var(--on-accent); }
+.keys { display: flex; flex-direction: column; gap: 0.6rem; }
+.krow { display: flex; gap: 0.6rem; justify-content: center; }
+.key { flex: 1 1 0; min-width: 0; max-width: 7.4rem; height: 5.2rem; border-radius: calc(var(--r-card) * 0.6); background: var(--chip); border: 1px solid var(--border); font-size: 1.9rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem; outline-offset: 0.2rem !important; }
+.key.wide { max-width: 11rem; flex-grow: 1.5; } .key.w2 { max-width: 13rem; flex-grow: 1.7; } .key.w5 { max-width: 34rem; flex-grow: 4.6; }
+.key.done { background: var(--accent); color: var(--on-accent); }
 .key.focused { background: var(--accent); color: var(--on-accent); transform: scale(1.06); }
+.key.done.focused { box-shadow: 0 0 0 0.3rem var(--text); }
 .key.on { box-shadow: inset 0 0 0 0.2rem var(--accent); }
-.key svg { width: 2.2rem; height: 2.2rem; }
+.key.on.lock::after { content: ''; position: absolute; bottom: 0.6rem; left: 50%; width: 1.6rem; height: 0.3rem; margin-left: -0.8rem; border-radius: 1rem; background: currentColor; }
+.key.hit { animation: keyHit 140ms ease; }
+@keyframes keyHit { 50% { transform: scale(0.92); } }
+.key svg { width: 2rem; height: 2rem; }
 .key small { font-size: 1.4rem; }
+.osk-help { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.4rem 0.6rem; font-size: 1.3rem; color: var(--sub); font-weight: 600; margin-top: 0.4rem; }
+.osk-help .glyph { margin-left: 0.8rem; }
 
 /* Launching / overlay */
 .launching { background: var(--bg); flex-direction: column; gap: 3rem; backdrop-filter: none; }
