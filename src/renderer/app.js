@@ -2158,7 +2158,7 @@
   }
   function fmtHours(h) { return h >= 1 ? (h >= 10 ? Math.round(h) : h) + ' h' : h > 0 ? Math.round(h * 60) + ' min' : ''; }
   async function openFriendProfile(id) {
-    let p = null, err = null;
+    let p = null, err = null, lastAct = null;
     const known = S.friendMap.get(id) || null;
     const html = () => {
       const f = p || known || { gamertag: 'Friend', id };
@@ -2180,7 +2180,11 @@
       if (p && p.together && p.together.length) stats.push(['Played together', p.together.length + (p.together.length === 1 ? ' game' : ' games')]);
       const acts = p || known ? friendItems(Object.assign({}, known || {}, p || {}, { id })).filter((x) => x.id !== 'profile') : [];
       const pic = f.picBig || f.pic;
-      const recent = (p && p.recent) || [];
+      const recent = ((p && p.recent) || []).map((r) => {
+        if (r.img || !r.owned || !byId(r.owned)) return r;
+        const a = byId(r.owned).art || {};
+        return Object.assign({}, r, { img: a.hero || a.tile ? fileUrl(a.hero || a.tile) : null });
+      });
       const pctOf = (r) => r.ach && r.ach.total ? Math.round(r.ach.got / r.ach.total * 100) : r.total ? Math.round(r.pct || (r.gamerscore / r.total * 100)) : null;
       const lineBits = [steam ? 'Steam' : 'Xbox'];
       if (p && p.realName && p.realName !== name) lineBits.push(esc(p.realName));
@@ -2201,7 +2205,22 @@
         const span = p.xp.total - p.xp.thisLevel + p.xp.toNext, done = p.xp.total - p.xp.thisLevel;
         xpBar = '<div class="fp-xp"><div class="fp-xpbar"><span style="width:' + Math.max(2, Math.min(100, Math.round(done / span * 100))) + '%"></span></div><small>' + num(p.xp.toNext) + ' XP to level ' + (p.level + 1) + ' · ' + num(p.xp.total) + ' XP total</small></div>';
       }
-      let h = '<div class="fprof ' + (steam ? 'steam' : 'xbox') + '"' + (color ? ' style="--band:' + color + ';--band2:color-mix(in srgb, ' + color + ' 62%, #000)"' : '') + '><section class="fp-hero">' +
+      // Their game's artwork behind the header, tinted with their colour.
+      const art = (p && p.art) || [];
+      const artHTML = '<div class="fp-art"' + (art.length ? ' style="background-image:' + art.map((u) => 'url(&quot;' + esc(u) + '&quot;)').join(', ') + '"' : '') + '></div><div class="fp-shade"></div>';
+      // Right column: what they're playing, and you two.
+      const nowGame = f.game ? { title: f.game, label: 'Now playing', sub: f.joinable ? 'You can join' : (f.owned && byId(f.owned) ? 'In your library' : '') }
+        : recent[0] ? { title: recent[0].title, label: 'Last played', sub: recent[0].hours2w ? fmtHours(recent[0].hours2w) + ' past 2 weeks' : recent[0].last ? ago(recent[0].last) : '' } : null;
+      const nowImg = (recent.find((r) => nowGame && r.title === nowGame.title) || {}).img || (art.length ? art[art.length - 1] : null);
+      const nowHTML = nowGame ? '<div class="fp-now"><span class="fp-now-img"' + (nowImg ? ' style="background-image:url(&quot;' + esc(nowImg) + '&quot;)"' : '') + '>' + (nowImg ? '' : icon('pad')) + '</span>' +
+        '<span class="fp-now-t"><small>' + nowGame.label + '</small><b>' + esc(nowGame.title) + '</b>' + (nowGame.sub ? '<span>' + esc(nowGame.sub) + '</span>' : '') + '</span></div>' : '';
+      const togMins = ((p && p.together) || []).reduce((n, t) => n + (t.mins || 0), 0);
+      const you = [];
+      if (p && p.commonCount != null) you.push([num(p.commonCount), p.commonCount === 1 ? 'game you both have' : 'games you both have']);
+      if (p && p.together && p.together.length) you.push([String(p.together.length), p.together.length === 1 ? 'game played together' : 'games played together']);
+      if (togMins) you.push([fmtHours(togMins / 60), 'together']);
+      const youHTML = you.length ? '<div class="fp-you"><div class="fp-you-h">You &amp; ' + esc(name) + '</div><div class="fp-you-s">' + you.map(([v, k]) => '<span><b>' + esc(v) + '</b><small>' + esc(k) + '</small></span>').join('') + '</div></div>' : '';
+      let h = '<div class="fprof ' + (steam ? 'steam' : 'xbox') + '"' + (color ? ' style="--band:' + color + ';--band2:color-mix(in srgb, ' + color + ' 62%, #000)"' : '') + '><section class="fp-hero">' + artHTML +
         '<div class="fp-left"><div class="fp-line">' + lineBits.join(' · ') +
         (!steam && f.gamerscore ? '<span class="fp-g">G</span>' + num(f.gamerscore) : '') +
         (steam && p && p.level != null ? ' · Level ' + esc(String(p.level)) : '') + '</div>' +
@@ -2213,8 +2232,9 @@
         (badges.length ? '<div class="fp-badges">' + badges.join('') + '</div>' : '') +
         '</div>' +
         '<div class="fp-center"><div class="fp-av">' + esc(String(name).charAt(0).toUpperCase()) + (pic ? '<img src="' + esc(pic) + '" alt="">' : '') + '</div><div class="fp-floor"></div></div>' +
-        '<div class="fp-acts">' + acts.map((x) => '<button class="fp-act" data-nav data-key="fpa-' + x.id + '" data-zone="fpacts" data-act="do" data-do="' + x.id + '">' + icon(x.icon) + '<span>' + esc(x.label) + '</span></button>').join('') + '</div>' +
-        '</section><section class="fp-below"><h2 class="fp-h">Recent activity</h2>';
+        '<div class="fp-right"><div class="fp-acts">' + acts.map((x) => '<button class="fp-act" data-nav data-key="fpa-' + x.id + '" data-zone="fpacts" data-act="do" data-do="' + x.id + '">' + icon(x.icon) + '<span>' + esc(x.label) + '</span></button>').join('') + '</div>' +
+        nowHTML + youHTML + '</div>' +
+        '</section><section class="fp-below"><div class="fp-sec"><h2 class="fp-h">Recent activity</h2>';
       if (err) h += '<p class="hint fp-note">' + esc(err) + '</p>';
       else if (!p) h += '<p class="hint fp-note">Loading profile…</p>';
       else {
@@ -2225,19 +2245,45 @@
           '<span class="fp-gt">' + esc(r.title) + '</span><span class="fp-gs">' +
           esc(r.hours != null ? [r.hours2w ? fmtHours(r.hours2w) + ' past 2 weeks' : '', fmtHours(r.hours) ? fmtHours(r.hours) + ' total' : ''].filter(Boolean).join(' · ') : (r.last ? 'Played ' + ago(r.last) : '')) + '</span>' +
           achLine(r) + '</button>').join('');
+        const localArt = (gid) => { const g = byId(gid); const a = g && g.art && (g.art.hero || g.art.tile); return a ? ' style="background-image:url(&quot;' + esc(fileUrl(a)) + '&quot;)"' : ''; };
         const tog = (p.together || []).map((t) =>
           '<button class="fp-game tog" data-nav data-key="fpt-' + esc(t.gameId) + '" data-zone="fpgames" data-act="tog" data-id="' + esc(t.gameId) + '">' +
-          '<span class="fp-img tog">' + icon('users') + '<span class="fp-have">Played together</span></span>' +
+          '<span class="fp-img tog"' + localArt(t.gameId) + '>' + (localArt(t.gameId) ? '' : icon('users')) + '<span class="fp-have">Played together</span></span>' +
           '<span class="fp-gt">' + esc(t.title) + '</span><span class="fp-gs">' + esc(ago(t.last)) + (t.mins ? ' · about ' + fmtHours(t.mins / 60) + ' together' : '') + '</span></button>').join('');
         h += cards || tog ? '<div class="fp-games">' + tog + cards + '</div>' : '<p class="hint fp-note">Nothing played lately.</p>';
+        h += '</div>';
+        if (p.common && p.common.length) {
+          h += '<div class="fp-sec"><h2 class="fp-h">Games you both have<span class="fp-hn">' + num(p.commonCount) + '</span></h2><div class="fp-games common">' + p.common.map((c) =>
+            '<button class="fp-game small" data-nav data-key="fpc-' + esc(c.gameId) + '" data-zone="fpcommon" data-act="tog" data-id="' + esc(c.gameId) + '">' +
+            '<span class="fp-img"' + localArt(c.gameId) + '>' + (localArt(c.gameId) ? '' : icon('pad')) + '</span>' +
+            '<span class="fp-gt">' + esc(c.title) + '</span><span class="fp-gs">' + esc(c.hours ? fmtHours(c.hours) + ' played by ' + name : c.pct != null ? c.pct + '% of achievements' : '') + '</span></button>').join('') + '</div></div>';
+        }
+        return h + '</section></div>';
       }
-      return h + '</section></div>';
+      return h + '</div></section></div>';
     };
     const layer = openLayer({
       className: 'fp-layer',
       html: html(),
+      // Down from the header always goes to the first row below, and up from there back to the
+      // button you were on (the rows below are wider than the header's columns).
+      onMove: (dir, el) => {
+        if (!el || !el.closest) return false;
+        const root = el.closest('.fprof');
+        if (!root) return false;
+        const inHeroBelow = () => $$('.fp-hero [data-nav]', root).some((e) => e !== el && e.getBoundingClientRect().top >= el.getBoundingClientRect().bottom - 2);
+        if (dir === 'down' && el.closest('.fp-hero') && !inHeroBelow()) { lastAct = el.dataset.key; const t = $('.fp-below [data-nav]', root); if (t) { setFocus(t); return true; } return false; }
+        if (dir === 'up' && el.closest('.fp-sec') === $('.fp-sec', root)) { const t = (lastAct && $('[data-key="' + cssEsc(lastAct) + '"]', root)) || $('.fp-hero [data-nav]', root); if (t) { setFocus(t); return true; } }
+        return false;
+      },
       // Down to Recent activity scrolls the page up to it; back up shows the whole header again.
-      onFocus: (el) => { const sc = el && el.closest && el.closest('.fprof'); if (sc) sc.scrollTo({ top: el.closest('.fp-below') ? sc.scrollHeight : 0, behavior: reduce() ? 'auto' : 'smooth' }); },
+      onFocus: (el) => {
+        const sc = el && el.closest && el.closest('.fprof');
+        if (!sc) return;
+        const sec = el.closest('.fp-sec');
+        const top = !sec ? 0 : sec === $('.fp-sec', sc) ? sec.closest('.fp-below').offsetTop - remPx() * 6 : sc.scrollHeight;
+        sc.scrollTo({ top, behavior: reduce() ? 'auto' : 'smooth' });
+      },
       onActivate: async (el) => {
         const act = el.dataset.act;
         if (act === 'do') { const f = Object.assign({}, known || {}, p || {}, { id }); if (!f.gamertag) f.gamertag = f.name || 'Friend'; return friendAct(f, el.dataset.do); }

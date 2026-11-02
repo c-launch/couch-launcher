@@ -768,9 +768,9 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .fprof { position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none; animation: viewIn var(--t-med) var(--ease) both; color: #fff; --band: #1067D6; --band2: #0B55B8; }
 .fprof.steam { --band: #1E5A8C; --band2: #16344F; }
 .fprof::-webkit-scrollbar { display: none; }
-.fp-hero { position: relative; display: grid; grid-template-columns: 1fr 36rem 36rem; align-items: center; gap: 2rem; min-height: 62vh; padding: 5rem 6.4rem 4rem;
+.fp-hero { position: relative; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) 34rem 40rem; align-items: center; gap: 3.2rem; min-height: 66vh; padding: 5rem 6.4rem 4.4rem;
   background: radial-gradient(ellipse at 62% 40%, color-mix(in srgb, var(--band) 70%, #fff 12%), transparent 60%), linear-gradient(160deg, var(--band), var(--band2)); }
-.fp-left { min-width: 0; }
+.fp-left { position: relative; z-index: 1; min-width: 0; }
 .fp-line { display: flex; align-items: center; gap: 0.8rem; font-size: 1.8rem; font-weight: 600; opacity: 0.92; }
 .fp-g { display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; height: 2.2rem; border-radius: 50%; background: rgba(255,255,255,0.9); color: var(--band2); font-size: 1.3rem; font-weight: 800; margin-left: 1rem; }
 .fp-left h1 { margin: 0.6rem 0 1.6rem; font-size: 7.2rem; font-weight: 800; line-height: 1.02; letter-spacing: -0.01em; overflow-wrap: anywhere; }
@@ -783,12 +783,14 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .fp-badges { display: flex; flex-wrap: wrap; gap: 1.2rem; margin-top: 2.6rem; max-width: 46rem; }
 .fp-badge { width: 5.4rem; height: 5.4rem; border-radius: 50%; background: rgba(0,0,0,0.25) center / cover no-repeat; border: 0.3rem solid rgba(255,255,255,0.75); box-shadow: 0 0.4rem 1.2rem rgba(0,0,0,0.25);
   display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 2rem; }
-.fp-center { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; align-self: stretch; }
+.fp-center { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; align-self: stretch; }
 .fp-av { position: relative; z-index: 1; width: 30rem; height: 30rem; border-radius: 50%; background: rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center;
   font-size: 12rem; font-weight: 800; overflow: hidden; box-shadow: 0 2.4rem 5rem rgba(0,0,0,0.35); border: 0.5rem solid rgba(255,255,255,0.85); }
 .fp-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .fp-floor { width: 26rem; height: 3.2rem; margin-top: 2.4rem; border-radius: 50%; background: radial-gradient(ellipse, rgba(0,0,0,0.35), transparent 70%); }
-.fp-acts { align-self: start; display: flex; flex-direction: column; gap: 0.4rem; }
+.fp-right { position: relative; z-index: 1; align-self: start; display: flex; flex-direction: column; gap: 1.6rem; }
+.fp-acts { display: flex; flex-direction: column; gap: 0.4rem; }
+.fp-acts:empty { display: none; }
 .fp-act { display: flex; align-items: center; gap: 1.2rem; width: 100%; min-height: 5.2rem; padding: 0 1.8rem; text-align: left; color: #fff; font-size: 1.6rem; font-weight: 600;
   background: rgba(8, 20, 45, 0.42); border-radius: 0.4rem; outline-offset: 0.2rem !important; }
 .fp-act svg { width: 2rem; height: 2rem; flex-shrink: 0; }
@@ -832,3 +834,32 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .fp-ach span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fp-bar { display: block; height: 0.5rem; border-radius: 99rem; background: rgba(255,255,255,0.12); overflow: hidden; }
 .fp-bar span { display: block; height: 100%; background: #FFD166; border-radius: inherit; }
+
+/* Friend profile: artwork, side cards, games in common */
+.fp-art { position: absolute; inset: -2rem; background: center 30% / cover no-repeat; filter: blur(3px) saturate(1.1); transform: scale(1.04); opacity: 0.55; }
+.fp-shade { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, var(--band) 0%, color-mix(in srgb, var(--band) 82%, transparent) 38%, color-mix(in srgb, var(--band2) 45%, transparent) 70%, color-mix(in srgb, var(--band2) 80%, transparent) 100%),
+    linear-gradient(to bottom, transparent 55%, color-mix(in srgb, var(--band2) 90%, transparent)); }
+.fp-art:not([style]) { display: none; }
+.fp-art:not([style]) + .fp-shade { background:
+  radial-gradient(circle at 78% 18%, rgba(255,255,255,0.14), transparent 26rem), radial-gradient(circle at 12% 110%, rgba(255,255,255,0.10), transparent 30rem),
+  repeating-linear-gradient(135deg, rgba(255,255,255,0.035) 0 0.2rem, transparent 0.2rem 2.4rem); }
+.fp-av { box-shadow: 0 2.4rem 5rem rgba(0,0,0,0.35), 0 0 0 1.4rem rgba(255,255,255,0.08), 0 0 0 2.8rem rgba(255,255,255,0.04); }
+.fp-now { display: flex; gap: 1.4rem; align-items: center; padding: 1.2rem; border-radius: 0.6rem; background: rgba(6, 14, 30, 0.45); backdrop-filter: blur(8px); }
+.fp-now-img { width: 14rem; flex-shrink: 0; aspect-ratio: 460 / 215; border-radius: 0.4rem; background: rgba(255,255,255,0.1) center / cover no-repeat; display: flex; align-items: center; justify-content: center; }
+.fp-now-img svg { width: 3rem; height: 3rem; opacity: 0.7; }
+.fp-now-t { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
+.fp-now-t small { font-size: 1.25rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.75; }
+.fp-now-t b { font-size: 1.8rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-now-t span { font-size: 1.35rem; opacity: 0.85; }
+.fp-you { padding: 1.6rem 1.8rem; border-radius: 0.6rem; background: rgba(6, 14, 30, 0.45); backdrop-filter: blur(8px); }
+.fp-you-h { font-size: 1.4rem; font-weight: 800; opacity: 0.8; margin-bottom: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-you-s { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }
+.fp-you-s span { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.fp-you-s b { font-size: 2.6rem; font-weight: 800; }
+.fp-you-s small { font-size: 1.25rem; opacity: 0.8; line-height: 1.25; }
+.fp-sec + .fp-sec { margin-top: 3.2rem; }
+.fp-hn { margin-left: 1.2rem; font-size: 1.6rem; font-weight: 700; color: #9AA6B8; }
+.fp-game.small { width: 22rem; }
+.fp-game.small .fp-img { aspect-ratio: 16 / 10; }
+.fp-img.tog[style] { background-size: cover; }

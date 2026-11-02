@@ -1152,6 +1152,24 @@ if (!app.requestSingleInstanceLock()) {
     const deco = friendsLib.decorate([Object.assign({}, cur || {}, p, { xuid: steamid ? 'steam-' + steamid : id, service: svc })], lib.games)[0];
     deco.recent = (p.recent || []).map((r) => Object.assign(r, { owned: friendsLib.matchGame({ service: svc, gameid: r.appid, game: r.title }, lib.games) }));
     deco.together = fr().withFriend(id).map((x) => { const g = lib.games.find((y) => y.id === x.gameId); return g ? { gameId: x.gameId, title: g.title, last: x.last, mins: x.mins } : null; }).filter(Boolean).slice(0, 6);
+    // Games you both have (theirs matched against your library), the ones they play most first.
+    const seenIds = new Set(), common = [], byApp = new Map(), byName = new Map();
+    for (const g of lib.games) {
+      if (g.hidden) continue;
+      const a = friendsLib.steamAppOf(g); if (a && !byApp.has(a)) byApp.set(a, g.id);
+      const n = friendsLib.norm(g.title); if (n.length >= 2 && !byName.has(n)) byName.set(n, g.id);
+    }
+    for (const o of (p.ownedList || []).slice().sort((a, b) => (b.hours || b.last || 0) - (a.hours || a.last || 0))) {
+      const gid = (o.appid && byApp.get(o.appid)) || byName.get(friendsLib.norm(o.title));
+      if (!gid || seenIds.has(gid)) continue;
+      seenIds.add(gid);
+      const g = lib.games.find((y) => y.id === gid);
+      common.push({ gameId: gid, title: g.title, hours: o.hours != null ? o.hours : null, pct: o.pct != null ? o.pct : null, art: (g.art && (g.art.tile || g.art.hero)) || null });
+    }
+    deco.commonCount = common.length;
+    deco.common = common.slice(0, 12);
+    delete deco.ownedList;
+    deco.art = (p.art || []).filter((u) => /^https:\/\//.test(u)).slice(0, 2);
     return deco;
   });
   handle('friend:compare', (id, appid) => {
