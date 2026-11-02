@@ -45,6 +45,24 @@ Building it yourself instead: install **Node.js LTS**, then double-click **Build
 
 **During a game (other ways back):** hold **View + Menu** for 1 second (Xbox-style controllers) or press **Ctrl + Alt + Home** to bring the launcher back, resume, or close the game. PlayStation and Switch controllers work in the launcher; the hold combo needs Steam Input or DS4Windows for them.
 
+## Emulators
+
+Settings › Platforms › **Emulators** (one row, its own page). The launcher looks for emulators on this PC — **EmuDeck** first (its programs in `Emulation\tools` and its ROM folders in `Emulation\roms\<system>`), then Program Files, scoop, winget and folders next to emulators you already have — and sets them up. *Find again* looks again; *Show more emulators* lets you point at one by hand.
+
+| Emulator | Plays |
+|---|---|
+| Dolphin · RPCS3 · Ryujinx | GameCube / Wii · PS3 · Switch |
+| PCSX2 · DuckStation · PPSSPP · Vita3K · shadPS4 | PS2 · PS1 · PSP · PS Vita · PS4 (early) |
+| Cemu · Azahar · melonDS · mGBA · Eden / Citron / Sudachi | Wii U · 3DS · DS · Game Boy Advance · Switch |
+| Xenia Canary · xemu | Xbox 360 · Xbox |
+| Flycast · Redream | Dreamcast (Flycast: NAOMI too) |
+| RetroArch | NES, SNES, N64, Game Boy, Genesis, Master System, Game Gear, Sega CD, Saturn, PC Engine, Atari, Lynx, Neo Geo Pocket, WonderSwan, Virtual Boy, FinalBurn Neo arcade (each system whose core you've installed) |
+| MAME · Supermodel · ares · ScummVM | Arcade · Sega Model 3 · many retro systems · classic adventure games |
+
+- **One tile per game:** multi-disc games show once (their .m3u when there is one, otherwise disc 1), .bin files that belong to a .cue are hidden, and a game in several regions shows once (USA first). Pick another version from the game's menu (☰) › *Version*.
+- EmuDeck's Steam shortcuts for these emulators are hidden when the same game is found directly.
+- You need your own BIOS / firmware and game dumps for each emulator.
+
 ## Updates
 
 Updates come online from this GitHub page (Releases). The launcher checks when it starts and every few hours (never during a game), downloads a new version in the background and asks **New version available · Update now?** It restarts by itself in a few seconds. You can also check from **Settings › About › Check for update**. An update zip saved in Downloads or G:\launcher still works too. You only need Build.bat again if a message says so.

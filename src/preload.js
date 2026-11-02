@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('launcher', {
   closeMusic: (app) => call('media:close', app),
   openSteamKeyPage: () => call('link:open', 'https://steamcommunity.com/dev/apikey'),
   detectEmuDeck: () => call('emu:detect'),
+  findEmulators: () => call('emu:find'),
+  setupFoundEmulators: (id) => call('emu:setupFound', id || null),
   exeFromScript: (file) => call('emu:fromScript', file),
   hideOverlay: () => call('overlay:hide'),
   goHome: () => call('app:home'),

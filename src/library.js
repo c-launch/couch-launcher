@@ -56,6 +56,8 @@ const DEFAULT_PLATFORMS = {
   rpcs3: { exe: '', dir: '' },
   ryujinx: { exe: '', dir: '' }
 };
+// The other emulators (Settings › Platforms › Emulators): same shape, plus on/off.
+for (const id of Object.keys(require('./emucatalog').CATALOG)) DEFAULT_PLATFORMS[id] = { exe: '', dir: '', enabled: true };
 
 function makeId(key) {
   return crypto.createHash('sha1').update(String(key)).digest('hex').slice(0, 12);
