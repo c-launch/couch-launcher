@@ -48,9 +48,11 @@
 .tv-scroll::-webkit-scrollbar { display: none; }
 
 /* Hero */
-.tv-hero { position: relative; height: 61rem; }
+/* The hero grows with its text (a logo, long titles, 3-line descriptions), pushing the rows
+   down instead of running into Continue Watching. */
+.tv-hero { position: relative; min-height: 61rem; display: flex; flex-direction: column; justify-content: flex-end; padding: 17rem 10rem 5rem; }
 .tv-hero.wait .tv-hero-body > *:not(.tv-hbtns) { opacity: 0; }
-.tv-hero-body { position: absolute; left: 10rem; top: 19.5rem; width: 70rem; display: flex; flex-direction: column; gap: 1.8rem; transition: opacity var(--t-med); }
+.tv-hero-body { position: relative; width: 70rem; max-width: 100%; display: flex; flex-direction: column; gap: 1.8rem; transition: opacity var(--t-med); }
 .tv-kicker { font-size: 1.5rem; font-weight: 600; letter-spacing: .14em; color: var(--tv-sub); }
 .tv-htitle { margin: 0; font-family: var(--tv-serif); font-weight: 400; font-size: 9rem; line-height: .98; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .tv-logo { display: block; max-width: 52rem; max-height: 15rem; object-fit: contain; object-position: left bottom; }
@@ -75,7 +77,7 @@
 .tv-row, .tv-chips { scrollbar-width: none; }
 .tv-row::-webkit-scrollbar, .tv-chips::-webkit-scrollbar { display: none; }
 .tv-row { display: flex; gap: 2.4rem; overflow: hidden; margin: 0 -10rem; padding: 2rem 10rem 2.6rem; scroll-padding: 0 10rem; }
-.tv-cw .tv-sec { margin-top: -3rem; position: relative; }
+.tv-cw .tv-sec { margin-top: -1rem; position: relative; }
 .tv-loading { padding: 4rem 10rem; font-size: 1.9rem; color: var(--tv-sub); }
 .tv-empty { padding: 3rem 10rem; display: flex; flex-direction: column; align-items: flex-start; gap: 2rem; }
 .tv-empty p { margin: 0; font-size: 2rem; line-height: 1.45; color: var(--tv-sub); max-width: 80rem; }
@@ -93,7 +95,7 @@
 
 /* Continue Watching / episodes (wide cards) */
 .tv-wide, .tv-ep { flex: none; display: flex; flex-direction: column; gap: 1rem; width: 33.3rem; transition: transform var(--t-fast) var(--ease); transform-origin: center top; }
-.tv-wimg { position: relative; display: block; height: 18.75rem; border-radius: 1.2rem; overflow: hidden; background: var(--tv-tile); transition: box-shadow var(--t-fast); }
+.tv-wimg { position: relative; display: block; width: 100%; flex-shrink: 0; height: 18.75rem; border-radius: 1.2rem; overflow: hidden; background: var(--tv-tile); transition: box-shadow var(--t-fast); }
 .tv-wname { position: absolute; left: 1.8rem; right: 1.8rem; top: 1.4rem; z-index: 0; font-family: var(--tv-serif); font-size: 3rem; line-height: 1.05; }
 .tv-prog { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: .55rem; background: rgba(255,255,255,.3); }
 .tv-prog i { display: block; height: 100%; background: #FFFFFF; }
@@ -215,3 +217,10 @@
 @keyframes tvLockIn { to { opacity: 1; transform: none; } }
 @keyframes tvRing { to { stroke-dashoffset: 0; } }
 @keyframes tvPlay { to { opacity: 1; transform: scale(1); } }
+
+/* Opening a title: the poster grows into the page */
+.tv-zoom { position: fixed; z-index: 4; overflow: hidden; pointer-events: none; background: var(--tv-tile); will-change: left, top, width, height; }
+.tv-zoom i { position: absolute; inset: 0; background: center / cover no-repeat; }
+.tv-zoom .z-bg { background-position: center top; }
+.tv-zoom .z-bg::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(var(--tv-veil),.94) 0%, rgba(var(--tv-veil),.6) 40%, rgba(var(--tv-veil),0) 72%), linear-gradient(0deg, rgb(var(--tv-veil)) 0%, rgba(var(--tv-veil),0) 45%); }

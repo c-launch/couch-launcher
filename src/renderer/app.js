@@ -466,7 +466,8 @@
   }
   // Fade images in when they load; drop broken ones so the placeholder shows.
   document.addEventListener('load', (e) => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('loaded'); }, true);
-  document.addEventListener('error', (e) => { if (e.target && e.target.tagName === 'IMG') e.target.remove(); }, true);
+  // (Movies & TV handles its own: it tries the poster first, then shows the title.)
+  document.addEventListener('error', (e) => { if (e.target && e.target.tagName === 'IMG' && !e.target.closest('.tv-layer')) e.target.remove(); }, true);
 
   // ---------------------------------------------------------------- top bar & prompts
   // Controllers with their battery (from the app core); falls back to a simple count.
@@ -1629,6 +1630,9 @@
       if (info) opts.resume = await confirmBox('Pick up where you left off?', 'There’s a save from when you closed ' + g.title + (info.at ? ' (' + fmtWhen(info.at).replace(/^Played /, '').toLowerCase() + ')' : '') + '. Start over loads your normal in-game save instead.', 'Resume', false, { cancelLabel: 'Start over', focusOk: true });
     }
     S.playing = { id, tracked: null, at: Date.now() };
+    // Where the game's tile is, so the boot screen can grow out of it.
+    const fromEl = currentFocus();
+    const fromRect = fromEl && fromEl.dataset.game === id && !reduce() ? fromEl.getBoundingClientRect() : null;
     // Boot screen: the game's background art fills the screen. With only a tile image, it's blurred behind the tile.
     const art = g.art || {};
     const cssUrl = (p) => "url('" + fileUrl(p).replace(/'/g, '%27') + "')";
@@ -1646,6 +1650,13 @@
       onBack: () => cancelLaunch(),
       prompts: () => [['B', 'Cancel']]
     });
+    if (fromRect && fromRect.width) {
+      const W = window.innerWidth, H = window.innerHeight, r = fromRect;
+      layer.el.animate([
+        { clipPath: 'inset(' + r.top + 'px ' + (W - r.right) + 'px ' + (H - r.bottom) + 'px ' + r.left + 'px round 1.6rem)' },
+        { clipPath: 'inset(0px 0px 0px 0px round 0px)' }
+      ], { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    }
     async function cancelLaunch() {
       // Always leave the boot screen right away; the app core closes whatever had started.
       if (S.playing && S.playing.id === id) S.playing = null;
@@ -1725,6 +1736,17 @@
     return gone;
   }
 
+  // The launcher's own apps (Movies & TV, YouTube): remembered so the guide's Recent list has them.
+  const APPS = { tv: { title: 'Movies & TV', icon: 'tv' }, youtube: { title: 'YouTube', icon: 'playc' } };
+  function openApp(id) {
+    if (!APPS[id]) return;
+    const s = S.lib.settings;
+    s.lastApps = Object.assign({}, s.lastApps, { [id]: Date.now() });
+    save();
+    if (id === 'tv') return TV().open();
+    toast('Opening YouTube… press the Xbox button to come back');
+    return api.youtubeOpen().catch((e) => toast(e.message, true));
+  }
   async function switchTo(id, extra) {
     const g = byId(id);
     const cur = S.playing && byId(S.playing.id);
@@ -1768,7 +1790,20 @@
     const thumb = (g) => '<span class="mthumb" style="background-color:' + tileColor(g) + (g.art && g.art.tile ? ';background-image:url(&quot;' + esc(fileUrl(g.art.tile)) + '&quot;)' : '') + '"></span>';
     function body() {
       if (tab === 'games') {
-        let h = item('g-home', 'home', 'Home', 'data-act="home" data-top') + '<div class="gsep"></div>' + musicHTML();
+        let h = item('g-home', 'home', 'Home', 'data-act="home" data-top') + '<div class="gsep"></div>';
+        // Watching something (Movies & TV): it's paused while the guide is open.
+        const tvn = OVERLAY && S.tvNow;
+        if (tvn) {
+          const pct = tvn.dur ? Math.min(100, Math.round(tvn.pos / tvn.dur * 100)) : 0;
+          const left = tvn.dur ? Math.max(0, Math.round((tvn.dur - tvn.pos) / 60)) : 0;
+          h += '<div class="glabel">Paused</div><div class="gnow">' +
+            (tvn.yt ? '<span class="mthumb appthumb youtube">' + icon('playc') + '</span>' : '<span class="mthumb tvthumb"' + (tvn.poster ? ' style="background-image:url(&quot;' + esc(tvn.poster) + '&quot;)"' : '') + '></span>') +
+            '<div class="gnow-t">' + esc(tvn.title) + '<small>' + esc([tvn.subtitle, left ? left + ' min left' : ''].filter(Boolean).join(' · ')) + '</small>' +
+            (pct ? '<span class="gprog"><i style="width:' + pct + '%"></i></span>' : '') + '</div></div>' +
+            item('g-tvresume', 'resume', tvn.yt ? 'Back to YouTube' : 'Resume watching', 'data-act="tv-resume"') +
+            item('g-tvstop', 'x', tvn.yt ? 'Close YouTube' : 'Stop watching', 'data-act="tv-stop"', 'danger') + '<div class="gsep"></div>';
+        }
+        h += musicHTML();
         // Friends who started a game you can join (Steam lobbies / servers).
         if (joinables.length) h += '<div class="glabel">Join a friend</div>' + joinables.slice(0, 3).map((f) =>
           '<button class="mitem gjoin" data-nav data-key="gj-' + esc(f.id) + '" data-zone="gbody" data-act="friend" data-friend="' + esc(f.id) + '">' +
@@ -1781,10 +1816,16 @@
             item('g-resume', 'resume', 'Resume game', 'data-act="resume"') +
             (status && status.canClose ? item('g-close', 'x', 'Close game', 'data-act="close"', 'danger') : '') + '<div class="gsep"></div>';
         }
-        const recent = games().filter((g) => !cur || g.id !== cur.id).sort((a, b) => (b.lastPlayed - a.lastPlayed) || (b.addedAt - a.addedAt)).slice(0, 6);
+        const recentGames = games().filter((g) => !cur || g.id !== cur.id).sort((a, b) => (b.lastPlayed - a.lastPlayed) || (b.addedAt - a.addedAt)).slice(0, 6);
+        // Movies & TV and YouTube sit in Recent too, by when you last used them.
+        const lastApps = S.lib.settings.lastApps || {};
+        const recent = recentGames.map((g) => ({ g, at: g.lastPlayed || 0 }))
+          .concat(Object.keys(APPS).filter((k) => lastApps[k] && !(tvn && (k === 'youtube') === !!tvn.yt)).map((k) => ({ app: k, at: lastApps[k] })))
+          .sort((a, b) => b.at - a.at).slice(0, 7);
         if (recent.length) {
-          h += '<div class="glabel">' + (cur ? 'Switch to' : 'Recent') + '</div>' + recent.map((g) =>
-            '<button class="mitem gitem2" data-nav data-key="g-' + esc(g.id) + '" data-zone="gbody" data-act="play" data-id="' + esc(g.id) + '">' + thumb(g) + '<span>' + esc(g.title) + '</span></button>').join('');
+          h += '<div class="glabel">' + (cur ? 'Switch to' : 'Recent') + '</div>' + recent.map((r) => r.app
+            ? '<button class="mitem gitem2" data-nav data-key="ga-' + r.app + '" data-zone="gbody" data-act="open-app" data-app="' + r.app + '"><span class="mthumb appthumb ' + r.app + '">' + icon(APPS[r.app].icon) + '</span><span>' + APPS[r.app].title + '</span></button>'
+            : '<button class="mitem gitem2" data-nav data-key="g-' + esc(r.g.id) + '" data-zone="gbody" data-act="play" data-id="' + esc(r.g.id) + '">' + thumb(r.g) + '<span>' + esc(r.g.title) + '</span></button>').join('');
           h += '<div class="gsep"></div>';
         }
         h += item('g-lib', 'grid', 'My library', 'data-act="library"') + item('g-add', 'plus', 'Add a game', 'data-act="add"');
@@ -1987,11 +2028,19 @@
         return true;
       },
       html: html(),
-      focus: 'g-resume',
+      focus: OVERLAY && S.tvNow ? 'g-tvresume' : 'g-resume',
       onActivate: async (el) => {
         const act = el.dataset.act;
         if (act === 'tab') return setTab(el.dataset.tab);
         if (act === 'friend') return friendMenu(el.dataset.friend);
+        if (act === 'tv-resume') return resumeGame();
+        if (act === 'open-app') {
+          const id = el.dataset.app;
+          closeLayer(layer);
+          if (OVERLAY) { try { await api.overlayAction({ action: 'goto', target: id }); } catch (e) { toast(e.message, true); } return; }
+          return openApp(id);
+        }
+        if (act === 'tv-stop') { closeLayer(layer); try { await (S.tvNow && S.tvNow.yt ? api.ytGuideClose() : api.tvGuideStop()); } catch (e) { toast(e.message, true); } return; }
         if (act === 'friend-recent') return openFriendProfile(el.dataset.friend);
         if (act === 'm-bal') { if (S.input !== 'mouse') setBalance(0); return; } // A: back to the middle
         // Over the game: anything that needs the full launcher is handed to it.
@@ -2118,7 +2167,7 @@
       onClose: () => clearInterval(musicTimer),
       prompts: (el) => (el && el.dataset.act === 'm-bal' ? [['A', 'Even']] : tab === 'games' && music && !music.none ? [['A', 'Select'], ['Y', 'Play/Pause']] : [['A', 'Select']]).concat([['LB', 'Tabs'], ['B', opts.fromGame && S.playing ? 'Back to game' : 'Close']])
     });
-    { const f0 = $('[data-key="g-resume"]', layer.el) || $('.gbody [data-act="play"]', layer.el) || $('.gbody [data-nav]', layer.el); if (f0) setFocus(f0, { instant: true }); }
+    { const f0 = $('[data-key="g-tvresume"]', layer.el) || $('[data-key="g-resume"]', layer.el) || $('.gbody [data-act="play"]', layer.el) || $('.gbody [data-nav]', layer.el); if (f0) setFocus(f0, { instant: true }); }
     // Fill in what needs the app core: can the game be closed, is Xbox connected.
     try { status = await api.gameStatus(); } catch (_) { status = null; }
     try { xboxOn = await api.xboxStatus(); } catch (_) { xboxOn = false; }
@@ -2264,7 +2313,8 @@
       if (p && p.rep) badges.push('<span class="fp-badge txt" title="Reputation">' + esc(p.rep) + '</span>');
       for (const r of recent.slice(0, 6)) {
         const pc = pctOf(r);
-        badges.push('<span class="fp-badge game" title="' + esc(r.title + (pc != null ? ' · ' + pc + '% of achievements' : '')) + '"' + (pc != null ? ' style="--pct:' + pc + '"' : '') + '><i' + (r.img ? ' style="background-image:url(&quot;' + esc(r.img) + '&quot;)"' : '') + '>' + (r.img ? '' : esc(r.title.charAt(0))) + '</i></span>');
+        // The game's picture (the letter shows if it doesn't load).
+        badges.push('<span class="fp-badge game" title="' + esc(r.title + (pc != null ? ' · ' + pc + '% of achievements' : '')) + '"' + (pc != null ? ' style="--pct:' + pc + '"' : '') + '><i>' + esc(r.title.charAt(0).toUpperCase()) + (r.img ? '<img src="' + esc(r.img) + '" alt="">' : '') + '</i></span>');
       }
       let xpBar = '';
       if (p && steam && p.xp && p.xp.toNext) {
@@ -2307,7 +2357,7 @@
         if (p.private) h += '<p class="hint fp-note">' + esc(name) + '’s game details are private on Steam, so only their name and status show.</p>';
         const cards = recent.map((r, i) =>
           '<button class="fp-game" data-nav data-key="fpg-' + i + '" data-zone="fpgames" data-act="game" data-i="' + i + '">' +
-          '<span class="fp-img"' + (r.img ? ' style="background-image:url(&quot;' + esc(r.img) + '&quot;)"' : '') + '>' + (r.img ? '' : icon('pad')) + (r.owned ? '<span class="fp-have">In your library</span>' : '') + '</span>' +
+          '<span class="fp-img">' + icon('pad') + (r.img ? '<img src="' + esc(r.img) + '" alt="">' : '') + (r.owned ? '<span class="fp-have">In your library</span>' : '') + '</span>' +
           '<span class="fp-gt">' + esc(r.title) + '</span><span class="fp-gs">' +
           esc(r.hours != null ? [r.hours2w ? fmtHours(r.hours2w) + ' past 2 weeks' : '', fmtHours(r.hours) ? fmtHours(r.hours) + ' total' : ''].filter(Boolean).join(' · ') : (r.last ? 'Played ' + ago(r.last) : '')) + '</span>' +
           achLine(r) + '</button>').join('');
@@ -3119,8 +3169,7 @@
         if (to === 'add') return openEdit(null);
         if (to === 'friends') return openFriends();
         if (to === 'clips') return openClips();
-        if (to === 'tv') return TV().open();
-        if (to === 'youtube') { toast('Opening YouTube… press the Xbox button to come back'); return api.youtubeOpen().catch((e) => toast(e.message, true)); }
+        if (to === 'tv' || to === 'youtube') return openApp(to);
         if (to === 'search') { if (S.view !== 'library') go('library', 's-search'); return searchPrompt(); }
         return go(to);
       }
@@ -3231,7 +3280,7 @@
         if (S.setTab !== 'emulators') { S.setTab = 'emulators'; }
         return refreshContent();
       }
-      case 'tv-open': return TV().open();
+      case 'tv-open': return openApp('tv');
       case 'yt-reset': {
         if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this PC.', 'Sign out', true))) return;
         try { await api.youtubeReset(); toast('Signed out of YouTube'); } catch (e) { toast(e.message, true); }
@@ -3563,6 +3612,7 @@
     }
     const t = r.target;
     if (t === 'home') return go('home', S.playing ? 'h-' + S.playing.id : null);
+    if (t === 'tv' || t === 'youtube') return openApp(t);
     if (t === 'dc-add') return discordPins();
     if (t === 'dc-setup') return discordConnect();
     if (t === 'players-setup') return setUpPlayersNow();
@@ -3637,6 +3687,7 @@
       try { S.lib = await api.load(); S.theme = window.applyTheme(S.lib.settings, false); } catch (_) { /* keep last */ }
       for (const l of layers.slice()) { l.el.remove(); layers.splice(layers.indexOf(l), 1); }
       S.playing = p && p.gameId ? { id: p.gameId, tracked: true, started: true, at: 0 } : null;
+      S.tvNow = p && p.tv ? p.tv : p && p.yt ? { yt: true, title: 'YouTube', subtitle: '', pos: 0, dur: 0 } : null; // the guide over something you're watching
       suppressUntilRelease = true;
       setInput('pad');
       lastMouse = null;

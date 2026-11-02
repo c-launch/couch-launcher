@@ -12,8 +12,28 @@
 
 const path = require('path');
 const TV_URL = 'https://www.youtube.com/tv';
+// How the window introduces itself, adapted from VacuumTube (MIT License, Copyright (c) 2025-2026
+// shy): YouTube's TV interface decides its look by the device it thinks it's on. Presented as
+// a current desktop build of YouTube's TV app engine (Cobalt 27, the same format Cobalt writes),
+// it gets the full interface: smooth animations and proper fades behind text. An old TV-box
+// identity got the cut-down one (no animations, black boxes behind titles).
+const COBALT = '27.lts.3.1040976-gold', V8 = '13.8.258.54', STARBOARD = 18;
+const MODERN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Cobalt/' + COBALT + ' (unlike Gecko) v8/' + V8 + '-jit gles Starboard/' + STARBOARD +
+  ', CouchLauncher_DESKTOP_x8664_' + new Date().getFullYear() + '/1.0 (CouchLauncher, Windows) com.couchlauncher.tv/1.0';
+const COBALT_SHORT = COBALT.split('-')[0].split('.').slice(0, 3).join('.');
+const HINTS = {
+  brands: [{ brand: 'CouchLauncher', version: '27' }], fullVersionList: [{ brand: 'CouchLauncher', version: COBALT_SHORT }], fullVersion: COBALT_SHORT,
+  platform: 'Starboard', platformVersion: '', architecture: 'x86', model: '', mobile: false, bitness: '64', wow64: false
+};
+const HINT_HEADERS = {
+  'sec-ch-ua': '"CouchLauncher";v="27"', 'sec-ch-ua-mobile': '?0', 'sec-ch-ua-platform': '"Starboard"',
+  'sec-ch-ua-full-version-list': '"CouchLauncher";v="' + COBALT_SHORT + '"', 'sec-ch-ua-full-version': '"' + COBALT_SHORT + '"',
+  'sec-ch-ua-platform-version': '""', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"', 'sec-ch-ua-model': '""', 'sec-ch-ua-wow64': '?0'
+};
+const GOOGLE = /(^|\.)(youtube\.com|googlevideo\.com|ytimg\.com|ggpht\.com|google\.com|googleapis\.com|gstatic\.com|googleusercontent\.com|youtube-nocookie\.com)$/i;
 const AGENTS = [
-  // A TV running YouTube's own TV app engine
+  MODERN_UA,
+  // An older TV box running YouTube's TV app engine
   'Mozilla/5.0 (Linux armeabi-v7a; Android 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Cobalt/25.lts.30.1034943-gold (unlike Gecko) v8/8.8.278.17-jit gles Starboard/15, CouchLauncher_TV_PC_2026/1.0 (CouchLauncher, PC, Wired)',
   // A smart TV browser
   'Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) 76.0.3809.146/6.0 TV Safari/537.36',
@@ -41,7 +61,8 @@ function createYouTube({ BrowserWindow, session, targetDisplay, bringBack, setti
 
   const alive = () => !!(win && !win.isDestroyed());
   function create() {
-    if (agent == null) agent = Math.max(0, Math.min(AGENTS.length - 1, Number(settings().ytAgent) || 0));
+    // (ytAgent2: everyone starts again on the newest identity.)
+    if (agent == null) agent = Math.max(0, Math.min(AGENTS.length - 1, Number(settings().ytAgent2) || 0));
     const b = targetDisplay().bounds;
     win = new BrowserWindow({
       x: b.x, y: b.y, width: b.width, height: b.height, show: false, frame: false, fullscreen: true, backgroundColor: '#000000',
@@ -63,14 +84,43 @@ function createYouTube({ BrowserWindow, session, targetDisplay, bringBack, setti
     // Sent to the normal site? That way of saying "TV" doesn't work any more: try the next.
     wc.on('did-navigate', (_e, url) => {
       if (/^https:\/\/(www\.|m\.)?youtube\.com\//i.test(url) && !/^https:\/\/www\.youtube\.com\/tv/i.test(url)) {
-        if (agent < AGENTS.length - 1) { agent++; wc.setUserAgent(AGENTS[agent]); wc.loadURL(TV_URL); }
-        else if (!triedAll) { triedAll = true; agent = 0; wc.setUserAgent(AGENTS[agent]); }
-      } else if (/youtube\.com\/tv/i.test(url) && Number(settings().ytAgent || 0) !== agent) { settings().ytAgent = agent; saveSettings(); }
+        if (agent < AGENTS.length - 1) { agent++; identify(wc).then(() => wc.loadURL(TV_URL)); }
+        else if (!triedAll) { triedAll = true; agent = 0; identify(wc); }
+      } else if (/youtube\.com\/tv/i.test(url) && Number(settings().ytAgent2 || 0) !== agent) { settings().ytAgent2 = agent; saveSettings(); }
     });
     win.once('ready-to-show', () => { if (alive()) { win.show(); win.focus(); } });
     // YouTube's own "Exit" (B on its home screen) closes the window: back to the launcher.
     win.on('closed', () => { win = null; if (!replacing) bringBack(false); });
-    win.loadURL(TV_URL);
+    // The identity (with its client hints) can only be set once there's a page.
+    win.loadURL('about:blank').then(() => identify(wc)).then(() => { if (alive()) win.loadURL(TV_URL); }, () => { if (alive()) win.loadURL(TV_URL); });
+  }
+  // Sets the user agent, and for the newest one the matching client hints (in the page and in
+  // requests to Google), so everything YouTube sees agrees.
+  let hooked = false;
+  async function identify(wc) {
+    const ua = AGENTS[agent], hints = agent === 0 ? HINTS : undefined;
+    wc.setUserAgent(ua);
+    if (!hooked && session) {
+      hooked = true;
+      const ses = session.fromPartition('persist:youtube');
+      ses.setUserAgent(MODERN_UA);
+      ses.webRequest.onBeforeSendHeaders((d, cb) => {
+        const h = d.requestHeaders;
+        let host = '';
+        try { host = new URL(d.url).hostname; } catch (_) { host = ''; }
+        if (agent === 0) {
+          for (const k of Object.keys(h)) if (/^sec-ch-ua/i.test(k)) delete h[k];
+          if (GOOGLE.test(host)) Object.assign(h, HINT_HEADERS);
+        }
+        for (const k of Object.keys(h)) if (k.toLowerCase() === 'user-agent') delete h[k];
+        h['User-Agent'] = AGENTS[agent];
+        cb({ requestHeaders: h });
+      });
+    }
+    try {
+      if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+      await wc.debugger.sendCommand('Emulation.setUserAgentOverride', hints ? { userAgent: ua, userAgentMetadata: hints } : { userAgent: ua });
+    } catch (_) { /* the plain user agent above still applies */ }
   }
   function open() {
     // The ad blocker setting changed since this window was made: start it fresh.
@@ -90,6 +140,19 @@ function createYouTube({ BrowserWindow, session, targetDisplay, bringBack, setti
     win.hide();
   }
   const isFront = () => alive() && win.isVisible() && win.isFocused();
+  // The guide over YouTube: pause (remembering whether it was playing), then carry on.
+  let wasPlaying = false;
+  async function pauseForGuide() {
+    if (!alive()) return;
+    try { wasPlaying = !!(await win.webContents.executeJavaScript('(() => { let p = false; document.querySelectorAll("video").forEach((v) => { if (!v.paused) { p = true; v.pause(); } }); return p; })()', true)); } catch (_) { wasPlaying = false; }
+  }
+  function resumeFromGuide() {
+    if (!alive() || !win.isVisible()) return;
+    if (wasPlaying) win.webContents.executeJavaScript('document.querySelectorAll("video").forEach((v) => { if (v.paused && v.readyState > 1) v.play().catch(() => {}); })', true).catch(() => {});
+    wasPlaying = false;
+    win.focus();
+  }
+  const isShown = () => alive() && win.isVisible();
 
   function key(code) {
     if (!alive()) return;
@@ -127,7 +190,7 @@ function createYouTube({ BrowserWindow, session, targetDisplay, bringBack, setti
     try { await session.fromPartition('persist:youtube').clearStorageData(); } catch (_) { /* nothing stored */ }
     return true;
   }
-  return { open, hide, isFront, input, reset, isOpen: alive };
+  return { open, hide, isFront, isShown, input, reset, isOpen: alive, pauseForGuide, resumeFromGuide };
 }
 
 module.exports = { createYouTube, AGENTS, PAGE_SETUP, KEYS };

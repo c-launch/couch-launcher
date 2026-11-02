@@ -55,7 +55,7 @@ if (!app.requestSingleInstanceLock()) {
       capture.input(st);
     },
     onButtons: (mask, lx, ly) => {
-      if (tvPart && tvPart.playing) tvPart.input(mask, lx, ly);
+      if (tvPart && tvPart.playing) { if (!overlayShown()) tvPart.input(mask, lx, ly); }
       else if (yt && yt.isFront()) yt.input(mask, lx, ly);
     },
     // B on the boot screen while Steam/Epic has focus (the launcher can't hear it then).
@@ -131,7 +131,7 @@ if (!app.requestSingleInstanceLock()) {
       } catch (_) { /* fine */ }
     }
     overlay.setBounds(targetDisplay().bounds);
-    overlay.webContents.send('overlay:open', { gameId: running ? running.gameId : null, canClose: canClose() });
+    overlay.webContents.send('overlay:open', { gameId: running ? running.gameId : null, canClose: canClose(), tv: tvPart && tvPart.playing ? tvPart.now() : null, yt: ytGuide });
     overlay.show();
     overlay.setAlwaysOnTop(true, 'screen-saver');
     if (w32) w32.forceForeground(w32.hwndOf(overlay));
@@ -148,9 +148,17 @@ if (!app.requestSingleInstanceLock()) {
     pauser.resumeAfterPending().then(() => {
       if (overlay && !overlay.isDestroyed()) overlay.hide();
       if (refocus && r && running === r) focusGame(r);
+      // Back to what you were watching.
+      if (ytGuide) { ytGuide = false; if (refocus) yt.resumeFromGuide(); }
+      if (tvPart && tvPart.inGuide) {
+        tvPart.resumeFromGuide();
+        if (refocus && w32 && tvBackTo && w32.exists(tvBackTo)) { try { w32.forceForeground(tvBackTo); } catch (_) { /* fine */ } }
+      }
       setTimeout(updatePause, 100);
     });
   }
+  let tvBackTo = null; // the player's window, to give it focus back after the guide
+  let ytGuide = false; // the guide is open over YouTube
   // Gives the game its focus back. Some games (Roblox) don't take it back when the guide hides.
   function focusGame(r) {
     if (!w32) return;
@@ -167,9 +175,21 @@ if (!app.requestSingleInstanceLock()) {
   function guidePressed() {
     if (!win || win.isDestroyed()) return;
     // Watching something: stop there (your spot is saved) and come back with the guide open.
-    if (tvPart && tvPart.playing) { tvPart.stop('guide'); setTimeout(() => send('guide'), 450); return; }
-    // In YouTube: it pauses and steps aside; opening it again carries on where you were.
-    if (yt && yt.isFront()) { yt.hide(); bringBack(false); return; }
+    // Watching something: it pauses and the guide opens over it; closing the guide carries on.
+    if (tvPart && tvPart.playing) {
+      if (overlayShown()) { hideOverlay(true); return; }
+      try { const fg = w32 && w32.foreground(); tvBackTo = fg && fg.pid !== process.pid ? fg.hwnd : null; } catch (_) { tvBackTo = null; }
+      tvPart.pauseForGuide();
+      showOverlay();
+      return;
+    }
+    // In YouTube: it pauses and the guide opens over it; closing the guide carries on.
+    if (yt && yt.isShown() && (yt.isFront() || (overlayShown() && ytGuide))) {
+      if (overlayShown()) { hideOverlay(true); return; }
+      ytGuide = true;
+      yt.pauseForGuide().then(() => showOverlay());
+      return;
+    }
     if (overlayShown()) { hideOverlay(true); return; }
     const gameHasScreen = running && (win.isMinimized() || !win.isFocused());
     if (gameHasScreen) {
@@ -1347,6 +1367,10 @@ if (!app.requestSingleInstanceLock()) {
     return true;
   });
   handle('overlay:hide', () => { hideOverlay(true); return true; });
+  // Guide › Stop watching
+  // Guide › Close YouTube (it's kept, so opening it again carries on)
+  handle('yt:guideClose', () => { ytGuide = false; hideOverlay(false); if (yt) yt.hide(); bringBack(false); return true; });
+  handle('tv:guideStop', () => { if (tvPart && tvPart.playing) tvPart.stop('back'); hideOverlay(false); return true; });
   // Stores, opened the controller-friendly way where there is one (Steam: Big Picture).
   handle('store:open', async (id) => {
     hideOverlay();
@@ -1500,6 +1524,8 @@ if (!app.requestSingleInstanceLock()) {
     const allowed = ['switch', 'close', 'goto', 'join'];
     if (!req || !allowed.includes(req.action)) throw new Error('Unknown action');
     if (req.target === 'home' && running) releaseBoot(running);
+    if (tvPart && tvPart.playing) tvPart.stop('guide'); // going somewhere in the launcher: stop watching (your spot is saved)
+    if (ytGuide) { ytGuide = false; if (yt) yt.hide(); } // and YouTube steps aside (it stays paused)
     hideOverlay();
     bringBack(false);
     send('remote', { action: req.action, id: req.id ? String(req.id) : null, target: req.target ? String(req.target) : null, friend: req.friend ? String(req.friend) : null });

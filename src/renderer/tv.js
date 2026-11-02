@@ -93,8 +93,12 @@ window.CouchTV = function (k) {
   function back() {
     if (T.stack.length) {
       const prev = T.stack.pop();
+      const fromShow = T.page === 'show' && T.show && T.show.preview;
+      const bg = fromShow ? (T.show.preview.background || (T.show.meta && T.show.meta.background) || metahub('background', T.show.preview.id)) : null;
       T.page = prev.page; T.show = prev.show || T.show; T.grid = prev.grid || T.grid;
+      T.pendingZoom = fromShow ? bg || '' : null;
       render(prev.focus, prev.scroll);
+      if (fromShow && !T.want) zoomBack(bg);
       return;
     }
     if (T.page !== 'home') return go('home');
@@ -123,7 +127,21 @@ window.CouchTV = function (k) {
     sc.innerHTML = '';
     fn(sc, gen);
     sc.scrollTop = scrollTop || 0;
+    // Coming back to a page whose rows are still loading: go back to the same poster (and
+    // scroll position) once it's there.
+    T.want = focusKey && !$('[data-key="' + cssEsc(focusKey) + '"]', T.layer.el) ? { key: focusKey, scroll: scrollTop || 0, zoom: T.pendingZoom, gen } : null;
+    T.pendingZoom = null;
     place(focusKey);
+  }
+  function settle() {
+    const w = T.want;
+    if (!w || !isOpen() || w.gen !== T.gen) return;
+    const el = $('[data-key="' + cssEsc(w.key) + '"]', scroller());
+    if (!el) return;
+    T.want = null;
+    if (w.scroll) scroller().scrollTop = w.scroll;
+    setFocus(el, { instant: true });
+    if (w.zoom != null) zoomBack(w.zoom);
   }
   function place(focusKey) {
     const el = (focusKey && $('[data-key="' + cssEsc(focusKey) + '"]', T.layer.el)) || $('.tv-scroll [data-nav]', T.layer.el) || $('[data-nav]', T.layer.el);
@@ -194,6 +212,7 @@ window.CouchTV = function (k) {
     box.innerHTML = cw.length ? sectionHTML('Continue Watching', rowHTML(cw.map(cwHTML).join(''))) : '';
     if (had) place(had);
     hero();
+    settle();
   }
   async function loadBoard(sc, gen) {
     let cats;
@@ -215,6 +234,7 @@ window.CouchTV = function (k) {
       const had = currentFocus() && currentFocus().closest('.tv-slot') === slot && currentFocus().dataset.key;
       slot.innerHTML = sectionHTML(title, rowHTML(items.slice(0, 30).map((p, j) => posterHTML(p, 'r' + i + '-' + j, 'r' + i, 'r' + i)).join('')));
       if (had) place(had);
+      settle();
       if (i === 0) { T.featured = items.filter((p) => p.background || metahub('background', p.id)).slice(0, 6); T.heroI = 0; hero(); }
     }));
     if (!stale(gen) && !T.featured.length) { const h = $('.tv-hero', sc); if (h) h.remove(); place(); }
@@ -294,6 +314,7 @@ window.CouchTV = function (k) {
     if (from === 0) box.innerHTML = '';
     box.insertAdjacentHTML('beforeend', g.items.slice(from).map((p, i) => posterHTML(p, 'g-' + (from + i), 'grid', null, ' data-gi="' + (from + i) + '"')).join(''));
     if (!focusKey) place();
+    settle();
   }
 
   // ---------------------------------------------------------------- Library
@@ -309,6 +330,7 @@ window.CouchTV = function (k) {
       $('.tv-grid', sc).innerHTML = items.length ? items.map((p, i) => posterHTML(p, 'l-' + i, 'grid')).join('')
         : empty(T.status && T.status.signedIn ? 'Nothing in your Library yet. Press X on a poster, or + on a show’s page, to add it.' : 'Press X on a poster to add it to your Library. Sign in to Stremio (Settings › Movies & TV) to bring your own Library here.');
       place(currentFocus() && currentFocus().closest('.tv-scroll') ? currentFocus().dataset.key : null);
+      settle();
     });
   }
 
@@ -321,6 +343,7 @@ window.CouchTV = function (k) {
     api.tvSearch(q).then((rows) => {
       if (stale(gen)) return;
       $('.tv-rows', sc).innerHTML = rows.length ? rows.map((r, i) => sectionHTML(r.title, rowHTML(r.items.map((p, j) => posterHTML(p, 'sr' + i + '-' + j, 'sr' + i, 'sr' + i)).join('')))).join('') : empty('Nothing found for “' + esc(q) + '”.');
+      settle();
     }).catch((e) => { if (!stale(gen)) $('.tv-rows', sc).innerHTML = empty('Search didn’t work: ' + esc(e.message)); });
   }
   async function askSearch() {
@@ -365,7 +388,63 @@ window.CouchTV = function (k) {
   }
 
   // ---------------------------------------------------------------- Show / movie page
-  function openShow(p) { push('show', { show: { preview: p, meta: null, season: null } }); }
+  // Opening a title: its poster grows out of the row into the full-screen page (like an app
+  // opening on Apple TV), the artwork fades from the poster to the backdrop, and the page fades in.
+  function openShow(p, fromEl) {
+    const bg = p.background || metahub('background', p.id);
+    const z = fromEl && zoomFrom(fromEl, bg);
+    push('show', { show: { preview: p, meta: null, season: null } });
+    pageIn(!!z);
+  }
+  const EASE = 'cubic-bezier(.32,.72,0,1)'; // iOS-like
+  function pageIn(late) {
+    const sc = scroller();
+    if (!sc || reduce()) return;
+    sc.animate([{ opacity: 0, transform: 'translateY(2.4rem)' }, { opacity: 1, transform: 'none' }], { duration: late ? 420 : 300, delay: late ? 230 : 0, easing: EASE, fill: 'backwards' });
+  }
+  function zoomBox(rect, poster, bg) {
+    const z = document.createElement('div');
+    z.className = 'tv-zoom';
+    z.innerHTML = (bg ? '<i class="z-bg" style="background-image:url(&quot;' + esc(bg) + '&quot;)"></i>' : '') + (poster ? '<i class="z-po" style="background-image:url(&quot;' + esc(poster) + '&quot;)"></i>' : '');
+    Object.assign(z.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
+    $('.tv', T.layer.el).appendChild(z);
+    return z;
+  }
+  function zoomFrom(el, bg) {
+    if (reduce()) return null;
+    const r = el.getBoundingClientRect();
+    if (!r.width) return null;
+    const img = $('img:not(.broken)', el);
+    const z = zoomBox(r, img && img.src, bg);
+    const W = window.innerWidth, H = window.innerHeight;
+    const radius = getComputedStyle(el).borderRadius || '12px';
+    const grow = z.animate([
+      { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: radius, boxShadow: '0 2rem 5rem rgba(0,0,0,.6)' },
+      { left: '0px', top: '0px', width: W + 'px', height: H + 'px', borderRadius: '0px', boxShadow: '0 0 0 rgba(0,0,0,0)' }
+    ], { duration: 600, easing: EASE, fill: 'forwards' });
+    const po = $('.z-po', z);
+    if (po && bg) po.animate([{ opacity: 1 }, { opacity: 1, offset: 0.15 }, { opacity: 0, offset: 0.6 }, { opacity: 0 }], { duration: 600, easing: 'ease', fill: 'forwards' });
+    grow.finished.then(() => z.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease', fill: 'forwards' }).finished).catch(() => {}).then(() => z.remove());
+    return z;
+  }
+  // Going back from a title: the page shrinks back into its poster in the row.
+  function zoomBack(bg) {
+    if (reduce()) return;
+    const el = currentFocus();
+    if (!el || !el.classList.contains('tv-poster')) { pageIn(false); return; }
+    const r = el.getBoundingClientRect();
+    const img = $('img:not(.broken)', el);
+    const z = zoomBox({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }, img && img.src, bg);
+    const po = $('.z-po', z);
+    if (po) po.style.opacity = '0';
+    el.style.visibility = 'hidden';
+    const shrink = z.animate([
+      { left: '0px', top: '0px', width: window.innerWidth + 'px', height: window.innerHeight + 'px', borderRadius: '0px', opacity: 1 },
+      { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: getComputedStyle(el).borderRadius || '12px', opacity: 1 }
+    ], { duration: 420, easing: EASE, fill: 'forwards' });
+    if (po) po.animate([{ opacity: 0 }, { opacity: 1, offset: 0.6 }, { opacity: 1 }], { duration: 420, fill: 'forwards' });
+    shrink.finished.catch(() => {}).then(() => { el.style.visibility = ''; z.remove(); });
+  }
   function showPage(sc, gen) {
     const sh = T.show, p = sh.preview;
     backdrop(p.background || metahub('background', p.id));
@@ -609,10 +688,10 @@ window.CouchTV = function (k) {
     switch (a) {
       case 'section': return el.dataset.to === 'search' ? (T.page === 'search' ? askSearch() : go('search')) : go(el.dataset.to);
       case 'settings': closeLayer(T.layer); return k.openSettings && k.openSettings();
-      case 'item': return r && openShow(r);
+      case 'item': return r && openShow(r, el);
       case 'resume': return r && playPreview({ id: r.id, type: r.type, name: r.name, poster: r.poster }, r);
       case 'hero-play': { const p = heroItem(); return p && playPreview(p, cwFor(p.id)); }
-      case 'hero-info': { const p = heroItem(); return p && openShow(p); }
+      case 'hero-info': { const p = heroItem(); return p && openShow(p, null); }
       case 'hero-lib': { const p = heroItem(); if (p) await toggleLib(p); return hero(); }
       case 'signin': return signIn();
       case 'signin-later': S.lib.settings.tvSignInSeen = true; save(); return render();

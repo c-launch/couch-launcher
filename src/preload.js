@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld('launcher', {
   discordType: (text) => call('discord:type', String(text || '')),
   balance: (b, prefer) => call('audio:balance', b == null ? null : Number(b), prefer || ''),
   overlayAction: (req) => call('overlay:action', req),
+  tvGuideStop: () => call('tv:guideStop'),
+  ytGuideClose: () => call('yt:guideClose'),
   checkUpdate: () => call('update:check'),
   installUpdate: () => call('update:install'),
   resumeGame: () => call('game:resume'),
