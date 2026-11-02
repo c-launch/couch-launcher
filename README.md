@@ -133,7 +133,7 @@ Open it from the dock (the TV button). It's Stremio with an Apple TV–style loo
 - **Pages:** Home (featured, Continue Watching, your addons' rows), Movies and Series (genres), Library, Addons (reorder, set up, remove, add from a link), Search (Y).
 - **Show page:** Play goes to where you left off or the next episode you haven't seen. LB/RB change season, X marks an episode watched.
 - **Streams:** pick one (best match on top, filter by quality), or turn on *Play the best match straight away*.
-- **Playing:** movies play in **mpv** (free; the launcher installs it with one press). A pause · ←/→ scrub (hold to go faster) · LB −10 s / RB +30 s · Y subtitles · X audio · B back. The next episode starts by itself after a 10-second Up Next. Your spot is saved for Resume.
+- **Playing:** movies play in **mpv** (free; the launcher downloads it with one press into its own data folder, where updates never touch it, and finds any mpv already on your PC by itself). A pause · ←/→ scrub (hold to go faster) · LB −10 s / RB +30 s · Y subtitles · X audio · B back. The next episode starts by itself after a 10-second Up Next. Your spot is saved for Resume.
 - **Torrent streams** use Stremio's own streaming engine, so the Stremio app (or Stremio Service) needs to be installed. Debrid and direct links work without it.
 - **Look:** Settings › Movies & TV › Appearance: Dark or Light.
 - **Xbox / PS button while watching:** the video pauses and the guide opens over it. *Resume watching* (or the button again) carries on; *Stop watching* saves your spot and goes back.
