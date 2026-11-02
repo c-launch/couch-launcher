@@ -842,7 +842,7 @@
         '<button class="toggle-row" data-nav data-key="m-clip" data-zone="body" data-action="medal-key" data-which="clip"><span><div>Medal’s clip key</div><div class="d">Match Medal › Settings › Capture Hotkeys.</div></span><span class="status ok">' + esc(S.lib.settings.medalClipKey || 'F8') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-shot" data-zone="body" data-action="medal-key" data-which="shot"><span><div>Medal’s screenshot key</div><div class="d">Set a screenshot key in Medal, then pick the same one here.</div></span><span class="status ' + (S.lib.settings.medalShotKey ? 'ok' : 'warn') + '">' + esc(S.lib.settings.medalShotKey || 'Not set') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-xbox" data-zone="body" data-action="medal-xbox"><span><div>Xbox controllers</div><div class="d">' + esc(S.captureInfo == null ? 'Checking your controller…' : S.captureInfo.xboxShareReadable ? 'Your Xbox controller’s Share button can be read (Bluetooth).' : S.captureInfo.xboxNeedsFind ? 'Your Xbox controller is connected over Bluetooth: open Test the Share button below and choose Find Share once. Until then, View + RB clips.' : 'No Xbox Share button readable right now: it only works over Bluetooth. Hold View + RB for a clip, View + LB for a screenshot.') + '</div></span><span class="status ok">' +
-          ({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button>' +
+          ({ auto: 'Share and View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-test" data-zone="body" data-action="share-test"><span><div>Test the Share button</div><div class="d">See what the launcher reads from your controller, and send Medal a test clip.</div></span><span class="status ok">Test</span></button></div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;
@@ -1753,9 +1753,10 @@
       if (!d) return '<p class="hint">Looking for your controller…</p>';
       const x = d.xbox[0];
       let h = '<dl class="kv">';
-      h += '<dt>Share button for Medal</dt><dd>' + (d.on ? 'On' : 'Off (Settings › Controllers)') + ' · ' + esc({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[d.mode] || d.mode) + '</dd>';
+      h += '<dt>Share button for Medal</dt><dd>' + (d.on ? 'On' : 'Off (Settings › Controllers)') + ' · ' + esc({ auto: 'Share and View combo', share: 'Share button', combo: 'View + RB / LB' }[d.mode] || d.mode) + '</dd>';
       h += '<dt>Xbox controller over Bluetooth</dt><dd>' + (x ? 'Found (model ' + pidHex(x.pid) + ', ' + x.size + '-byte reports, ' + x.reports + ' read)' : 'Not found' + (d.otherMicrosoft.length ? ' (other Xbox controllers seen: ' + d.otherMicrosoft.map(pidHex).join(', ') + ')' : '') + '. Over USB or the Xbox adapter, Windows doesn’t share the Share button: use View + RB.') + '</dd>';
       if (x) {
+        if (x.buttons) h += '<dt>Last button change</dt><dd class="mono">' + esc(ago(x.buttons.at) + ' · from byte ' + x.buttons.from + ': ' + x.buttons.bytes.join(' ')) + '</dd>';
         const L = d.learn;
         const known = x.windowsReport ? x.learned : (x.shareAt != null ? { byte: x.shareAt } : null);
         let state;
@@ -1776,6 +1777,7 @@
         const front = c.front && c.front.exe ? ' (in ' + c.front.exe + ')' : '';
         let res = c.why ? WHY[c.why] || c.why : c.sent ? 'sent the ' + c.sent + ' key' : (c.what === 'Share' ? 'held too briefly for a clip, or no screenshot key' : 'not sent');
         h += '<dt>Last press</dt><dd>' + esc(c.what + front + ', ' + ago(c.at) + ': ' + res) + '</dd>';
+        if (c.hid) h += '<dt></dt><dd class="mono">' + esc('Bluetooth data at that moment: ' + (c.hid.age == null ? 'none' : 'last report ' + (c.hid.age < 1000 ? c.hid.age + ' ms' : Math.round(c.hid.age / 1000) + ' s') + ' before') + (c.hid.buttons ? ' · last button change ' + ago(c.hid.buttons.at) + ' (from byte ' + c.hid.buttons.from + '): ' + c.hid.buttons.bytes.join(' ') : '')) + '</dd>';
         if (c.front && c.front.elevated && !c.front.selfElevated) h += '<dt></dt><dd class="bk-why">' + esc(c.front.exe + ' runs as administrator, so Windows doesn’t let the launcher press keys in it (Medal never sees them). Start the game normally, or run Couch Launcher as administrator too.') + '</dd>';
       } else h += '<dt>Last press</dt><dd>' + esc('None yet: hold Share in a game, then come back here') + '</dd>';
       h += '</dl>';
@@ -1812,7 +1814,7 @@
       const x = d && d.xbox && d.xbox[0];
       if (learning && d && d.learn) {
         if (d.learn.found) { learning = false; msg = 'Found Share and saved it. In a game, hold it for a clip (tap for a screenshot).'; }
-        else if (d.learn.timedOut) { learning = false; msg = 'Nothing came through when Share was pressed: on this PC, Windows keeps the Share button for itself over Bluetooth. Use View + RB for a clip and View + LB for a screenshot (they work in Auto).'; }
+        else if (d.learn.timedOut) { learning = false; msg = 'Nothing came through when Share was pressed: on this PC, Windows keeps the Share button for itself over Bluetooth. Use View + RB for a clip and View + LB for a screenshot (they always work in Auto).'; }
       }
       if (x && x.share && !pressed) { pressed = true; msg = 'Share seen. In a game, hold it for a clip (tap for a screenshot).'; }
       draw();
