@@ -1736,6 +1736,11 @@
     return gone;
   }
 
+  // Leaving whatever is open over the launcher's pages (Movies & TV, Clips, a friend's profile,
+  // the Friends panel…), for the guide's "go to" choices. The guide and the boot screen stay.
+  function leaveApps() {
+    for (const l of layers.slice().reverse()) if (!l.isGuide && l.className !== 'launching') closeLayer(l);
+  }
   // The launcher's own apps (Movies & TV, YouTube): remembered so the guide's Recent list has them.
   const APPS = { tv: { title: 'Movies & TV', icon: 'tv' }, youtube: { title: 'YouTube', icon: 'playc' } };
   function openApp(id) {
@@ -2101,15 +2106,16 @@
           await closeCurrentGame();
           return;
         }
-        if (act === 'play') { const id = el.dataset.id; if (S.playing) { await switchTo(id); return; } closeLayer(layer); return play(id); }
-        if (act === 'library') { closeLayer(layer); return go('library'); }
+        if (act === 'play') { const id = el.dataset.id; if (S.playing) { await switchTo(id); return; } leaveApps(); closeLayer(layer); return play(id); }
+        if (act === 'library') { leaveApps(); closeLayer(layer); return go('library'); }
         if (act === 'home') {
+          leaveApps();
           closeLayer(layer);
           for (const l of layers.slice().reverse()) if (l.className === 'launching') closeLayer(l);
           try { await api.goHome(); } catch (_) { /* still go Home */ }
           return go('home', S.playing ? 'h-' + S.playing.id : null);
         }
-        if (act === 'add') { closeLayer(layer); return openEdit(null); }
+        if (act === 'add') { leaveApps(); closeLayer(layer); return openEdit(null); }
         if (act === 'connect') { if (await connectXbox()) { xboxOn = true; friends = null; redraw(); if (tab === 'friends') loadFriends(); } return; }
         if (act === 'connect-steam') { if (await connectSteam()) { friends = null; redraw(); loadFriends(); } return; }
         if (act === 'm-toggle') return musicCmd('toggle');
@@ -2140,13 +2146,13 @@
         if (act === 'friends-retry') { friends = null; redraw(); return loadFriends(); }
         if (act === 'dc-add') { closeLayer(layer); return discordPins(); }
         if (act === 'dc-setup') { closeLayer(layer); return discordConnect(); }
-        if (act === 'players-setup') { closeLayer(layer); return setUpPlayersNow(); }
+        if (act === 'players-setup') { leaveApps(); closeLayer(layer); return setUpPlayersNow(); }
         if (act === 'clip') { const list = gclips.clips.filter((c) => c.kind === 'clip').slice(0, 8); return openClipPlayer(list, Number(el.dataset.i)); }
-        if (act === 'clips-all') { closeLayer(layer); return openClips(); }
+        if (act === 'clips-all') { leaveApps(); closeLayer(layer); return openClips(); }
         if (act === 'profile') { openProfile(); return; }
-        if (act === 'settings') { closeLayer(layer); S.setTab = 'platforms'; return go('settings', 't-platforms'); }
-        if (act === 'themes') { closeLayer(layer); S.setTab = 'themes'; return go('settings', 't-themes'); }
-        if (act === 'platforms') { closeLayer(layer); S.setTab = 'platforms'; return go('settings', 'p-all'); }
+        if (act === 'settings') { leaveApps(); closeLayer(layer); S.setTab = 'platforms'; return go('settings', 't-platforms'); }
+        if (act === 'themes') { leaveApps(); closeLayer(layer); S.setTab = 'themes'; return go('settings', 't-themes'); }
+        if (act === 'platforms') { leaveApps(); closeLayer(layer); S.setTab = 'platforms'; return go('settings', 'p-all'); }
         if (act === 'power') { closeLayer(layer); return powerMenu(); }
         if (act === 'sleep') return sleepMenu();
       },
@@ -3600,6 +3606,9 @@
     if (OVERLAY || !r) return;
     S.noGuideUntil = Date.now() + 2500; // coming forward for this request, not to show the guide
     for (const l of layers.slice().reverse()) if (l.isGuide || l.className === 'launching') closeLayer(l);
+    // Going somewhere in the launcher: leave Movies & TV (and anything else open) first, so you
+    // land there and not behind it. Opening Movies & TV again keeps it as it is.
+    if (!(r.action === 'goto' && r.target === 'tv')) leaveApps();
     if (r.action === 'switch' && r.id) return switchTo(r.id);
     if (r.action === 'join' && r.id && r.friend) {
       if (S.playing && S.playing.id === r.id) return api.friendJoin(r.friend).catch((e) => toast(e.message, true));

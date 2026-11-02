@@ -1,6 +1,6 @@
 {
- "version": "1.14.2",
- "notes": "Fixes: the poster you came back to in Movies & TV no longer lands in the wrong spot (the zoom now follows the poster as the row settles, and always cleans up). mpv is remembered: it no longer has to be chosen again after updates or restarts; Install now downloads mpv into the launcher's own folder, and any mpv already on your PC is found by itself.",
- "file": "CouchLauncher-update-1.14.2.zip",
- "size": 272901
+ "version": "1.14.3",
+ "notes": "Fix: going to Settings, Themes, Platforms, Home or My library from the guide while in Movies & TV now takes you there (it used to stay hidden behind Movies & TV until you closed it).",
+ "file": "CouchLauncher-update-1.14.3.zip",
+ "size": 273032
 }
