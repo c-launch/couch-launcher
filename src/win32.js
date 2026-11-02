@@ -16,6 +16,9 @@ function createWin32() {
     const GetWindowRect = u.func('__stdcall', 'GetWindowRect', 'bool', ['uintptr_t', koffi.out(koffi.pointer(RECT))]);
     const IsZoomed = u.func('__stdcall', 'IsZoomed', 'bool', ['uintptr_t']);
     const k32 = koffi.load('kernel32.dll');
+    // Whether a game has the screen in exclusive full screen (nothing can be drawn over it).
+    let QueryNotify = null;
+    try { QueryNotify = koffi.load('shell32.dll').func('__stdcall', 'SHQueryUserNotificationState', 'int32', [koffi.out(koffi.pointer('int32'))]); } catch (_) { QueryNotify = null; }
     const GetCurrentThreadId = k32.func('__stdcall', 'GetCurrentThreadId', 'uint32', []);
     const AttachThreadInput = u.func('__stdcall', 'AttachThreadInput', 'bool', ['uint32', 'uint32', 'bool']);
     const BringWindowToTop = u.func('__stdcall', 'BringWindowToTop', 'bool', ['uintptr_t']);
@@ -62,6 +65,13 @@ function createWin32() {
       // Puts `ours` right below `target` without taking focus.
       placeBelow(ours, target) { return SetWindowPos(ours, target, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE); },
       exists: (h) => !!h && IsWindow(h),
+      // QUNS_RUNNING_D3D_FULL_SCREEN (3): a game in exclusive full screen.
+      exclusiveFullScreen() {
+        if (!QueryNotify) return false;
+        try { const st = [0]; return QueryNotify(st) === 0 && st[0] === 3; } catch (_) { return false; }
+      },
+      minimize: (h) => ShowWindow(h, 6), // SW_MINIMIZE
+      restore: (h) => ShowWindow(h, 9),  // SW_RESTORE
       focus: (h) => SetForegroundWindow(h),
       // Takes focus even from the background: briefly share input with the program that has focus,
       // take it, then stop sharing. No fake key presses.

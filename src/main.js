@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, globalShortcut, Menu, safeStorage, dialog, screen, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, globalShortcut, Menu, safeStorage, dialog, screen, Notification, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile } = require('child_process');
@@ -36,6 +36,7 @@ if (!app.requestSingleInstanceLock()) {
   // What is running right now (only one game at a time).
   // { gameId, child, pids, dir, startedAt, pending, seen, miss, watchTimer }
   let running = null;
+  let tvPart = null; // Movies & TV (set up below, with the other features)
 
   // Xbox button opens the guide; View + Menu held during a game brings the launcher back.
   const controller = createControllerWatcher({
@@ -43,6 +44,8 @@ if (!app.requestSingleInstanceLock()) {
     onGuide: () => guidePressed(),
     onCombo: () => guidePressed(),
     usePs: () => !(lib && lib.settings && lib.settings.psPads === false),
+    // While a movie or episode plays, the controller drives the player.
+    onButtons: (mask, lx, ly) => { if (tvPart && tvPart.playing) tvPart.input(mask, lx, ly); },
     // B on the boot screen while Steam/Epic has focus (the launcher can't hear it then).
     onBack: () => {
       const r = running;
@@ -136,15 +139,49 @@ if (!app.requestSingleInstanceLock()) {
   // Xbox button / View + Menu / Ctrl+Alt+Home.
   function guidePressed() {
     if (!win || win.isDestroyed()) return;
+    // Watching something: stop there (your spot is saved) and come back with the guide open.
+    if (tvPart && tvPart.playing) { tvPart.stop('guide'); setTimeout(() => send('guide'), 450); return; }
     if (overlayShown()) { hideOverlay(true); return; }
     const gameHasScreen = running && (win.isMinimized() || !win.isFocused());
-    if (gameHasScreen) { showOverlay(); return; }
+    if (gameHasScreen) {
+      // Exclusive full screen: nothing can float over the game, so step it aside and open the
+      // guide on the launcher's own screen instead (Resume brings the game back).
+      if (running.exclusive || (w32 && w32.exclusiveFullScreen())) { guideInLauncher(running); return; }
+      showOverlay();
+      checkOverlayKept(running);
+      return;
+    }
     if (!win.isFocused()) {
       // Coming back from a store the launcher opened: close it (Settings › Controllers).
       if (!running && openedApps.size && lib.settings.autoCloseApps !== false) closeOpenedApps();
       bringBack(false); // on the desktop or in another app: come to the front
     }
     send('guide');
+  }
+
+  function guideInLauncher(r) {
+    r.exclusive = true;
+    if (overlayShown()) { overlay.webContents.send('overlay:closed'); overlay.hide(); }
+    if (w32) {
+      try {
+        const fg = w32.foreground();
+        if (fg && fg.pid !== process.pid) r.backTo = fg.hwnd;
+        const h = [r.backTo, r.gameHwnd].find((x) => x && w32.exists(x));
+        if (h) { r.gameHwnd = h; w32.minimize(h); }
+      } catch (_) { /* fine */ }
+    }
+    setTimeout(() => { if (running === r) bringBack(true); }, 150);
+  }
+  // Some games in exclusive full screen take the screen right back, so the guide flickers and
+  // goes away. If that happens, use the launcher's own screen for this game from now on.
+  function checkOverlayKept(r) {
+    setTimeout(() => {
+      if (running !== r || !overlayShown() || !overlay || overlay.isDestroyed()) return;
+      let fg = null;
+      try { fg = w32 && w32.foreground(); } catch (_) { fg = null; }
+      const lost = !overlay.isFocused() && fg && fg.pid !== process.pid;
+      if (lost) guideInLauncher(r);
+    }, 700);
   }
 
   // Stores opened from the launcher, closed when you press the Xbox button to come back.
@@ -758,6 +795,13 @@ if (!app.requestSingleInstanceLock()) {
 
   handle('lib:load', () => lib);
 
+  // ---------- Movies & TV (Stremio) ----------
+  tvPart = require('./tvmain').setupTv({
+    app, safeStorage, shell, clipboard, BrowserWindow, handle, send,
+    settings: () => lib.settings, saveSettings: () => persist(),
+    targetDisplay, toPx, presentApp, bringBack
+  });
+
   let xbox = null;
   const xb = () => xbox || (xbox = createXbox(app.getPath('userData'), safeStorage));
   handle('xbox:status', () => xb().connected());
@@ -1038,8 +1082,12 @@ if (!app.requestSingleInstanceLock()) {
         h = [r.gameHwnd, r.backTo].find((x) => x && w32.exists(x)) || null;
         if (!h) { try { h = w32.windowOfPids(r.child ? [r.child.pid] : (r.pids || [])); } catch (_) { h = null; } }
       }
-      if (h) { r.gameHwnd = h; w32.placeBelow(w32.hwndOf(win), h); w32.forceForeground(h); }
-      else win.minimize();
+      if (h) {
+        r.gameHwnd = h;
+        if (w32.isIconic(h)) w32.restore(h); // exclusive full-screen games were minimized for the guide
+        w32.placeBelow(w32.hwndOf(win), h);
+        w32.forceForeground(h);
+      } else win.minimize();
     });
     return true;
   });
@@ -1336,7 +1384,7 @@ if (!app.requestSingleInstanceLock()) {
     try { globalShortcut.register('Control+Alt+Home', () => guidePressed()); } catch (_) { /* taken */ }
   });
 
-  app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); });
+  app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); if (tvPart) tvPart.quit(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', () => { pauser.resumeAll(); if (overlay && !overlay.isDestroyed()) overlay.destroy(); if (media) media.stop(); });
 }

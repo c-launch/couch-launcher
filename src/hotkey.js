@@ -66,7 +66,7 @@ function loadXInput() {
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
-function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs }) {
+function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons }) {
   const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false };
   if (process.platform !== 'win32') return off;
   let x;
@@ -92,10 +92,14 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs }) {
 
   function poll() {
     let combo = false, guide = false, back = false;
+    let all = 0, lx = 0, ly = 0; // every pad together, for the Movies & TV player
     for (let i = 0; i < 4; i++) {
       const g = read(i);
       if (!g) { prevSlot[i] = 0; continue; }
       const b = g.wButtons;
+      all |= b;
+      if (Math.abs(g.sThumbLX || 0) > Math.abs(lx)) lx = g.sThumbLX || 0;
+      if (Math.abs(g.sThumbLY || 0) > Math.abs(ly)) ly = g.sThumbLY || 0;
       if (joining && onPress && (b & 0x1000) && !(prevSlot[i] & 0x1000)) onPress(i);
       prevSlot[i] = b;
       if ((b & BACK) && (b & START)) combo = true;
@@ -110,8 +114,12 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs }) {
         if (st.ps) guide = true;
         if (st.circle) back = true;
         if (st.share && st.options) combo = true;
+        all |= st.mask || 0;
+        if (Math.abs(st.lx || 0) > Math.abs(lx)) lx = st.lx || 0;
+        if (Math.abs(st.ly || 0) > Math.abs(ly)) ly = st.ly || 0;
       }
     }
+    if (onButtons) { try { onButtons(all & ~0x0400, lx, ly); } catch (_) { /* never stop the watcher */ } }
     if (guide && !guideWasDown) onGuide();
     guideWasDown = guide;
     if (back && !backWasDown && gameRunning && onBack) onBack();
