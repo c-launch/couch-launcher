@@ -7,10 +7,15 @@
 // Each pad is opened shared (games and Steam keep reading it as usual) with one read always
 // waiting in the driver (overlapped I/O). Every poll picks up what arrived, without ever blocking.
 // If something can't be loaded (non-Windows, no koffi) this quietly reads nothing.
+//
+// Xbox Series controllers on Bluetooth are opened too, only for their Share button (Windows
+// keeps it from XInput). Everything else on those pads still comes through XInput.
 
 const SONY = 0x054c;
 const DUALSENSE = new Set([0x0ce6, 0x0df2]); // DualSense, DualSense Edge
 const PADS = new Set([0x05c4, 0x09cc, 0x0ba0, 0x0ce6, 0x0df2]); // + DualShock 4 v1/v2, DS4 USB adapter
+const MICROSOFT = 0x045e;
+const XBOX_SHARE = new Set([0x0b13, 0x0b20]); // Xbox Series X|S controller over Bluetooth (older / newer firmware)
 const STATUS_PENDING = 0x103;
 const RESCAN_MS = 3000;
 // A pad whose PS button seems to flip this often is being misread: ignore it rather than
@@ -65,6 +70,28 @@ function parseReport(pid, b, size) {
     share: !!(b2 & 0x10), options: !!(b2 & 0x20),
     ps: !!(b3 & 0x01), mask, lx, ly
   };
+}
+
+// Xbox Series over Bluetooth, report 0x01: Share is bit 0 of byte 16 or 17, depending on the
+// controller's firmware. Which one is learned: the first time one of them turns on while every
+// other button is at rest, that's Share. A bit that keeps flipping by itself isn't a button.
+function parseXbox(p, b, size, t) {
+  if (!b || b[0] !== 0x01 || size < 17) return null;
+  const x = p.x || (p.x = { lock: null, last: {}, flips: { 16: [], 17: [] }, bad: {} });
+  const rest = (b[13] | 0) === 0 && (b[14] | 0) === 0 && (b[15] | 0) === 0;
+  for (const c of [16, 17]) {
+    if (c >= size) continue;
+    const bit = (b[c] | 0) & 1;
+    if (x.last[c] !== undefined && bit !== x.last[c]) {
+      x.flips[c] = x.flips[c].filter((u) => t - u < 3000);
+      x.flips[c].push(t);
+      if (x.flips[c].length > 6) { x.bad[c] = true; if (x.lock === c) x.lock = null; }
+      if (bit && x.lock == null && !x.bad[c] && rest) x.lock = c;
+    }
+    x.last[c] = bit;
+  }
+  const xshare = x.lock != null && !x.bad[x.lock] && ((b[x.lock] | 0) & 1) === 1;
+  return { kind: 'xbox', xshare, mask: 0, lx: 0, ly: 0 };
 }
 
 // The Windows calls, through koffi (loaded once: koffi type names must be unique).
@@ -125,7 +152,7 @@ function loadApi() {
           const w = koffi.decode(detail, U16PATH);
           let s = '';
           for (let j = 2; j < w.length && w[j]; j++) s += String.fromCharCode(w[j]); // path starts at byte 4
-          if (/054c/i.test(s)) out.push(s); // USB "vid_054c", Bluetooth "vid&0002054c"
+          if (/054c|045e/i.test(s)) out.push(s); // USB "vid_054c", Bluetooth "vid&0002054c"
         }
       } finally { DestroyList(devs); koffi.free(detail); }
       return out;
@@ -209,12 +236,14 @@ function createSonyPads(opts) {
       const h = api.open(path);
       if (!h) continue;
       const ids = api.ids(h);
-      if (!ids || ids.vid !== SONY || !PADS.has(ids.pid)) { api.close(h); continue; }
+      const isPs = ids && ids.vid === SONY && PADS.has(ids.pid);
+      const isXbox = ids && ids.vid === MICROSOFT && XBOX_SHARE.has(ids.pid);
+      if (!isPs && !isXbox) { api.close(h); continue; }
       let size = 0;
       try { size = api.reportSize(h); } catch (_) { size = 0; }
       if (size < 10 || size > 4096) { api.close(h); continue; }
       api.fewBuffers(h); // read fresh reports, not a backlog
-      const p = { h, pid: ids.pid, size, buf: api.alloc(size), ov: api.alloc(32), state: null, flips: [], muted: false };
+      const p = { h, pid: ids.pid, kind: isXbox ? 'xbox' : 'ps', size, buf: api.alloc(size), ov: api.alloc(32), state: null, flips: [], muted: false };
       pads.set(path, p);
       start(p);
     }
@@ -228,7 +257,9 @@ function createSonyPads(opts) {
         if (api.status(p.ov) === STATUS_PENDING) break;
         const n = api.result(p.h, p.ov);
         if (n < 0) { drop(path); break; }
-        const st = n > 0 ? parseReport(p.pid, api.bytes(p.buf, p.size), p.size) : null;
+        const bytes = n > 0 ? api.bytes(p.buf, p.size) : null;
+        const st = !bytes ? null : p.kind === 'xbox' ? parseXbox(p, bytes, p.size, now()) : parseReport(p.pid, bytes, p.size);
+        if (st && p.kind === 'xbox') { p.state = st; start(p); continue; }
         if (st) {
           if (p.state && st.ps !== p.state.ps) {
             const t = now();
@@ -245,7 +276,11 @@ function createSonyPads(opts) {
     return out;
   }
   function close() { for (const path of [...pads.keys()]) drop(path); }
-  return { read, close, available: true, get count() { return pads.size; } };
+  return {
+    read, close, available: true,
+    get count() { return pads.size; },
+    get xboxCount() { return [...pads.values()].filter((p) => p.kind === 'xbox').length; }
+  };
 }
 
-module.exports = { createSonyPads, parseReport };
+module.exports = { createSonyPads, parseReport, parseXbox, XBOX_SHARE };

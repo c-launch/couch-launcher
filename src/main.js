@@ -46,6 +46,13 @@ if (!app.requestSingleInstanceLock()) {
     onCombo: () => guidePressed(),
     usePs: () => !(lib && lib.settings && lib.settings.psPads === false),
     // While a movie or episode plays, the controller drives the player.
+    // Share button -> Medal (tap: screenshot, hold: clip). Not inside the launcher itself.
+    onCapture: (st) => {
+      if (!capture || !lib || lib.settings.medalShare === false) return;
+      if (win && !win.isDestroyed() && win.isFocused()) return;
+      if (overlayShown()) return;
+      capture.input(st);
+    },
     onButtons: (mask, lx, ly) => {
       if (tvPart && tvPart.playing) tvPart.input(mask, lx, ly);
       else if (yt && yt.isFront()) yt.input(mask, lx, ly);
@@ -57,6 +64,21 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
+  // Medal: the launcher presses Medal's own hotkeys (Settings › Controllers › Clips with Medal).
+  let shotHintAt = 0;
+  const capture = require('./capture').createCapture({
+    mode: () => (lib && lib.settings.medalXbox) || 'auto',
+    fire: (kind) => {
+      if (!w32 || !lib) return;
+      const key = kind === 'clip' ? (lib.settings.medalClipKey || 'F8') : lib.settings.medalShotKey;
+      const k = require('./capture').parseKey(key);
+      if (!k) {
+        if (Date.now() - shotHintAt > 30000) { shotHintAt = Date.now(); notify('Screenshot key not set', 'Hold Share for a clip. For screenshots, set Medal’s screenshot key in Settings › Controllers.'); }
+        return;
+      }
+      w32.keys(k.mods, k.vk).catch(() => {});
+    }
+  });
   const pauser = createPauser();
   // Controller as a mouse in Apple Music / Spotify (setting, on by default).
   const padMouse = createPadMouse(loadXInput, () => !(lib && lib.settings && lib.settings.musicMouse === false));
@@ -659,6 +681,7 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(check, 20000);
   }
   handle('pads:get', () => pads);
+  handle('capture:status', () => ({ xboxShareReadable: controller.xboxShareReadable }));
 
   // ---------- "Who's playing?": controllers into Player 1-4 of the emulator ----------
   const emuOf = (gameId) => {

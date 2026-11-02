@@ -799,6 +799,7 @@
         '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in Windows display settings.</p>';
     }
     if (tab === 'controllers') {
+      if (S.captureInfo === undefined) { S.captureInfo = null; Promise.resolve().then(() => api.captureStatus()).then((c) => { S.captureInfo = c || {}; if (S.view === 'settings' && S.setTab === 'controllers' && !layers.length) refreshContent(); }).catch(() => { S.captureInfo = {}; }); }
       const pads = Array.from(navigator.getGamepads ? navigator.getGamepads() : []).filter((p) => p && p.connected);
       let h = '<div class="sect-h"><div><h2>Controllers</h2><p>Any connected controller can move around the launcher.</p></div></div><div class="pad-list">';
       if (!pads.length) h += '<div class="prow"><div class="pinfo"><div class="t">No controllers found</div><div class="p">Press any button on a controller to wake it up</div></div></div>';
@@ -824,6 +825,12 @@
         toggleHTML('c-ndl', 'Tell me when a Steam download finishes', S.lib.settings.notifyDownloads !== false, 'Installs and updates.', 'set-toggle', 'data-k="notifyDownloads"') +
         toggleHTML('c-pspads', 'Read PlayStation controllers in the background', S.lib.settings.psPads !== false, 'The PS button opens the guide, also during games (DualShock 4, DualSense). Turn off if a PlayStation controller acts up.', 'set-toggle', 'data-k="psPads"') +
         toggleHTML('c-autoclose', 'Close stores when you press the Xbox button to come back', S.lib.settings.autoCloseApps !== false, 'Steam Big Picture, Epic Games, the Xbox app and Microsoft Store close when you return to the launcher. Music apps and Discord keep running.', 'set-toggle', 'data-k="autoCloseApps"') + '</div>' +
+        '<div class="sub-h">Clips with Medal</div><div class="toggles" style="grid-template-columns:1fr">' +
+        toggleHTML('m-share', 'Share button saves Medal clips', S.lib.settings.medalShare !== false, 'Tap Share for a screenshot, hold it for a clip. Works in games and apps (not inside the launcher). Medal needs to be running.', 'set-toggle', 'data-k="medalShare"') +
+        '<button class="toggle-row" data-nav data-key="m-clip" data-zone="body" data-action="medal-key" data-which="clip"><span><div>Medal’s clip key</div><div class="d">Match Medal › Settings › Capture Hotkeys.</div></span><span class="status ok">' + esc(S.lib.settings.medalClipKey || 'F8') + '</span></button>' +
+        '<button class="toggle-row" data-nav data-key="m-shot" data-zone="body" data-action="medal-key" data-which="shot"><span><div>Medal’s screenshot key</div><div class="d">Set a screenshot key in Medal, then pick the same one here.</div></span><span class="status ' + (S.lib.settings.medalShotKey ? 'ok' : 'warn') + '">' + esc(S.lib.settings.medalShotKey || 'Not set') + '</span></button>' +
+        '<button class="toggle-row" data-nav data-key="m-xbox" data-zone="body" data-action="medal-xbox"><span><div>Xbox controllers</div><div class="d">' + esc(S.captureInfo == null ? 'Checking your controller…' : S.captureInfo.xboxShareReadable ? 'Your Xbox controller’s Share button can be read (Bluetooth).' : 'No Xbox Share button readable right now: it only works over Bluetooth. Hold View + RB for a clip, View + LB for a screenshot.') + '</div></span><span class="status ok">' +
+          ({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button></div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;
     }
@@ -2679,6 +2686,25 @@
         return;
       }
       case 'players-setup': return setUpPlayersNow();
+      case 'medal-key': {
+        const which = el.dataset.which;
+        const keys = ['F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'Shift+F8', 'Ctrl+F8', 'Alt+F8', 'Shift+F9', 'Ctrl+F9', 'Alt+F9'];
+        const cur = which === 'clip' ? (s.medalClipKey || 'F8') : s.medalShotKey;
+        const items = keys.map((k) => ({ id: k, label: k, icon: k === cur ? 'check' : 'key' }));
+        if (which === 'shot') items.unshift({ id: '-', label: 'None (hold Share for clips only)', icon: cur ? 'x' : 'check' });
+        const k = await openMenu(which === 'clip' ? 'Medal’s clip key' : 'Medal’s screenshot key', items);
+        if (!k) return;
+        if (which === 'clip') s.medalClipKey = k; else s.medalShotKey = k === '-' ? '' : k;
+        save(); return refreshContent();
+      }
+      case 'medal-xbox': {
+        const m = await openMenu('Xbox controllers', [
+          { id: 'auto', label: 'Share button when it can be read, else View combo', icon: (s.medalXbox || 'auto') === 'auto' ? 'check' : 'pad' },
+          { id: 'share', label: 'Share button only (Bluetooth)', icon: s.medalXbox === 'share' ? 'check' : 'pad' },
+          { id: 'combo', label: 'Hold View + RB (clip) / LB (screenshot)', icon: s.medalXbox === 'combo' ? 'check' : 'pad' }]);
+        if (m) { s.medalXbox = m; save(); refreshContent(); }
+        return;
+      }
       case 'tv-open': return TV().open();
       case 'yt-reset': {
         if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this PC.', 'Sign out', true))) return;

@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('launcher', {
   hideOverlay: () => call('overlay:hide'),
   goHome: () => call('app:home'),
   pads: () => call('pads:get'),
+  captureStatus: () => call('capture:status'),
   news: (force) => call('news:get', !!force),
   newsOpen: (link) => call('news:open', String(link || '')),
   clips: () => call('clips:list'),
