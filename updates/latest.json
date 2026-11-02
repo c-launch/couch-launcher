@@ -1,6 +1,6 @@
 {
- "version": "1.13.2",
- "notes": "Friend profiles filled out: their game's artwork behind the header, a Now playing / Last played card, a You & them card (games you both have, games and time played together), and a Games you both have row. Up/down moves cleanly between the header and the rows below.",
- "file": "CouchLauncher-update-1.13.2.zip",
- "size": 263072
+ "version": "1.13.3",
+ "notes": "Smaller, easier on-screen keyboard: sits at the bottom of the screen, rows wrap around, Shift for one letter (double-tap for caps lock), a symbols page, LB/RB move the cursor, hold X to keep deleting, and game-search suggestions you can pick.",
+ "file": "CouchLauncher-update-1.13.3.zip",
+ "size": 264968
 }
