@@ -86,6 +86,7 @@
 
   // ---------------------------------------------------------------- icons
   const I = {
+    playc: '<circle cx="12" cy="12" r="9.5"/><path d="M10 8.6v6.8l5.4-3.4z"/>',
     tv: '<rect x="2.5" y="6" width="19" height="13" rx="2.5"/><path d="M8 2.5l4 3.5 4-3.5"/>',
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
     plug: '<path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 0 1-10 0zM12 17v5"/>',
@@ -483,7 +484,7 @@
   function renderTop() {
     const s = S.lib.settings;
     const n = games().length;
-    const navs = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['tv', 'tv', 'Movies & TV'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
+    const navs = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['tv', 'tv', 'Movies & TV'], ['youtube', 'playc', 'YouTube'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
     const x = s.xbox;
     const sub = profileFrom() === 'steam' ? icon('level') + '<span>' + esc(profileSub()) + '</span>'
       : x ? icon('trophy') + '<span>' + Number(x.gamerscore || 0).toLocaleString() + '</span>'
@@ -847,6 +848,8 @@
         row('tv-q', 'tv-quality', 'Preferred quality', 'What “best match” looks for first.', QL[s.tvQuality] || '1080p') +
         row('tv-s', 'tv-subs', 'Subtitles', 'Turned on automatically when a movie or episode has them.', SL[s.tvSubLang || 'en'] || 'English') +
         (t ? row('tv-mpv', 'tv-mpv', 'Video player', t.mpv ? 'mpv · ' + (t.mpvPath || '') : 'Movies play in mpv, a free player that handles every format (4K, HDR, all audio).', t.mpv ? 'Change' : 'Install mpv') : '') +
+        '</div><div class="sub-h">YouTube</div><div class="toggles" style="grid-template-columns:1fr">' +
+        row('yt-reset', 'yt-reset', 'Sign out of YouTube', 'Forgets the YouTube account and settings on this PC. Open YouTube from the dock to sign in again.', 'Sign out') +
         '</div>' + (t ? '<p class="field-note">' + (t.engine ? 'Torrent streams use Stremio’s streaming engine from your Stremio app.' : 'Torrent streams need the Stremio app (or Stremio Service) installed on this PC. Debrid and direct links work without it.') + ' Controls while watching: A pause · ←/→ scrub · LB/RB skip · Y subtitles · X audio · B back.</p>' : '');
     }
     if (tab === 'startup') {
@@ -2660,6 +2663,7 @@
         if (to === 'friends') return openFriends();
         if (to === 'clips') return openClips();
         if (to === 'tv') return TV().open();
+        if (to === 'youtube') { toast('Opening YouTube… press the Xbox button to come back'); return api.youtubeOpen().catch((e) => toast(e.message, true)); }
         if (to === 'search') { if (S.view !== 'library') go('library', 's-search'); return searchPrompt(); }
         return go(to);
       }
@@ -2674,6 +2678,11 @@
       }
       case 'players-setup': return setUpPlayersNow();
       case 'tv-open': return TV().open();
+      case 'yt-reset': {
+        if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this PC.', 'Sign out', true))) return;
+        try { await api.youtubeReset(); toast('Signed out of YouTube'); } catch (e) { toast(e.message, true); }
+        return;
+      }
       case 'tv-mode': s.tvMode = el.dataset.mode === 'light' ? 'light' : 'dark'; save(); return refreshContent();
       case 'tv-signin': return TV().signIn();
       case 'tv-signout': {

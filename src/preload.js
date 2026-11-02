@@ -83,6 +83,8 @@ contextBridge.exposeInMainWorld('launcher', {
   xboxProfile: () => call('xbox:profile'),
   xboxFriends: () => call('xbox:friends'),
   openXblSite: () => call('link:open', 'https://xbl.io'),
+  youtubeOpen: () => call('yt:open'),
+  youtubeReset: () => call('yt:reset'),
   tvStatus: () => call('tv:status'),
   tvLinkCreate: () => call('tv:linkCreate'),
   tvLinkPoll: (code) => call('tv:linkPoll', String(code || '')),
