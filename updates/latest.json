@@ -1,6 +1,6 @@
 {
- "version": "1.13.1",
- "notes": "LB/RB now step through every icon in the top dock: Home, My library and Settings slide over, and Search, Clips, Movies & TV, YouTube and Friends are highlighted so A opens them. Friend profiles redesigned like the Xbox One profile, with more details: Steam level and XP, badges, friends, achievements next to yours; Xbox gamerscore, achievements, completed games, years on Xbox, reputation, bio and profile colour.",
- "file": "CouchLauncher-update-1.13.1.zip",
- "size": 260800
+ "version": "1.13.2",
+ "notes": "Friend profiles filled out: their game's artwork behind the header, a Now playing / Last played card, a You & them card (games you both have, games and time played together), and a Games you both have row. Up/down moves cleanly between the header and the rows below.",
+ "file": "CouchLauncher-update-1.13.2.zip",
+ "size": 263072
 }

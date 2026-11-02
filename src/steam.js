@@ -132,7 +132,7 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
       const [p] = await summaries(c.key, [steamid]);
       if (!p) throw new Error('Couldn’t load that Steam profile');
       const f = person(p);
-      let level = null, games = null, recent = [], badges = null, xp = null, friends = null;
+      let level = null, games = null, recent = [], badges = null, xp = null, friends = null, ownedList = [];
       const open = Number(p.communityvisibilitystate) === 3; // 3 = public
       const q = '?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid;
       if (open) {
@@ -144,7 +144,12 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
             if (Array.isArray(r.badges)) badges = r.badges.length;
             if (typeof r.player_xp === 'number') xp = { total: r.player_xp, toNext: Number(r.player_xp_needed_to_level_up) || 0, thisLevel: Number(r.player_xp_needed_current_level) || 0 };
           }, () => get(API + '/IPlayerService/GetSteamLevel/v1/' + q).then((j) => { level = j.response && typeof j.response.player_level === 'number' ? j.response.player_level : null; }, () => {})),
-          get(API + '/IPlayerService/GetOwnedGames/v1/' + q + '&include_played_free_games=1').then((j) => { games = j.response && typeof j.response.game_count === 'number' ? j.response.game_count : null; }, () => {}),
+          get(API + '/IPlayerService/GetOwnedGames/v1/' + q + '&include_played_free_games=1&include_appinfo=1').then((j) => {
+            const r = j.response || {};
+            games = typeof r.game_count === 'number' ? r.game_count : null;
+            // What they own (for "games you both have").
+            ownedList = (Array.isArray(r.games) ? r.games : []).filter((g) => g && g.appid).map((g) => ({ appid: String(g.appid), title: g.name || '', hours: Math.round((g.playtime_forever || 0) / 6) / 10 }));
+          }, () => {}),
           get(API + '/ISteamUser/GetFriendList/v1/' + q + '&relationship=friend').then((j) => { friends = ((j.friendslist && j.friendslist.friends) || []).length || null; }, () => {}),
           get(API + '/IPlayerService/GetRecentlyPlayedGames/v1/' + q + '&count=8').then((j) => {
             recent = ((j.response && j.response.games) || []).filter((g) => g && g.appid).map((g) => ({
@@ -160,7 +165,10 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
           if (mine) r.mine = mine;
         }));
       }
-      return Object.assign(f, { id: f.xuid, name: f.gamertag, pic: f.picBig || f.pic, level, games, recent, private: !open, badges, xp, friends,
+      // Big artwork of what they're playing (or played last) for the top of their profile.
+      const artApp = f.gameid && Number(f.gameid) < 2 ** 32 ? f.gameid : recent[0] && recent[0].appid;
+      const art = artApp ? ['https://cdn.cloudflare.steamstatic.com/steam/apps/' + artApp + '/library_hero.jpg', appImg(artApp)] : [];
+      return Object.assign(f, { id: f.xuid, name: f.gamertag, pic: f.picBig || f.pic, level, games, recent, private: !open, badges, xp, friends, ownedList, art,
         country: p.loccountrycode || null, realName: p.realname || null,
         since: p.timecreated ? p.timecreated * 1000 : null, lastOnline: p.lastlogoff ? p.lastlogoff * 1000 : null });
     },

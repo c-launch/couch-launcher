@@ -127,6 +127,8 @@ function createXbox(userDataDir, safeStorage) {
     return {
       id: xuid, xuid, service: 'xbox', name: acc.gamertag, gamertag: acc.gamertag, pic: acc.pic, gamerscore: acc.gamerscore,
       recent: titles.slice(0, 8), games: titles.length || null,
+      ownedList: titles.map((t) => ({ title: t.title, pct: t.pct, gamerscore: t.gamerscore, total: t.total, last: t.last })),
+      art: titles[0] && titles[0].img ? [titles[0].img] : [],
       achievements: titles.reduce((n, t) => n + (t.achievements || 0), 0) || null,
       completed: titles.filter((t) => t.pct >= 100).length || null,
       tier: set('AccountTier'), rep, tenure, realName: set('RealName'), bio: set('Bio'), location: set('Location'), color
