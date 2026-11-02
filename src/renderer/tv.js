@@ -41,26 +41,43 @@ window.CouchTV = function (k) {
     }, true);
     refreshStatus().then(() => { if (isOpen()) render(); });
   }
-  // Opening animation (first time each session): a ring draws itself, the play mark settles in,
-  // the name fades up, then it all eases away into Home (which loads underneath). Any button skips.
+  // Opening animation (first time each session): the mark with "Movies & TV" beside it fades
+  // up; the words slide into the mark as it glides to the middle; then it grows a touch and fades
+  // into Home (which loads underneath). Any button skips it.
   function introHTML() {
     T.intro = false;
     if (reduce() || S.lib.settings.tvIntro === false || T.introShown) return '';
     T.introShown = true; T.intro = true;
-    setTimeout(() => { if (T.intro) endIntro(true); }, 2050);
-    return '<div class="tv-intro" aria-hidden="true"><svg class="tv-intro-mark" viewBox="0 0 100 100">' +
-      '<defs><linearGradient id="tvIntroG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7CF5E4"/><stop offset="1" stop-color="#4C7DFF"/></linearGradient></defs>' +
-      '<circle class="tv-intro-glow" cx="50" cy="50" r="44" fill="none" stroke="url(#tvIntroG)" stroke-width="7"/>' +
-      '<circle class="tv-intro-ring" cx="50" cy="50" r="44" fill="none" stroke="url(#tvIntroG)" stroke-width="5" stroke-linecap="round"/>' +
-      '<path class="tv-intro-play" d="M41 33.5c0-2.3 2.5-3.7 4.5-2.5l22 14.2c1.8 1.1 1.8 3.7 0 4.8l-22 14.2c-2 1.3-4.5-.2-4.5-2.5z" fill="#FFFFFF"/></svg>' +
-      '<div class="tv-intro-word">Movies <span>&amp;</span> TV</div></div>';
+    T.introTimers = [setTimeout(introMove, 1150), setTimeout(() => introPhase('fade'), 1800), setTimeout(() => endIntro(true), 2400)];
+    return '<div class="tv-intro" aria-hidden="true"><div class="tv-intro-lockup"><div class="tv-intro-mark"><svg viewBox="0 0 100 100">' +
+      '<defs><linearGradient id="tvIntroG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#7C7C82"/></linearGradient></defs>' +
+      '<circle cx="50" cy="50" r="47" fill="#000000"/><circle cx="50" cy="50" r="44" fill="none" stroke="#2C2C30" stroke-width="4.5"/>' +
+      '<circle class="tv-intro-ring" cx="50" cy="50" r="44" fill="none" stroke="url(#tvIntroG)" stroke-width="4.5" stroke-linecap="round"/>' +
+      '<path class="tv-intro-play" d="M41 33.5c0-2.3 2.5-3.7 4.5-2.5l22 14.2c1.8 1.1 1.8 3.7 0 4.8l-22 14.2c-2 1.3-4.5-.2-4.5-2.5z" fill="#F5F5F7"/></svg></div>' +
+      '<div class="tv-intro-word">Movies &amp; TV</div></div></div>';
   }
+  const introEl = () => T.layer && $('.tv-intro', T.layer.el);
+  // Measured when it moves (after the font has loaded), so the mark lands exactly in the middle.
+  function introMove() {
+    const el = introEl();
+    if (!el) return;
+    const mark = $('.tv-intro-mark', el), word = $('.tv-intro-word', el);
+    const mr = mark.getBoundingClientRect(), wr = word.getBoundingClientRect();
+    const mid = window.innerWidth / 2;
+    const shift = mid - (mr.left + mr.width / 2);
+    const wshift = mid - (wr.left + wr.width / 2);
+    mark.style.transform = 'translateX(' + shift + 'px)';
+    word.style.transform = 'translateX(' + wshift + 'px) scale(.55)';
+    el.classList.add('move');
+  }
+  function introPhase(c) { const el = introEl(); if (el) el.classList.add(c); }
   function endIntro(natural) {
     T.intro = false;
-    const el = T.layer && $('.tv-intro', T.layer.el);
+    (T.introTimers || []).forEach(clearTimeout);
+    const el = introEl();
     if (!el) return;
     if (!natural) el.classList.add('skip');
-    setTimeout(() => el.remove(), natural ? 600 : 260);
+    setTimeout(() => el.remove(), natural ? 0 : 260);
   }
   const isOpen = () => !!(T.layer && k.layers.includes(T.layer));
   const scroller = () => $('.tv-scroll', T.layer.el);

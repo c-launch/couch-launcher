@@ -1,6 +1,6 @@
 {
- "version": "1.8.1",
- "notes": "Movies & TV: a smooth opening animation (any button skips; turn it off in Settings › Movies & TV).",
- "file": "CouchLauncher-update-1.8.1.zip",
- "size": 205221
+ "version": "1.8.2",
+ "notes": "Movies & TV: new monotone opening animation — the name slides into the mark, which glides to the middle and fades.",
+ "file": "CouchLauncher-update-1.8.2.zip",
+ "size": 205548
 }
