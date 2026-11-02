@@ -31,6 +31,10 @@ const DEFAULT_SETTINGS = {
   tvAutoPlay: false,     // Movies & TV: play the best match straight away instead of showing the streams
   tvSubLang: 'en',       // Movies & TV: subtitles language ('off' for none)
   mpvPath: '',           // Movies & TV: mpv.exe (found automatically when empty)
+  sleepAction: 'shutdown', // sleep timer: 'shutdown' | 'sleep'
+  backupTo: 'off',       // save backups: 'off' | 'folder' | 'onedrive' | 'gdrive'
+  backupFolder: '',      // when backupTo is 'folder'
+  backupKeep: 10,        // copies kept per emulator
   medalShare: true,      // Share button: tap = Medal screenshot, hold = Medal clip
   medalClipKey: 'F8',    // Medal's clip hotkey (Medal › Settings › Capture Hotkeys)
   medalShotKey: '',      // Medal's screenshot hotkey (none until set)

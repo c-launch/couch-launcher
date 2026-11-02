@@ -63,6 +63,14 @@ Settings › Platforms › **Emulators** (one row, its own page). The launcher l
 - EmuDeck's Steam shortcuts for these emulators are hidden when the same game is found directly.
 - You need your own BIOS / firmware and game dumps for each emulator.
 
+## Saves, resume, achievements, sleep timer
+
+- **Save backups** (Settings › Saves & backups): each emulator's saves are copied before a game starts and after it closes (only when something changed), to **Google Drive** (with Google Drive for desktop: *My Drive › Couch Launcher › Save backups*), **OneDrive**, or any folder or USB drive. The newest copies are kept (10 by default); *Restore* puts one back (your current saves are copied first, so it can be undone). EmuDeck's `Emulation\saves` folder is used for EmuDeck emulators.
+- **Save and resume:** closing a game saves where you are, and next time you're asked whether to pick up from there: Dolphin, **PCSX2**, **DuckStation** and **RetroArch** (the launcher turns on each emulator's own "save state on exit"; your normal saves are untouched).
+- **RetroAchievements** (Settings › Platforms): connect with your username and Web API key (retroachievements.org › Settings › Keys). Progress shows on retro games like Steam achievements. You earn them inside the emulators (sign in to RetroAchievements in RetroArch, DuckStation, PCSX2, PPSSPP, Dolphin…).
+- **Sleep timer** (guide › Profile & system): 15 minutes to 2 hours. A minute before, a pop-up; at the end your game closes the normal way (so it can save), then the PC turns off or sleeps.
+- **Emulator updates** (Emulators page › Check for updates): newest releases from each emulator's GitHub, installed in place (only the program files are replaced; settings and saves stay). Emulators installed by EmuDeck, winget, scoop or their own installer are left to those. `.7z` downloads need Windows 11's built-in support or 7-Zip.
+
 ## Updates
 
 Updates come online from this GitHub page (Releases). The launcher checks when it starts and every few hours (never during a game), downloads a new version in the background and asks **New version available · Update now?** It restarts by itself in a few seconds. You can also check from **Settings › About › Check for update**. An update zip saved in Downloads or G:\launcher still works too. You only need Build.bat again if a message says so.

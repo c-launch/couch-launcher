@@ -505,6 +505,8 @@ if (!app.requestSingleInstanceLock()) {
     const seconds = extra && extra.error ? 0 : Math.round((Date.now() - r.startedAt) / 1000);
     const g = lib.games.find((x) => x.id === r.gameId);
     if (g && seconds) { g.playtime = (g.playtime || 0) + seconds; persist(); }
+    if (r.emu && g && g.launch && rsm().supported(r.emu) && lib.settings.saveStates !== false) { try { rsm().recordAfter(r.emu, (lib.platforms[r.emu] || {}).exe, r.gameId, g.launch, r.startedAt); } catch (_) { /* fine */ } }
+    if (r.emu && typeof afterGameBackup === 'function') afterGameBackup(r.emu);
     bringBack(false);
     send('game:exited', Object.assign({ gameId: r.gameId, seconds }, extra || {}));
   }
@@ -642,7 +644,10 @@ if (!app.requestSingleInstanceLock()) {
       if (L.emu === 'dolphin' && playerCount.dolphin) for (let p = 0; p < 4; p++) ports.push('-C', 'Dolphin.Core.SIDevice' + p + '=' + (p < playerCount.dolphin ? 6 : 0));
       // A game in several regions: the version you picked in its menu.
       const file = g.altFile && (L.alts || []).some((a) => a.file === g.altFile) && fs.existsSync(g.altFile) ? g.altFile : L.file;
-      startProcess(cfg.exe, extra.concat(st ? ['-s', st] : [], ports, emu.args(file, L, cfg)), path.dirname(cfg.exe), gameId);
+      // RetroArch / DuckStation / PCSX2: their own save-on-exit, and resuming from it when asked.
+      let rs = [];
+      if (rsm().supported(L.emu) && lib.settings.saveStates !== false) { try { rsm().prepare(L.emu, cfg.exe); rs = rsm().args(L.emu, gameId, !!opts.resume); } catch (_) { rs = []; } }
+      startProcess(cfg.exe, extra.concat(st ? ['-s', st] : [], ports, rs, emu.args(file, L, cfg)), path.dirname(cfg.exe), gameId);
       running.isEmu = true;
       running.emu = L.emu;
     } else if (L.type === 'exe') {
@@ -727,6 +732,9 @@ if (!app.requestSingleInstanceLock()) {
   function sendOverlay(ch, payload) { if (overlay && !overlay.isDestroyed()) overlay.webContents.send(ch, payload); }
 
   // ---------- Dolphin save states: made when you close or switch, offered next time ----------
+  // Save and resume for RetroArch, DuckStation and PCSX2 (Dolphin's is below).
+  let resumer = null;
+  const rsm = () => resumer || (resumer = require('./resume').createResume({ userDataDir: app.getPath('userData') }));
   const statesFile = () => path.join(app.getPath('userData'), 'states.json');
   const readStates = () => { try { return JSON.parse(fs.readFileSync(statesFile(), 'utf8')) || {}; } catch (_) { return {}; } };
   function savedState(gameId) { const s = readStates()[gameId]; return s && s.file && fs.existsSync(s.file) ? s.file : null; }
@@ -762,7 +770,12 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
   }
-  handle('states:get', (gameId) => { const s = readStates()[String(gameId)]; return s && s.file && fs.existsSync(s.file) ? { at: s.at } : null; });
+  handle('states:get', (gameId) => {
+    const s = readStates()[String(gameId)];
+    if (s && s.file && fs.existsSync(s.file)) return { at: s.at };
+    const r = rsm().has(String(gameId));
+    return r ? { at: r.at } : null;
+  });
 
   // ---------- Per-game TV / display settings ----------
   let disp = null;
@@ -864,6 +877,26 @@ if (!app.requestSingleInstanceLock()) {
     return done;
   }
   handle('emu:find', () => findEmulators());
+  // Emulator updates
+  let emuUpd = null;
+  const eu = () => emuUpd || (emuUpd = require('./emuupdate').createEmuUpdates({ tmpDir: path.join(app.getPath('userData'), 'downloads') }));
+  handle('emu:checkUpdates', async () => {
+    const out = {};
+    const ids = Object.keys(scanners.EMULATORS).filter((id) => lib.platforms[id] && lib.platforms[id].exe);
+    await Promise.all(ids.map(async (id) => { try { out[id] = await eu().check(id, lib.platforms[id]); } catch (e) { out[id] = { status: 'error', error: e.message }; } }));
+    return out;
+  });
+  handle('emu:update', async (id) => {
+    id = String(id || '');
+    const cfg = lib.platforms[id];
+    if (!cfg || !cfg.exe) throw new Error('Set up this emulator first');
+    if (running && running.emu === id) throw new Error('Close the game first');
+    const name = scanners.EMULATORS[id] ? scanners.EMULATORS[id].name : id;
+    const r = await eu().update(id, cfg, (msg) => send('notice', { title: name + ': ' + msg }));
+    cfg.updatedTag = r.tag; cfg.updatedAt = Date.now();
+    persist();
+    return { tag: r.tag, lib };
+  });
   handle('emu:setupFound', async (onlyId) => {
     const done = setupFound(onlyId ? String(onlyId) : null);
     const results = [];
@@ -937,7 +970,12 @@ if (!app.requestSingleInstanceLock()) {
     persist();
     return { lib, results };
   });
-  handle('launch', (gameId, opts) => launchGame(gameId, opts && typeof opts === 'object' ? { resume: !!opts.resume } : {}));
+  handle('launch', async (gameId, opts) => {
+    // Emulator games: copy their saves first (only when backups are on and something changed).
+    const g = lib.games.find((x) => x.id === gameId);
+    if (g && g.launch && g.launch.type === 'emu' && !running) await Promise.race([backupNow(g.launch.emu, 'before'), wait(15000)]).catch(() => null);
+    return launchGame(gameId, opts && typeof opts === 'object' ? { resume: !!opts.resume } : {});
+  });
   handle('launch:cancel', () => { cancelLaunch(); return true; });
   let updater = null;
   // Updates come from GitHub (downloaded into the app's own folder); zips in Downloads or
@@ -1090,6 +1128,17 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(callCheck, 15000);
   }
   const achCache = new Map(); // appid -> { at, value }
+  // RetroAchievements (Settings › Platforms)
+  let raPart = null;
+  const ra = () => raPart || (raPart = require('./retroach').createRetroAch(app.getPath('userData'), safeStorage));
+  handle('ra:status', () => ra().status());
+  handle('ra:connect', (user, key) => ra().connect(user, key));
+  handle('ra:disconnect', () => ra().disconnect());
+  handle('ra:progress', async (gameId) => {
+    const g = lib.games.find((x) => x.id === String(gameId || ''));
+    if (!g) return null;
+    try { return await ra().progress(g); } catch (_) { return null; }
+  });
   handle('steam:achievements', async (appid) => {
     const id = String(appid || '');
     const c = achCache.get(id);
@@ -1420,12 +1469,85 @@ if (!app.requestSingleInstanceLock()) {
     app.setLoginItemSettings(Object.assign({ openAtLogin: !!on }, loginOpts()));
     return app.getLoginItemSettings(loginOpts()).openAtLogin;
   });
-  handle('app:power', (action) => {
+  function doPower(action) {
     if (action === 'exit') { setTimeout(() => app.quit(), 50); return true; }
     if (process.platform !== 'win32') return false;
     if (action === 'restart') execFile('shutdown', ['/r', '/t', '0'], { windowsHide: true }, () => {});
     else if (action === 'shutdown') execFile('shutdown', ['/s', '/t', '0'], { windowsHide: true }, () => {});
     else if (action === 'sleep') execFile('rundll32.exe', ['powrprof.dll,SetSuspendState', '0,1,0'], { windowsHide: true }, () => {});
+    return true;
+  }
+  handle('app:power', (action) => doPower(action));
+
+  // ---------- Sleep timer (guide › Profile & system) ----------
+  // A minute before: a pop-up. At the end: the game closes the normal way (so it can save; the
+  // emulators make their resume state), then the PC sleeps or turns off.
+  let sleepT = null;
+  const sleepStatus = () => (sleepT ? { at: sleepT.at, action: sleepT.action } : null);
+  function setSleep(minutes, action) {
+    if (sleepT) clearInterval(sleepT.timer);
+    sleepT = null;
+    const m = Number(minutes);
+    if (!(m > 0)) return null;
+    sleepT = { at: Date.now() + Math.min(600, m) * 60e3, action: action === 'sleep' ? 'sleep' : 'shutdown', warned: false };
+    sleepT.timer = setInterval(sleepTick, 5000);
+    return sleepStatus();
+  }
+  function sleepTick() {
+    const t = sleepT;
+    if (!t) return;
+    const left = t.at - Date.now();
+    if (left <= 60e3 && !t.warned) { t.warned = true; notify('Sleep timer', (t.action === 'sleep' ? 'The PC goes to sleep' : 'The PC turns off') + ' in 1 minute. Open the guide to change it.'); }
+    if (left > 0) return;
+    clearInterval(t.timer);
+    sleepT = null;
+    (async () => {
+      if (tvPart && tvPart.playing) tvPart.stop('sleep');
+      if (running) {
+        try { await closeRunning(false); } catch (_) { /* power off anyway */ }
+        for (let i = 0; i < 40 && running; i++) await wait(500);
+      }
+      doPower(t.action);
+    })();
+  }
+  handle('sleep:get', () => sleepStatus());
+  handle('sleep:set', (minutes, action) => setSleep(minutes, action));
+
+  // ---------- Save backups (Settings › Saves & backups) ----------
+  const bkup = require('./backups');
+  function backupRoot() {
+    const s = lib && lib.settings;
+    if (!s) return null;
+    if (s.backupTo === 'folder') return s.backupFolder && fs.existsSync(s.backupFolder) ? s.backupFolder : null;
+    if (s.backupTo === 'onedrive' || s.backupTo === 'gdrive') { const d = bkup.destinations(process.env, allDrives()).find((x) => x.id === s.backupTo); return d ? d.path : null; }
+    return null;
+  }
+  const backups = bkup.createBackups({ root: backupRoot, keep: () => Math.max(1, Math.min(50, Number(lib.settings.backupKeep) || 10)) });
+  function saveSources(id) {
+    const exe = (lib.platforms[id] || {}).exe;
+    if (!exe) return [];
+    return bkup.saveDirs(id, exe, process.env, { dolphinUser: id === 'dolphin' ? players.dolphinUserDir(exe) : null });
+  }
+  function backupNow(id, why) { return backups.backup(id, saveSources(id), why); }
+  function afterGameBackup(id) { backupNow(id, 'after').catch(() => null); }
+  const emuIds = () => Object.keys(scanners.EMULATORS).filter((id) => lib.platforms[id] && lib.platforms[id].exe);
+  handle('backup:status', () => ({
+    to: lib.settings.backupTo || 'off', folder: lib.settings.backupFolder || '', keep: Number(lib.settings.backupKeep) || 10,
+    root: backupRoot(), dests: bkup.destinations(process.env, allDrives()),
+    emus: emuIds().map((id) => { const snaps = backups.snapshots(id); return { id, name: scanners.EMULATORS[id].name, sources: saveSources(id), last: snaps[0] ? snaps[0].at : 0, count: snaps.length }; })
+  }));
+  handle('backup:now', async (id) => {
+    if (!backupRoot()) throw new Error('Choose where backups go first');
+    const ids = id ? [String(id)] : emuIds();
+    let done = 0;
+    for (const x of ids) { const r = await backupNow(x, 'manual').catch(() => null); if (r && r.done) done++; }
+    return { done, of: ids.length };
+  });
+  handle('backup:list', (id) => backups.snapshots(String(id || '')).map((s) => ({ id: s.id, at: s.at, why: s.why })));
+  handle('backup:restore', async (id, snapId) => {
+    id = String(id || '');
+    if (running && running.emu === id) throw new Error('Close the game first');
+    await backups.restore(id, String(snapId || ''), saveSources(id));
     return true;
   });
 
