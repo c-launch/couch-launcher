@@ -29,7 +29,7 @@ window.CouchTV = function (k) {
       onMove: () => { if (T.intro) { endIntro(); return true; } return false; },
       onBack: back,
       onFocus: focused,
-      onClose: () => { clearInterval(T.heroTimer); T.layer = null; },
+      onClose: () => { clearInterval(T.heroTimer); endZooms(); T.layer = null; },
       prompts: prompts
     });
     // Pictures that don't load: try the poster instead (wide art), else show the title.
@@ -402,48 +402,95 @@ window.CouchTV = function (k) {
     if (!sc || reduce()) return;
     sc.animate([{ opacity: 0, transform: 'translateY(2.4rem)' }, { opacity: 1, transform: 'none' }], { duration: late ? 420 : 300, delay: late ? 230 : 0, easing: EASE, fill: 'backwards' });
   }
-  function zoomBox(rect, poster, bg) {
-    const z = document.createElement('div');
-    z.className = 'tv-zoom';
-    z.innerHTML = (bg ? '<i class="z-bg" style="background-image:url(&quot;' + esc(bg) + '&quot;)"></i>' : '') + (poster ? '<i class="z-po" style="background-image:url(&quot;' + esc(poster) + '&quot;)"></i>' : '');
-    Object.assign(z.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
-    $('.tv', T.layer.el).appendChild(z);
+  // The zoom is drawn frame by frame (not a fixed CSS animation) so it always lands exactly on
+  // the poster, even if the row is still scrolling into place; and it always cleans up, even if
+  // the window was hidden halfway (frames stop while it isn't on screen).
+  const easeOut = (t) => 1 - Math.pow(1 - t, 4); // close to the iOS curve
+  const zooms = new Set();
+  function endZooms() {
+    for (const z of zooms) z.finish();
+    zooms.clear();
+  }
+  function zoomBox(poster, bg) {
+    const el = document.createElement('div');
+    el.className = 'tv-zoom';
+    el.innerHTML = (bg ? '<i class="z-bg" style="background-image:url(&quot;' + esc(bg) + '&quot;)"></i>' : '') + (poster ? '<i class="z-po" style="background-image:url(&quot;' + esc(poster) + '&quot;)"></i>' : '');
+    $('.tv', T.layer.el).appendChild(el);
+    return el;
+  }
+  // from/to: functions giving { left, top, width, height, radius } (read every frame).
+  function runZoom({ box, from, to, dur, poOpacity, onFinish, fadeOut }) {
+    const po = $('.z-po', box);
+    let raf = 0, timer = 0, done = false;
+    const z = {
+      finish() {
+        if (done) return;
+        done = true;
+        cancelAnimationFrame(raf); clearTimeout(timer);
+        if (onFinish) { try { onFinish(); } catch (_) { /* fine */ } }
+        box.remove();
+        zooms.delete(z);
+      }
+    };
+    zooms.add(z);
+    const t0 = performance.now();
+    const place = (r) => Object.assign(box.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: r.radius + 'px' });
+    const frame = (now) => {
+      if (done) return;
+      const t = Math.min(1, (now - t0) / dur), k = easeOut(t);
+      const a = from(), b = to();
+      place({ left: a.left + (b.left - a.left) * k, top: a.top + (b.top - a.top) * k, width: a.width + (b.width - a.width) * k, height: a.height + (b.height - a.height) * k, radius: a.radius + (b.radius - a.radius) * k });
+      if (po && poOpacity) po.style.opacity = String(poOpacity(t));
+      if (t < 1) { raf = requestAnimationFrame(frame); return; }
+      if (!fadeOut) { z.finish(); return; }
+      box.style.transition = 'opacity 260ms ease';
+      box.style.opacity = '0';
+      timer = setTimeout(() => z.finish(), 280);
+    };
+    place(from());
+    if (po && poOpacity) po.style.opacity = String(poOpacity(0));
+    raf = requestAnimationFrame(frame);
+    // Whatever happens (window hidden, page changed), it's gone shortly after it should be.
+    setTimeout(() => z.finish(), dur + 900);
     return z;
   }
+  const rectOf = (el, radius) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height, radius }; };
+  const screenRect = () => ({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, radius: 0 });
+  const radiusOf = (el) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 12;
   function zoomFrom(el, bg) {
     if (reduce()) return null;
-    const r = el.getBoundingClientRect();
-    if (!r.width) return null;
+    endZooms();
+    const start = rectOf(el, radiusOf(el));
+    if (!start.width) return null;
     const img = $('img:not(.broken)', el);
-    const z = zoomBox(r, img && img.src, bg);
-    const W = window.innerWidth, H = window.innerHeight;
-    const radius = getComputedStyle(el).borderRadius || '12px';
-    const grow = z.animate([
-      { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: radius, boxShadow: '0 2rem 5rem rgba(0,0,0,.6)' },
-      { left: '0px', top: '0px', width: W + 'px', height: H + 'px', borderRadius: '0px', boxShadow: '0 0 0 rgba(0,0,0,0)' }
-    ], { duration: 600, easing: EASE, fill: 'forwards' });
-    const po = $('.z-po', z);
-    if (po && bg) po.animate([{ opacity: 1 }, { opacity: 1, offset: 0.15 }, { opacity: 0, offset: 0.6 }, { opacity: 0 }], { duration: 600, easing: 'ease', fill: 'forwards' });
-    grow.finished.then(() => z.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease', fill: 'forwards' }).finished).catch(() => {}).then(() => z.remove());
-    return z;
+    const box = zoomBox(img && img.src, bg);
+    box.style.boxShadow = '0 2rem 5rem rgba(0,0,0,.6)';
+    // Poster shows first, then gives way to the backdrop as it fills the screen.
+    return runZoom({ box, from: () => start, to: screenRect, dur: 600, fadeOut: true,
+      poOpacity: bg ? (t) => (t < 0.15 ? 1 : t > 0.6 ? 0 : 1 - (t - 0.15) / 0.45) : null });
   }
   // Going back from a title: the page shrinks back into its poster in the row.
   function zoomBack(bg) {
     if (reduce()) return;
+    endZooms();
     const el = currentFocus();
-    if (!el || !el.classList.contains('tv-poster')) { pageIn(false); return; }
-    const r = el.getBoundingClientRect();
+    if (!el || !el.classList.contains('tv-poster') || !el.isConnected) { pageIn(false); return; }
     const img = $('img:not(.broken)', el);
-    const z = zoomBox({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }, img && img.src, bg);
-    const po = $('.z-po', z);
-    if (po) po.style.opacity = '0';
-    el.style.visibility = 'hidden';
-    const shrink = z.animate([
-      { left: '0px', top: '0px', width: window.innerWidth + 'px', height: window.innerHeight + 'px', borderRadius: '0px', opacity: 1 },
-      { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: getComputedStyle(el).borderRadius || '12px', opacity: 1 }
-    ], { duration: 420, easing: EASE, fill: 'forwards' });
-    if (po) po.animate([{ opacity: 0 }, { opacity: 1, offset: 0.6 }, { opacity: 1 }], { duration: 420, fill: 'forwards' });
-    shrink.finished.catch(() => {}).then(() => { el.style.visibility = ''; z.remove(); });
+    const box = zoomBox(img && img.src, bg);
+    const radius = radiusOf(el), key = el.dataset.key;
+    // The poster it lands on (the row can be redrawn meanwhile: then it's the new one), hidden
+    // until the zoom gets there.
+    const hidden = new Set();
+    const target = () => {
+      const cur = el.isConnected ? el : (key && $('.tv-scroll [data-key="' + cssEsc(key) + '"]', T.layer && T.layer.el)) || null;
+      if (cur && !hidden.has(cur)) { cur.style.visibility = 'hidden'; hidden.add(cur); }
+      return cur;
+    };
+    target();
+    let last = null;
+    runZoom({ box, from: screenRect, dur: 420, poOpacity: (t) => Math.min(1, t / 0.6),
+      to: () => { const cur = target(); if (cur) last = rectOf(cur, radius); return last || screenRect(); },
+      onFinish: () => { for (const h of hidden) h.style.visibility = ''; hidden.clear(); } });
   }
   function showPage(sc, gen) {
     const sh = T.show, p = sh.preview;

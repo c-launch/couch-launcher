@@ -17,29 +17,79 @@ const exists = (p) => { try { return !!p && fs.statSync(p).isFile(); } catch (_)
 const listDir = (d) => { try { return fs.readdirSync(d); } catch (_) { return []; } };
 
 // ---------------------------------------------------------------- mpv
-function findMpv(env, chosen) {
+// The launcher's own copy lives here (in its data folder, so updates never touch it).
+const ownDir = (userData) => (userData ? path.join(userData, 'mpv') : null);
+function findMpv(env, chosen, userData) {
   env = env || process.env;
   const la = env.LOCALAPPDATA || '', pf = env.ProgramFiles || 'C:\\Program Files', up = env.USERPROFILE || '';
   const c = [];
   if (chosen) c.push(chosen);
+  if (userData) c.push(path.join(ownDir(userData), 'mpv.exe'));
   c.push(path.join(la, 'Microsoft', 'WinGet', 'Links', 'mpv.exe'));
   const pk = path.join(la, 'Microsoft', 'WinGet', 'Packages');
   for (const d of listDir(pk)) if (/^shinchiro\.mpv/i.test(d) || /^mpv/i.test(d)) { c.push(path.join(pk, d, 'mpv.exe')); for (const s of listDir(path.join(pk, d))) c.push(path.join(pk, d, s, 'mpv.exe')); }
   c.push(path.join(pf, 'mpv', 'mpv.exe'), path.join(la, 'Programs', 'mpv', 'mpv.exe'), path.join(up, 'scoop', 'apps', 'mpv', 'current', 'mpv.exe'),
-    path.join(up, 'scoop', 'shims', 'mpv.exe'), 'C:\\ProgramData\\chocolatey\\bin\\mpv.exe', path.join(up, 'mpv', 'mpv.exe'), 'C:\\mpv\\mpv.exe');
+    path.join(up, 'scoop', 'shims', 'mpv.exe'), 'C:\\ProgramData\\chocolatey\\bin\\mpv.exe', path.join(up, 'mpv', 'mpv.exe'), 'C:\\mpv\\mpv.exe',
+    path.join(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'mpv', 'mpv.exe'), path.join(la, 'mpv', 'mpv.exe'));
+  // An mpv unpacked in Downloads, on the Desktop or in Documents (mpv-x86_64-…\\mpv.exe).
+  for (const base of ['Downloads', 'Desktop', 'Documents'].map((d) => path.join(up, d))) {
+    for (const d of listDir(base)) if (/^mpv/i.test(d)) { c.push(path.join(base, d, 'mpv.exe')); for (const s of listDir(path.join(base, d))) c.push(path.join(base, d, s, 'mpv.exe')); }
+  }
   for (const d of String(env.PATH || env.Path || '').split(';')) if (d) c.push(path.join(d.replace(/"/g, ''), 'mpv.exe'));
   return c.find(exists) || null;
 }
-// winget's mpv package (a portable build by shinchiro), with no prompts.
-function installMpv() {
-  return new Promise((resolve, reject) => {
+// Installing mpv: the launcher downloads the Windows build (shinchiro's, the one mpv.io links
+// to) into its own data folder, where it finds it every time, updates included. If that
+// doesn't work, winget's mpv package is the fallback.
+const run = (cmd, args) => new Promise((resolve, reject) => execFile(cmd, args, { windowsHide: true, timeout: 10 * 60e3 }, (err, out) => (err ? reject(err) : resolve(out))));
+function pickMpvAsset(assets) {
+  const ok = (assets || []).filter((a) => a && /^mpv-x86_64-\d{8}-git-[0-9a-f]+\.7z$/i.test(a.name));
+  return ok[0] || (assets || []).find((a) => a && /^mpv-x86_64-(?!v3)[^/]*\.7z$/i.test(a.name) && !/dev|debug|ffmpeg/i.test(a.name)) || null;
+}
+async function downloadMpv(userData, opts) {
+  opts = opts || {};
+  const doFetch = opts.fetch || ((...a) => fetch(...a));
+  const exec = opts.exec || run;
+  const dir = ownDir(userData);
+  const res = await doFetch('https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error('GitHub: HTTP ' + res.status);
+  const asset = pickMpvAsset((await res.json()).assets);
+  if (!asset) throw new Error('No Windows download of mpv found');
+  const tmp = path.join(userData, 'mpv-download');
+  await fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => {});
+  await fs.promises.mkdir(path.join(tmp, 'files'), { recursive: true });
+  try {
+    const file = await doFetch(asset.browser_download_url, { headers: { 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(15 * 60e3) });
+    if (!file.ok) throw new Error('Download failed: HTTP ' + file.status);
+    const archive = path.join(tmp, asset.name);
+    await fs.promises.writeFile(archive, Buffer.from(await file.arrayBuffer()));
+    // .7z: Windows' own tar opens it; 7-Zip when it's installed.
+    let unpacked = false;
+    try { await exec('tar.exe', ['-xf', archive, '-C', path.join(tmp, 'files')]); unpacked = true; } catch (_) { /* try 7-Zip */ }
+    if (!unpacked) for (const z of ['C:\\Program Files\\7-Zip\\7z.exe', 'C:\\Program Files (x86)\\7-Zip\\7z.exe']) {
+      if (exists(z)) { await exec(z, ['x', '-y', '-o' + path.join(tmp, 'files'), archive]); unpacked = true; break; }
+    }
+    if (!unpacked) throw new Error('Couldn’t unpack mpv');
+    // The folder with mpv.exe in it (sometimes one level down).
+    let root = path.join(tmp, 'files');
+    if (!exists(path.join(root, 'mpv.exe'))) { const sub = listDir(root).map((d) => path.join(root, d)).find((d) => exists(path.join(d, 'mpv.exe'))); if (sub) root = sub; }
+    if (!exists(path.join(root, 'mpv.exe'))) throw new Error('The download didn’t have mpv.exe in it');
+    await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+    await fs.promises.cp(root, dir, { recursive: true, force: true });
+    return path.join(dir, 'mpv.exe');
+  } finally {
+    fs.promises.rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
+}
+function installMpv(userData, opts) {
+  return downloadMpv(userData, opts).catch((first) => new Promise((resolve, reject) => {
     execFile('winget', ['install', '--id', 'shinchiro.mpv', '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements'],
       { windowsHide: true, timeout: 10 * 60e3 }, (err, stdout) => {
-        const found = findMpv();
+        const found = findMpv(process.env, null, userData);
         if (found) return resolve(found);
-        reject(new Error(err && err.code === 'ENOENT' ? 'Windows’ app installer (winget) isn’t on this PC. Get mpv from mpv.io, then choose mpv.exe here.' : 'Couldn’t install mpv' + (stdout ? ': ' + String(stdout).trim().split('\n').pop().slice(0, 160) : '')));
+        reject(new Error('Couldn’t install mpv (' + String(first && first.message || first) + '). Get it from mpv.io, then choose mpv.exe here.'));
       });
-  });
+  }));
 }
 
 // ---------------------------------------------------------------- Stremio's streaming engine
@@ -215,4 +265,4 @@ function startMpv(exe, o) {
   }) && Object.defineProperty(ev, 'alive', { get: () => !exited });
 }
 
-module.exports = { findMpv, installMpv, createEngine, startMpv, serverCandidates, SERVER };
+module.exports = { findMpv, installMpv, downloadMpv, pickMpvAsset, createEngine, startMpv, serverCandidates, SERVER };

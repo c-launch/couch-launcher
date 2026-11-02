@@ -970,8 +970,13 @@ if (!app.requestSingleInstanceLock()) {
     };
     setTimeout(tick, 300);
   }
+  // Settings the app core keeps itself (the screens' copy of them can be out of date): kept as
+  // they are when the screens save. (Saving used to put an old empty mpv path back, so mpv had to
+  // be chosen again after a restart.)
+  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone'];
   handle('lib:save', (data) => {
     const next = library.normalize(data);
+    for (const k of CORE_SETTINGS) if (lib && lib.settings && lib.settings[k] !== undefined) next.settings[k] = lib.settings[k];
     // Delete art files that no game uses any more.
     const used = new Set();
     for (const g of next.games) for (const k of Object.keys(g.art || {})) if (g.art[k]) used.add(path.resolve(g.art[k]));

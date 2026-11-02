@@ -17,7 +17,13 @@ function setupTv(ctx) {
   let session = null;
   let hud = null;
 
-  const mpvPath = () => tvp.findMpv(process.env, settings().mpvPath || null);
+  // The one you chose, else the launcher's own copy, else any mpv on this PC. Whatever is found
+  // is remembered, so it's there straight away next time.
+  const mpvPath = () => {
+    const exe = tvp.findMpv(process.env, settings().mpvPath || null, app.getPath('userData'));
+    if (exe && exe !== settings().mpvPath) { settings().mpvPath = exe; saveSettings(); }
+    return exe;
+  };
   const quality = () => settings().tvQuality || '1080p';
 
   // ---------- requests from the screens
@@ -66,7 +72,7 @@ function setupTv(ctx) {
   handle('tv:setWatched', (id, on) => tv().setWatched(String(id || ''), !!on));
   handle('tv:resumeAt', (id, videoId) => tv().resumeAt(String(id || ''), videoId ? String(videoId) : null));
   handle('tv:installMpv', async () => {
-    const exe = await tvp.installMpv();
+    const exe = await tvp.installMpv(app.getPath('userData'));
     settings().mpvPath = exe; saveSettings();
     return exe;
   });
