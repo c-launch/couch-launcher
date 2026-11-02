@@ -1,6 +1,6 @@
 {
- "version": "1.9.0",
- "notes": "YouTube: its own app in the launcher (YouTube's TV interface, full screen, controller support, stays signed in).",
- "file": "CouchLauncher-update-1.9.0.zip",
- "size": 209066
+ "version": "1.9.1",
+ "notes": "YouTube: ads blocked, using VacuumTube's ad blocker (by shy, MIT License; credited in About). Switch in Settings › Movies & TV.",
+ "file": "CouchLauncher-update-1.9.1.zip",
+ "size": 212335
 }

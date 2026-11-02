@@ -10,6 +10,7 @@
 //  - The Xbox / PS button hides it (the video pauses) and brings the launcher back; opening
 //    YouTube again picks up right where you were.
 
+const path = require('path');
 const TV_URL = 'https://www.youtube.com/tv';
 const AGENTS = [
   // A TV running YouTube's own TV app engine
@@ -32,6 +33,8 @@ const PAGE_SETUP = `(() => {
 function createYouTube({ BrowserWindow, session, targetDisplay, bringBack, settings, saveSettings, now }) {
   now = now || Date.now;
   let win = null;
+  let madeWithAds = null, replacing = false;
+  const blockAds = () => settings().ytAdblock !== false;
   let agent = null; // read from settings when YouTube first opens (they aren't loaded yet at startup)
   let triedAll = false;
   let prev = 0, held = null;
@@ -45,9 +48,12 @@ function createYouTube({ BrowserWindow, session, targetDisplay, bringBack, setti
       autoHideMenuBar: true, title: 'YouTube',
       webPreferences: {
         partition: 'persist:youtube', contextIsolation: true, nodeIntegration: false, sandbox: true,
+        // Ad blocker (adapted from VacuumTube, MIT License), put into the page before YouTube runs.
+        preload: path.join(__dirname, 'ytpreload.js'), additionalArguments: [blockAds() ? '--couch-adblock=1' : '--couch-adblock=0'],
         backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required'
       }
     });
+    madeWithAds = blockAds();
     const wc = win.webContents;
     wc.setUserAgent(AGENTS[agent]);
     // Stay on YouTube; anything else (help pages etc.) is refused.
@@ -63,10 +69,12 @@ function createYouTube({ BrowserWindow, session, targetDisplay, bringBack, setti
     });
     win.once('ready-to-show', () => { if (alive()) { win.show(); win.focus(); } });
     // YouTube's own "Exit" (B on its home screen) closes the window: back to the launcher.
-    win.on('closed', () => { win = null; bringBack(false); });
+    win.on('closed', () => { win = null; if (!replacing) bringBack(false); });
     win.loadURL(TV_URL);
   }
   function open() {
+    // The ad blocker setting changed since this window was made: start it fresh.
+    if (alive() && madeWithAds !== blockAds()) { replacing = true; win.destroy(); replacing = false; }
     if (!alive()) { create(); return true; }
     const b = targetDisplay().bounds;
     if (win.isFullScreen()) win.setFullScreen(false);
