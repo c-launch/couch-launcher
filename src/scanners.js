@@ -29,6 +29,10 @@ const EMULATORS = {
   }
 };
 
+// The other emulators (PCSX2, DuckStation, RetroArch…) from the catalog, launched the same way.
+const CAT = require('./emucatalog');
+for (const [id, e] of Object.entries(CAT.CATALOG)) EMULATORS[id] = Object.assign({ catalog: true }, e);
+
 function exists(p) {
   try { return !!p && fs.existsSync(p); } catch (_) { return false; }
 }
@@ -243,6 +247,12 @@ function shortcutEmulator(text) {
   if (/ryujinx|\\roms\\switch\\/.test(t)) return 'ryujinx';
   if (/rpcs3|\\roms\\ps3\\/.test(t)) return 'rpcs3';
   if (/dolphin|\\roms\\(gc|gamecube|wii)\\/.test(t)) return 'dolphin';
+  // EmuDeck's shortcuts for the other emulators: by program name or EmuDeck ROM folder
+  for (const [id, e] of Object.entries(CAT.CATALOG)) {
+    if (e.exes.some((x) => t.includes(x.replace(/\.exe$/, '')))) return id;
+    const dirs = e.kind === 'retroarch' ? [].concat(...CAT.RETRO_SYSTEMS.map((r) => r.dirs)) : e.dirs;
+    if (dirs.some((d) => t.includes('\\roms\\' + d + '\\'))) return id;
+  }
   return null;
 }
 
@@ -515,6 +525,7 @@ function scanRpcs3(gamesDir, emuExe) {
 
 function scanEmulator(emuId, cfg) {
   if (!cfg || !cfg.exe) return [];
+  if (EMULATORS[emuId] && EMULATORS[emuId].catalog) return require('./emuscan').scanCatalog(emuId, cfg);
   if (emuId === 'rpcs3') return scanRpcs3(cfg.dir, cfg.exe);
   return scanFileEmulator(emuId, cfg.dir);
 }

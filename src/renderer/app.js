@@ -725,7 +725,7 @@
     if (tab === 'platforms') {
       const cnt = (src) => games().filter((g) => g.source === src).length;
       let h = '<div class="sect-h"><div><h2>Platforms</h2><p>Where your games come from. New games in these folders show up automatically.</p></div>' +
-        '<div class="btn-row"><button class="btn big" data-nav data-key="p-emudeck" data-zone="body" data-action="emudeck">' + icon('search') + 'Find EmuDeck setup</button>' +
+        '<div class="btn-row"><button class="btn big" data-nav data-key="p-emudeck" data-zone="body" data-action="emu-find">' + icon('search') + 'Find emulators (EmuDeck too)</button>' +
         '<button class="btn primary big" data-nav data-key="p-all" data-zone="body" data-action="rescan">' + icon('refresh') + (S.scanning ? 'Scanning…' : 'Rescan all') + '</button></div></div><div class="plist">';
       for (const src of ['steam', 'epic', 'msstore', 'roblox']) {
         const info = S.scanInfo[src];
@@ -736,18 +736,14 @@
           '<button class="btn" data-nav data-key="p-' + src + '-toggle" data-zone="body" data-action="plat-toggle" data-src="' + src + '">' + (on ? 'Turn off' : 'Turn on') + '</button>' +
           '<button class="btn" data-nav data-key="p-' + src + '-scan" data-zone="body" data-action="rescan" data-src="' + src + '"' + (on ? '' : ' disabled') + '>Rescan</button></div>';
       }
-      for (const src of ['dolphin', 'rpcs3', 'ryujinx']) {
-        const e = S.info.emulators[src] || { name: src, system: '' };
-        const c = P[src];
-        const needsDir = src !== 'rpcs3';
-        const status = !c.exe ? ['warn', 'Not set up'] : needsDir && !c.dir ? ['warn', 'Needs games folder'] : ['ok', cnt(src) + ' game' + (cnt(src) === 1 ? '' : 's')];
-        const where = c.exe ? c.exe + (c.dir ? '  →  ' + c.dir.split(';').join(' + ') : src === 'rpcs3' ? '  →  installed games' : '') : 'Choose the emulator program, then your games folder';
-        h += '<div class="prow"><div class="picon" style="background:' + SOURCES[src].color + '">' + SOURCES[src].letter + '</div><div class="pinfo"><div class="t">' + esc(e.name + ' · ' + e.system) + '</div><div class="p">' + esc(where) + '</div></div>' +
-          '<span class="status ' + status[0] + '">' + status[1] + '</span>' +
-          '<button class="btn" data-nav data-key="p-' + src + '-exe" data-zone="body" data-action="plat-exe" data-src="' + src + '">' + (c.exe ? 'Change program' : 'Set program') + '</button>' +
-          '<button class="btn" data-nav data-key="p-' + src + '-dir" data-zone="body" data-action="plat-dir" data-src="' + src + '">' + (c.dir ? 'Change folder' : 'Games folder') + '</button>' +
-          '<button class="btn" data-nav data-key="p-' + src + '-scan" data-zone="body" data-action="rescan" data-src="' + src + '"' + (c.exe ? '' : ' disabled') + '>Rescan</button>' +
-          (c.exe ? '<button class="btn" data-nav data-key="p-' + src + '-open" data-zone="body" data-action="emu-open" data-src="' + src + '">Open</button>' : '') + '</div>';
+      {
+        const ids = Object.keys(S.info.emulators || {});
+        const setUp = ids.filter((id) => P[id] && P[id].exe && P[id].enabled !== false);
+        const n = games().filter((g) => ids.includes(g.source)).length;
+        h += '<div class="prow"><div class="picon" style="background:#3B3F6E">' + icon('pad') + '</div><div class="pinfo"><div class="t">Emulators</div><div class="p">' +
+          esc(setUp.length ? setUp.map((id) => S.info.emulators[id].name).slice(0, 5).join(', ') + (setUp.length > 5 ? ' and ' + (setUp.length - 5) + ' more' : '') : 'PS2, PS3, Switch, GameCube, Wii U, 3DS, PSP, Xbox, retro and more') + '</div></div>' +
+          '<span class="status ' + (setUp.length ? 'ok' : 'warn') + '">' + (setUp.length ? setUp.length + ' set up · ' + n + ' game' + (n === 1 ? '' : 's') : 'None set up') + '</span>' +
+          '<button class="btn primary" data-nav data-key="p-emus" data-zone="body" data-action="emu-page">' + icon('gear') + 'Open</button></div>';
       }
       h += '<div class="prow"><div class="picon" style="background:var(--chip);color:var(--text)">' + icon('image') + '</div><div class="pinfo"><div class="t">Game art · SteamGridDB</div><div class="p">Finds tiles and backgrounds by game name</div></div>' +
         (S.artOn ? '<span class="status ok">Connected</span><button class="btn" data-nav data-key="p-art-find" data-zone="body" data-action="art-find">' + icon('search') + (S.artRunning ? 'Finding…' : 'Find missing art') + '</button>' +
@@ -832,6 +828,43 @@
         '<button class="toggle-row" data-nav data-key="m-xbox" data-zone="body" data-action="medal-xbox"><span><div>Xbox controllers</div><div class="d">' + esc(S.captureInfo == null ? 'Checking your controller…' : S.captureInfo.xboxShareReadable ? 'Your Xbox controller’s Share button can be read (Bluetooth).' : 'No Xbox Share button readable right now: it only works over Bluetooth. Hold View + RB for a clip, View + LB for a screenshot.') + '</div></span><span class="status ok">' +
           ({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button></div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
+      return h;
+    }
+    if (tab === 'emulators') {
+      const E = S.info.emulators || {};
+      const found = S.emuFound;
+      if (found === undefined) { S.emuFound = null; Promise.resolve().then(() => api.findEmulators()).then((f) => { S.emuFound = f || {}; if (S.view === 'settings' && S.setTab === 'emulators' && !layers.length) refreshContent(); }).catch(() => { S.emuFound = {}; }); }
+      const cnt = (id) => games().filter((g) => g.source === id).length;
+      const ids = Object.keys(E);
+      const setUp = ids.filter((id) => P[id] && P[id].exe);
+      const foundOnly = ids.filter((id) => !(P[id] && P[id].exe) && found && found[id] && found[id].exe);
+      const rest = ids.filter((id) => !setUp.includes(id) && !foundOnly.includes(id));
+      const color = (id) => (SOURCES[id] && SOURCES[id].color) || '#444A52';
+      const row = (id, kind) => {
+        const e = E[id], c = P[id] || {};
+        const off = c.enabled === false;
+        const status = kind === 'found' ? ['ok', 'Found on this PC'] : kind === 'none' ? ['off', 'Not found'] : off ? ['off', 'Turned off'] : !e.noFolder && !c.dir ? ['warn', 'Needs games folder'] : ['ok', cnt(id) + ' game' + (cnt(id) === 1 ? '' : 's')];
+        const where = kind === 'found' ? found[id].exe + (found[id].dirs.length ? '  →  ' + found[id].dirs.join(' + ') : '') : c.exe ? c.exe + (c.dir ? '  →  ' + c.dir.split(';').join(' + ') : e.noFolder ? '  →  its own game list' : '') : e.system;
+        let btns = '';
+        if (kind === 'found') btns = '<button class="btn primary" data-nav data-key="e-' + id + '-setup" data-zone="body" data-action="emu-setup" data-src="' + id + '">' + icon('check') + 'Set up</button>';
+        else if (kind === 'none') btns = '<button class="btn" data-nav data-key="e-' + id + '-exe" data-zone="body" data-action="plat-exe" data-src="' + id + '">Set program</button>';
+        else btns = '<button class="btn" data-nav data-key="e-' + id + '-toggle" data-zone="body" data-action="emu-toggle" data-src="' + id + '">' + (off ? 'Turn on' : 'Turn off') + '</button>' +
+          '<button class="btn" data-nav data-key="e-' + id + '-exe" data-zone="body" data-action="plat-exe" data-src="' + id + '">Program</button>' +
+          (e.noFolder && id !== 'shadps4' ? '' : '<button class="btn" data-nav data-key="e-' + id + '-dir" data-zone="body" data-action="plat-dir" data-src="' + id + '">' + (c.dir ? 'Folder' : 'Games folder') + '</button>') +
+          '<button class="btn" data-nav data-key="e-' + id + '-scan" data-zone="body" data-action="rescan" data-src="' + id + '"' + (off ? ' disabled' : '') + '>Rescan</button>' +
+          '<button class="btn" data-nav data-key="e-' + id + '-open" data-zone="body" data-action="emu-open" data-src="' + id + '">Open</button>';
+        return '<div class="prow"><div class="picon" style="background:' + color(id) + '">' + esc(e.name.charAt(0)) + '</div><div class="pinfo"><div class="t">' + esc(e.name + ' · ' + e.system) + '</div><div class="p">' + esc(where) + '</div></div>' +
+          '<span class="status ' + status[0] + '">' + status[1] + '</span>' + btns + '</div>';
+      };
+      let h = '<div class="sect-h"><div><h2>Emulators</h2><p>' + (found === null ? 'Looking for emulators on this PC…' : setUp.length + ' set up' + (foundOnly.length ? ' · ' + foundOnly.length + ' more found on this PC' : '')) + '. EmuDeck folders (Emulation\\roms) are found by themselves.</p></div>' +
+        '<div class="btn-row"><button class="btn big" data-nav data-key="e-back" data-zone="body" data-action="emu-back">' + icon('prev') + 'Platforms</button>' +
+        (foundOnly.length ? '<button class="btn primary big" data-nav data-key="e-all" data-zone="body" data-action="emu-setup">' + icon('check') + 'Set up all ' + foundOnly.length + '</button>' : '') +
+        '<button class="btn big" data-nav data-key="e-find" data-zone="body" data-action="emu-find">' + icon('search') + 'Find again</button></div></div>';
+      if (setUp.length) h += '<div class="sub-h">Set up</div><div class="plist">' + setUp.map((id) => row(id, 'set')).join('') + '</div>';
+      if (foundOnly.length) h += '<div class="sub-h">Found on this PC</div><div class="plist">' + foundOnly.map((id) => row(id, 'found')).join('') + '</div>';
+      if (rest.length) h += S.emuShowAll ? '<div class="sub-h">More emulators</div><div class="plist">' + rest.map((id) => row(id, 'none')).join('') + '</div>'
+        : '<div class="btn-row" style="margin-top:2rem"><button class="dashed" data-nav data-key="e-more" data-zone="body" data-action="emu-more">' + icon('plus') + 'Show ' + rest.length + ' more emulators</button></div>';
+      h += '<p class="field-note" style="margin-top:2rem">You need your own BIOS / firmware files and game dumps for each emulator. Multi-disc games show once (an .m3u playlist is used when there is one); a game in several regions shows once too — pick the version in its menu (☰).</p>';
       return h;
     }
     if (tab === 'tv') {
@@ -2046,6 +2079,9 @@
       { id: 'cols', label: 'Collections' + ((g.collections || []).length ? ' (' + g.collections.join(', ') + ')' : ''), icon: 'grid' },
       { id: 'tv', label: 'TV settings for this game' + (g.display ? ' (' + displayLabel(g.display) + ')' : ''), icon: 'monitor' }
     ];
+    const alts = g.launch && Array.isArray(g.launch.alts) ? g.launch.alts : null;
+    const REG = { usa: 'USA', world: 'World', europe: 'Europe', japan: 'Japan', other: 'Other' };
+    if (alts && alts.length > 1) { const cur = alts.find((x) => x.file === (g.altFile || g.launch.file)) || alts[0]; items.splice(1, 0, { id: 'region', label: 'Version: ' + (REG[cur.region] || cur.region), icon: 'refresh' }); }
     items.push(g.hidden ? { id: 'unhide', label: 'Unhide', icon: 'refresh' } : { id: 'hide', label: 'Hide from library', icon: 'x' });
     if (g.source === 'custom') items.push({ id: 'remove', label: 'Remove from library', icon: 'trash', danger: true });
     const pick = await openMenu(g.title, items);
@@ -2054,6 +2090,15 @@
     if (pick === 'edit') return openEdit(g);
     if (pick === 'cols') return editCollections(g);
     if (pick === 'tv') return displaySettings(g);
+    if (pick === 'region') {
+      const REG = { usa: 'USA', world: 'World', europe: 'Europe', japan: 'Japan', other: 'Other' };
+      const cur = g.altFile || g.launch.file;
+      const v = await openMenu('Which version?', alts.map((x, i) => ({ id: String(i), label: (REG[x.region] || x.region) + ' · ' + baseName(x.file), icon: x.file === cur ? 'check' : 'play' })));
+      if (v == null) return;
+      g.altFile = alts[Number(v)].file === g.launch.file ? null : alts[Number(v)].file;
+      save(); toast('Plays the ' + (REG[alts[Number(v)].region] || alts[Number(v)].region) + ' version');
+      return;
+    }
     if (pick === 'fav') { g.favorite = !g.favorite; toast(g.favorite ? 'Added to favorites' : 'Removed from favorites'); }
     if (pick === 'pin') { g.pinned = !g.pinned; toast(g.pinned ? 'Pinned to Home' : 'Unpinned'); }
     if (pick === 'coop') { g.coop = !g.coop; toast(g.coop ? 'Marked as co-op' : 'Removed from co-op'); }
@@ -2705,6 +2750,22 @@
         if (m) { s.medalXbox = m; save(); refreshContent(); }
         return;
       }
+      case 'emu-page': S.setTab = 'emulators'; S.emuFound = undefined; refreshContent(); $('#content').scrollTop = 0; { const f = $('#content [data-nav]'); if (f) setFocus(f); } return;
+      case 'emu-back': S.setTab = 'platforms'; refreshContent(); { const f = $('[data-key="p-emus"]'); if (f) setFocus(f); } return;
+      case 'emu-more': S.emuShowAll = true; return refreshContent();
+      case 'emu-toggle': { const c = S.lib.platforms[el.dataset.src]; c.enabled = c.enabled === false; save(); refreshContent(); return rescan(el.dataset.src, true); }
+      case 'emu-find': case 'emu-setup': {
+        const only = a === 'emu-setup' ? el.dataset.src || null : null;
+        toast(only ? 'Setting up ' + S.info.emulators[only].name + '…' : 'Looking for emulators…');
+        try {
+          const r = await api.setupFoundEmulators(only);
+          adoptScan(r);
+          S.emuFound = undefined;
+          toast(r.done.length ? 'Set up ' + r.done.join(', ') : 'Nothing new found. Set a program by hand under “Show more emulators”.');
+        } catch (e) { toast(e.message, true); }
+        if (S.setTab !== 'emulators') { S.setTab = 'emulators'; }
+        return refreshContent();
+      }
       case 'tv-open': return TV().open();
       case 'yt-reset': {
         if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this PC.', 'Sign out', true))) return;
@@ -2738,7 +2799,7 @@
       case 'plat-exe': {
         const src = el.dataset.src;
         const e = S.info.emulators[src];
-        let p = await browse({ title: 'Find the ' + e.name + ' program', exts: ['.exe', '.ps1', '.bat', '.cmd'], hint: 'Pick ' + (src === 'dolphin' ? 'Dolphin.exe' : src === 'rpcs3' ? 'rpcs3.exe' : 'Ryujinx.exe') + ', or an EmuDeck .ps1 launcher' });
+        let p = await browse({ title: 'Find the ' + e.name + ' program', exts: ['.exe', '.ps1', '.bat', '.cmd'], hint: 'Pick ' + (src === 'dolphin' ? 'Dolphin.exe' : src === 'rpcs3' ? 'rpcs3.exe' : src === 'ryujinx' ? 'Ryujinx.exe' : (e.exe || 'the emulator .exe')) + ', or an EmuDeck .ps1 launcher' });
         if (!p) return;
         if (/\.(ps1|bat|cmd)$/i.test(p)) {
           try { p = await api.exeFromScript(p); toast('Using ' + baseName(p) + ' from that script'); }
@@ -2851,6 +2912,7 @@
       case 'A': return activate(el);
       case 'B':
         if (top) return top.onBack ? top.onBack() : closeLayer(top);
+        if (S.view === 'settings' && S.setTab === 'emulators') return activate({ dataset: { action: 'emu-back' } });
         if (S.view !== 'home') return go('home');
         if (el && el.closest('.home-news')) { const c = $('[data-key="c-lib"]'); if (c) setFocus(c); } // back up from the news
         return;
@@ -3070,6 +3132,7 @@
   async function initOverlay() {
     document.documentElement.classList.add('overlay-mode');
     try { S.info = await api.info(); } catch (_) { /* defaults */ }
+    addEmuSources();
     S.lib = await api.load();
     S.theme = window.applyTheme(S.lib.settings, false);
     requestAnimationFrame(pollPads);
@@ -3085,9 +3148,18 @@
     api.on('overlay:closed', () => { for (const l of layers.slice()) { l.el.remove(); layers.splice(layers.indexOf(l), 1); } updatePrompts(); });
   }
 
+  // Library filters and badges for the catalog emulators (PS2, PSP, Wii U…).
+  function addEmuSources() {
+    const NAMES = { retroarch: 'Retro (RetroArch)', yuzufork: 'Switch (Eden / Citron)', ares: 'Retro (ares)', mame: 'Arcade (MAME)', redream: 'Dreamcast (Redream)', scummvm: 'Adventure (ScummVM)' };
+    for (const [id, e] of Object.entries(S.info.emulators || {})) {
+      if (SOURCES[id] || !e.catalog) continue;
+      SOURCES[id] = { name: NAMES[id] || e.system, badge: String(NAMES[id] ? e.name : e.system).toUpperCase().slice(0, 12), color: e.color || '#444A52', letter: e.name.charAt(0).toUpperCase() };
+    }
+  }
   async function init() {
     if (OVERLAY) return initOverlay();
     try { S.info = await api.info(); } catch (_) { /* defaults */ }
+    addEmuSources();
     S.lib = await api.load();
     if (typeof S.info.autostart === 'boolean') S.lib.settings.autostart = S.info.autostart;
     S.theme = window.applyTheme(S.lib.settings, false);

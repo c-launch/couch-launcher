@@ -1,6 +1,6 @@
 {
- "version": "1.10.0",
- "notes": "Clips with Medal: tap Share for a screenshot, hold for a clip (PlayStation Share/Create; Xbox Series Share over Bluetooth, or View + RB/LB).",
- "file": "CouchLauncher-update-1.10.0.zip",
- "size": 215910
+ "version": "1.11.0",
+ "notes": "Emulators: 19 more (PS2, PS1, PSP, Vita, PS4, Wii U, 3DS, DS, GBA, Xbox, Xbox 360, Dreamcast, RetroArch systems, MAME, ScummVM…) on their own page, found by themselves (EmuDeck first); one tile per game for multi-disc and region versions.",
+ "file": "CouchLauncher-update-1.11.0.zip",
+ "size": 227992
 }

@@ -396,10 +396,13 @@ if (!app.requestSingleInstanceLock()) {
     }
     if (scanners.EMULATORS[source]) {
       const cfg = p[source];
-      const ok = !!(cfg.exe && fs.existsSync(cfg.exe));
+      const on = cfg.enabled !== false;
+      const ok = on && !!(cfg.exe && fs.existsSync(cfg.exe));
       const games = ok ? scanners.scanEmulator(source, cfg) : [];
       // Only drop games when the emulator is set up; a missing drive shouldn't wipe your list.
-      if (ok && (source === 'rpcs3' || scanners.dirsOf(cfg.dir).some((d) => fs.existsSync(d)))) library.mergeScan(lib, source, games);
+      const noFolder = source === 'rpcs3' || require('./emuscan').needsNoFolder(source);
+      if (!on) library.mergeScan(lib, source, []); // turned off: its games leave the library
+      else if (ok && (noFolder || scanners.dirsOf(cfg.dir).some((d) => fs.existsSync(d)))) library.mergeScan(lib, source, games);
       return { source, found: ok, count: games.length };
     }
     return { source, found: false, count: 0 };
@@ -628,7 +631,8 @@ if (!app.requestSingleInstanceLock()) {
       const emu = scanners.EMULATORS[L.emu];
       const cfg = lib.platforms[L.emu] || {};
       if (!emu) throw new Error('Unknown emulator');
-      if (!cfg.exe) throw new Error(emu.name + ' is not set up yet. Open Settings › Platforms.');
+      if (!cfg.exe) throw new Error(emu.name + ' is not set up yet. Open Settings › Platforms › Emulators.');
+      if (cfg.enabled === false) throw new Error(emu.name + ' is turned off in Settings › Platforms › Emulators');
       if (!fs.existsSync(L.file)) throw new Error('Game file not found: ' + L.file);
       const extra = splitArgs(g.args);
       // Dolphin: pick up where you left off (the save state made when you last closed it).
@@ -636,7 +640,9 @@ if (!app.requestSingleInstanceLock()) {
       // GameCube ports 2-4 are off by default in Dolphin: plug in one per player (this run only).
       const ports = [];
       if (L.emu === 'dolphin' && playerCount.dolphin) for (let p = 0; p < 4; p++) ports.push('-C', 'Dolphin.Core.SIDevice' + p + '=' + (p < playerCount.dolphin ? 6 : 0));
-      startProcess(cfg.exe, extra.concat(st ? ['-s', st] : [], ports, emu.args(L.file)), path.dirname(cfg.exe), gameId);
+      // A game in several regions: the version you picked in its menu.
+      const file = g.altFile && (L.alts || []).some((a) => a.file === g.altFile) && fs.existsSync(g.altFile) ? g.altFile : L.file;
+      startProcess(cfg.exe, extra.concat(st ? ['-s', st] : [], ports, emu.args(file, L, cfg)), path.dirname(cfg.exe), gameId);
       running.isEmu = true;
       running.emu = L.emu;
     } else if (L.type === 'exe') {
@@ -824,6 +830,48 @@ if (!app.requestSingleInstanceLock()) {
 
   handle('lib:load', () => lib);
 
+  // ---------- Emulators page: find what's on this PC (EmuDeck folders first) ----------
+  const allDrives = () => {
+    const out = [];
+    if (process.platform === 'win32') for (let c = 67; c <= 90; c++) { const d = String.fromCharCode(c) + ':\\'; try { if (fs.existsSync(d)) out.push(d); } catch (_) { /* skip */ } }
+    return out;
+  };
+  function findEmulators() {
+    const cat = require('./emucatalog');
+    const drives = allDrives();
+    const known = Object.values(lib.platforms).map((p) => p && p.exe).filter(Boolean);
+    const exes = cat.detect(process.env, drives, known, { dolphin: ['dolphin.exe'], rpcs3: ['rpcs3.exe'], ryujinx: ['ryujinx.exe'] });
+    const deck = scanners.detectEmuDeck(app.getPath('home'), process.env, drives);
+    const out = {};
+    for (const id of Object.keys(scanners.EMULATORS)) {
+      const exe = (deck[id] && deck[id].exe) || exes[id] || null;
+      const dirs = scanners.EMULATORS[id].catalog ? cat.romDirs(id, drives) : ((deck[id] && deck[id].dirs) || []);
+      if (exe || dirs.length) out[id] = { exe, dirs };
+    }
+    return out;
+  }
+  // Sets up every emulator that's found and not set up yet; returns their names.
+  function setupFound(onlyId) {
+    const found = findEmulators();
+    const done = [];
+    for (const [id, f] of Object.entries(found)) {
+      if (onlyId && id !== onlyId) continue;
+      const cfg = lib.platforms[id] = lib.platforms[id] || { exe: '', dir: '' };
+      if (!cfg.exe && f.exe) { cfg.exe = f.exe; done.push(scanners.EMULATORS[id].name); }
+      if (!cfg.dir && f.dirs.length && cfg.exe) cfg.dir = f.dirs.join(';');
+    }
+    persist();
+    return done;
+  }
+  handle('emu:find', () => findEmulators());
+  handle('emu:setupFound', async (onlyId) => {
+    const done = setupFound(onlyId ? String(onlyId) : null);
+    const results = [];
+    for (const id of Object.keys(scanners.EMULATORS)) if ((!onlyId || id === onlyId) && lib.platforms[id] && lib.platforms[id].exe) results.push(await scanSource(id));
+    persist();
+    return { done, lib, results };
+  });
+
   // ---------- Movies & TV (Stremio) ----------
   tvPart = require('./tvmain').setupTv({
     app, safeStorage, shell, clipboard, BrowserWindow, handle, send,
@@ -880,7 +928,10 @@ if (!app.requestSingleInstanceLock()) {
   });
   handle('scan', async (source) => {
     // Emulators first, so the Steam scan can tell which EmuDeck shortcuts are duplicates.
-    const sources = source ? [source] : ['dolphin', 'rpcs3', 'ryujinx', 'steam', 'epic', 'msstore', 'roblox'];
+    // First time after the Emulators update: set up every emulator on this PC (EmuDeck too).
+    if (!source && !lib.settings.emuAutoDone) { lib.settings.emuAutoDone = true; try { setupFound(); } catch (_) { /* by hand in Settings */ } }
+    const catalogOn = Object.keys(require('./emucatalog').CATALOG).filter((id) => lib.platforms[id] && lib.platforms[id].exe);
+    const sources = source ? [source] : ['dolphin', 'rpcs3', 'ryujinx'].concat(catalogOn, ['steam', 'epic', 'msstore', 'roblox']);
     const results = [];
     for (const s of sources) results.push(await scanSource(s));
     persist();
@@ -1359,7 +1410,7 @@ if (!app.requestSingleInstanceLock()) {
     hotkey: controller.available,
     guideButton: controller.available && controller.guide,
     autostart: process.platform === 'win32' ? app.getLoginItemSettings(loginOpts()).openAtLogin : null,
-    emulators: Object.fromEntries(Object.entries(scanners.EMULATORS).map(([k, v]) => [k, { name: v.name, system: v.system, exts: v.exts }]))
+    emulators: Object.fromEntries(Object.entries(scanners.EMULATORS).map(([k, v]) => [k, { name: v.name, system: v.system, exts: v.exts, catalog: !!v.catalog, color: v.color || null, exe: (v.exes || [k + '.exe'])[0], noFolder: k === 'rpcs3' || require('./emuscan').needsNoFolder(k) }]))
   }));
   function loginOpts() {
     // When run from source (npm start), Windows has to start Electron with the app folder.
