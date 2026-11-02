@@ -483,10 +483,14 @@
   function padCount() {
     try { return Array.from(navigator.getGamepads()).filter((p) => p && p.connected).length; } catch (_) { return 0; }
   }
+  // The dock, in order. These three are pages (LB/RB slide to them); the rest open something.
+  const DOCK_NAVS = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['tv', 'tv', 'Movies & TV'], ['youtube', 'playc', 'YouTube'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
+  const DOCK = DOCK_NAVS.map((x) => x[0]);
+  const DOCK_VIEWS = ['home', 'library', 'settings'];
   function renderTop() {
     const s = S.lib.settings;
     const n = games().length;
-    const navs = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['tv', 'tv', 'Movies & TV'], ['youtube', 'playc', 'YouTube'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
+    const navs = DOCK_NAVS;
     const x = s.xbox;
     const sub = profileFrom() === 'steam' ? icon('level') + '<span>' + esc(profileSub()) + '</span>'
       : x ? icon('trophy') + '<span>' + Number(x.gamerscore || 0).toLocaleString() + '</span>'
@@ -495,7 +499,7 @@
       '<button class="me" data-nav data-key="nav-me" data-zone="nav" data-lock="nav" data-action="profile" aria-label="Your profile">' + avatarHTML('avatar') +
       '<div><div class="me-name">' + esc(displayName()) + '</div><div class="me-sub">' + sub + '</div></div></button>' +
       '<nav class="navpill" aria-label="Main">' + navs.map(([k, ic, label]) =>
-        '<button class="navbtn' + (S.view === k ? ' active' : '') + '" data-nav data-key="nav-' + k + '" data-zone="nav" data-lock="nav" data-action="nav" data-to="' + k + '" aria-label="' + label + '">' + icon(ic) + '</button>').join('') + '</nav>' +
+        '<button class="navbtn' + (S.view === k ? ' active' : '') + '" data-nav data-key="nav-' + k + '" data-zone="nav" data-lock="nav" data-action="nav" data-to="' + k + '" aria-label="' + label + '">' + icon(ic) + '<span class="navtip">' + label + '</span></button>').join('') + '</nav>' +
       '<div class="clock"><span class="pads" id="padcount"></span><span id="clock"></span></div>';
     tickClock();
     restoreFocusClass();
@@ -547,6 +551,7 @@
     if (top && top.className === 'launching') list = []; // the boot screen has its own Cancel hint
     else if (top) list = top.prompts ? top.prompts(el) : [['A', 'Select'], ['B', 'Back']];
     else if (el && el.dataset.game) list = [['A', 'Play'], ['Y', 'Edit game'], ['MENU', 'Options']].concat(S.view !== 'home' ? [['B', 'Back']] : []);
+    else if (el && el.classList.contains('navbtn') && !DOCK_VIEWS.includes(el.dataset.to)) list = [['A', 'Open']].concat(S.view !== 'home' ? [['B', 'Back']] : [['MENU', 'Power']]);
     else list = [['A', 'Select']].concat(S.view !== 'home' ? [['B', 'Back']] : [['MENU', 'Power']]);
     if (!top && S.view !== 'home') list.push(['LB', 'RB']);
     $('#prompts').innerHTML = list.map(([b, label]) => b === 'LB' ? '<span class="prompt">' + glyph('LB') + glyph('RB') + 'Switch</span>' : '<span class="prompt">' + glyph(b) + esc(label) + '</span>').join('');
@@ -2141,6 +2146,16 @@
     const pick = await openMenu(f.gamertag + ' · ' + sub, friendItems(f));
     return friendAct(f, pick);
   }
+  // A game's achievements on a friend's profile: theirs (bar) and yours next to them.
+  function achLine(r) {
+    let got = null, total = null, txt = '';
+    if (r.ach && r.ach.total) { got = r.ach.got; total = r.ach.total; txt = got + '/' + total + ' achievements' + (r.mine ? ' · you ' + r.mine.got + '/' + r.mine.total : ''); }
+    else if (r.total) { got = r.gamerscore; total = r.total; txt = Number(r.gamerscore).toLocaleString() + '/' + Number(r.total).toLocaleString() + ' G' + (r.achievements ? ' · ' + r.achievements + ' achievements' : ''); }
+    if (total == null) return '';
+    const pc = Math.round(got / total * 100);
+    return '<span class="fp-ach">' + icon('trophy') + '<span>' + esc(txt) + '</span></span><span class="fp-bar"><span style="width:' + Math.max(pc ? 2 : 0, pc) + '%"></span></span>' +
+      (r.ach && r.ach.recent && r.ach.recent[0] ? '<span class="fp-gs">Latest: ' + esc(r.ach.recent[0]) + '</span>' : '');
+  }
   function fmtHours(h) { return h >= 1 ? (h >= 10 ? Math.round(h) : h) + ' h' : h > 0 ? Math.round(h * 60) + ' min' : ''; }
   async function openFriendProfile(id) {
     let p = null, err = null;
@@ -2148,43 +2163,81 @@
     const html = () => {
       const f = p || known || { gamertag: 'Friend', id };
       const name = f.name || f.gamertag;
-      const svc = (f.service || (String(id).startsWith('steam-') ? 'steam' : 'xbox')) === 'steam' ? 'Steam' : 'Xbox';
+      const steam = (f.service || (String(id).startsWith('steam-') ? 'steam' : 'xbox')) === 'steam';
       const stats = [];
-      if (p) {
-        if (p.level != null) stats.push(['Level', p.level]);
-        if (p.games != null) stats.push(['Games', p.games.toLocaleString()]);
-        if (p.gamerscore) stats.push(['Gamerscore', p.gamerscore.toLocaleString()]);
+      const num = (n) => Number(n).toLocaleString();
+      if (p && steam) {
+        if (p.games != null) stats.push(['Games', num(p.games)]);
+        if (p.friends != null) stats.push(['Friends', num(p.friends)]);
+        if (p.badges != null) stats.push(['Badges', num(p.badges)]);
         if (p.since) stats.push(['Member since', new Date(p.since).getFullYear()]);
+      } else if (p) {
+        if (p.games != null) stats.push(['Games played', num(p.games)]);
+        if (p.achievements != null) stats.push(['Achievements', num(p.achievements)]);
+        if (p.completed != null) stats.push(['Completed', num(p.completed)]);
+        if (p.tenure) stats.push(['On Xbox', p.tenure + (p.tenure === 1 ? ' year' : ' years')]);
       }
+      if (p && p.together && p.together.length) stats.push(['Played together', p.together.length + (p.together.length === 1 ? ' game' : ' games')]);
       const acts = p || known ? friendItems(Object.assign({}, known || {}, p || {}, { id })).filter((x) => x.id !== 'profile') : [];
       const pic = f.picBig || f.pic;
-      let h = '<div class="fprof"><div class="fp-head"><div class="fp-av">' + esc(String(name).charAt(0).toUpperCase()) + (pic ? '<img src="' + esc(pic) + '" alt="">' : '') + '</div>' +
-        '<div class="fp-who"><div class="fp-svc">' + svc + '</div><h1>' + esc(name) + '</h1>' +
+      const recent = (p && p.recent) || [];
+      const pctOf = (r) => r.ach && r.ach.total ? Math.round(r.ach.got / r.ach.total * 100) : r.total ? Math.round(r.pct || (r.gamerscore / r.total * 100)) : null;
+      const lineBits = [steam ? 'Steam' : 'Xbox'];
+      if (p && p.realName && p.realName !== name) lineBits.push(esc(p.realName));
+      if (p && (p.location || p.country)) lineBits.push(esc(p.location || p.country));
+      const color = p && /^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : null;
+      // Badges: level (Steam) or years on Xbox, account extras, then their latest games with how far they've got.
+      const badges = [];
+      if (p && steam && p.level != null) badges.push('<span class="fp-badge lvl" title="Steam level"><b>' + esc(String(p.level)) + '</b></span>');
+      if (p && !steam && p.tenure) badges.push('<span class="fp-badge lvl" title="Years on Xbox"><b>' + esc(String(p.tenure)) + '</b></span>');
+      if (p && !steam && p.tier === 'Gold') badges.push('<span class="fp-badge txt" title="Account">Gold member</span>');
+      if (p && p.rep) badges.push('<span class="fp-badge txt" title="Reputation">' + esc(p.rep) + '</span>');
+      for (const r of recent.slice(0, 6)) {
+        const pc = pctOf(r);
+        badges.push('<span class="fp-badge game" title="' + esc(r.title + (pc != null ? ' · ' + pc + '% of achievements' : '')) + '"' + (pc != null ? ' style="--pct:' + pc + '"' : '') + '><i' + (r.img ? ' style="background-image:url(&quot;' + esc(r.img) + '&quot;)"' : '') + '>' + (r.img ? '' : esc(r.title.charAt(0))) + '</i></span>');
+      }
+      let xpBar = '';
+      if (p && steam && p.xp && p.xp.toNext) {
+        const span = p.xp.total - p.xp.thisLevel + p.xp.toNext, done = p.xp.total - p.xp.thisLevel;
+        xpBar = '<div class="fp-xp"><div class="fp-xpbar"><span style="width:' + Math.max(2, Math.min(100, Math.round(done / span * 100))) + '%"></span></div><small>' + num(p.xp.toNext) + ' XP to level ' + (p.level + 1) + ' · ' + num(p.xp.total) + ' XP total</small></div>';
+      }
+      let h = '<div class="fprof ' + (steam ? 'steam' : 'xbox') + '"' + (color ? ' style="--band:' + color + ';--band2:color-mix(in srgb, ' + color + ' 62%, #000)"' : '') + '><section class="fp-hero">' +
+        '<div class="fp-left"><div class="fp-line">' + lineBits.join(' · ') +
+        (!steam && f.gamerscore ? '<span class="fp-g">G</span>' + num(f.gamerscore) : '') +
+        (steam && p && p.level != null ? ' · Level ' + esc(String(p.level)) : '') + '</div>' +
+        '<h1>' + esc(name) + '</h1>' +
         '<div class="fp-status' + (f.online ? ' on' : '') + '">' + esc(f.online ? (f.status || 'Online') : (p && p.lastOnline ? 'Last online ' + ago(p.lastOnline) : 'Offline')) + '</div>' +
-        (stats.length ? '<div class="fp-stats">' + stats.map(([k, v]) => '<span><b>' + esc(String(v)) + '</b>' + esc(k) + '</span>').join('') + '</div>' : '') + '</div></div>';
-      h += '<div class="fp-acts">' + acts.map((a, i) => '<button class="btn big' + (i === 0 ? ' primary' : '') + '" data-nav data-key="fpa-' + a.id + '" data-zone="fpacts" data-act="do" data-do="' + a.id + '">' + icon(a.icon) + esc(a.label) + '</button>').join('') + '</div>';
+        (p && p.bio ? '<div class="fp-bio">' + esc(p.bio) + '</div>' : '') +
+        (stats.length ? '<div class="fp-stats">' + stats.map(([k, v]) => '<span><small>' + esc(k) + '</small><b>' + esc(String(v)) + '</b></span>').join('') + '</div>' : '') +
+        xpBar +
+        (badges.length ? '<div class="fp-badges">' + badges.join('') + '</div>' : '') +
+        '</div>' +
+        '<div class="fp-center"><div class="fp-av">' + esc(String(name).charAt(0).toUpperCase()) + (pic ? '<img src="' + esc(pic) + '" alt="">' : '') + '</div><div class="fp-floor"></div></div>' +
+        '<div class="fp-acts">' + acts.map((x) => '<button class="fp-act" data-nav data-key="fpa-' + x.id + '" data-zone="fpacts" data-act="do" data-do="' + x.id + '">' + icon(x.icon) + '<span>' + esc(x.label) + '</span></button>').join('') + '</div>' +
+        '</section><section class="fp-below"><h2 class="fp-h">Recent activity</h2>';
       if (err) h += '<p class="hint fp-note">' + esc(err) + '</p>';
       else if (!p) h += '<p class="hint fp-note">Loading profile…</p>';
       else {
         if (p.private) h += '<p class="hint fp-note">' + esc(name) + '’s game details are private on Steam, so only their name and status show.</p>';
-        if (p.recent && p.recent.length) {
-          h += '<h2 class="fp-h">Recently played</h2><div class="fp-games">' + p.recent.map((r, i) =>
-            '<button class="fp-game" data-nav data-key="fpg-' + i + '" data-zone="fpgames" data-act="game" data-i="' + i + '">' +
-            '<span class="fp-img"' + (r.img ? ' style="background-image:url(&quot;' + esc(r.img) + '&quot;)"' : '') + '>' + (r.img ? '' : icon('pad')) + '</span>' +
-            '<span class="fp-gt">' + esc(r.title) + '</span><span class="fp-gs">' +
-            esc(r.hours != null ? [r.hours2w ? fmtHours(r.hours2w) + ' past 2 weeks' : '', fmtHours(r.hours) ? fmtHours(r.hours) + ' total' : ''].filter(Boolean).join(' · ') : (r.total ? r.gamerscore + ' / ' + r.total + ' G' : r.last ? ago(r.last) : '')) +
-            '</span>' + (r.owned ? '<span class="fp-have">In your library</span>' : '') + '</button>').join('') + '</div>';
-        }
-        if (p.together && p.together.length) {
-          h += '<h2 class="fp-h">Played together</h2><div class="fp-together">' + p.together.map((t) =>
-            '<button class="mitem" data-nav data-key="fpt-' + esc(t.gameId) + '" data-zone="fptog" data-act="tog" data-id="' + esc(t.gameId) + '">' + icon('users') + '<span>' + esc(t.title) + '<small>' + esc(ago(t.last)) + (t.mins ? ' · about ' + fmtHours(t.mins / 60) + ' together' : '') + '</small></span></button>').join('') + '</div>';
-        }
+        const cards = recent.map((r, i) =>
+          '<button class="fp-game" data-nav data-key="fpg-' + i + '" data-zone="fpgames" data-act="game" data-i="' + i + '">' +
+          '<span class="fp-img"' + (r.img ? ' style="background-image:url(&quot;' + esc(r.img) + '&quot;)"' : '') + '>' + (r.img ? '' : icon('pad')) + (r.owned ? '<span class="fp-have">In your library</span>' : '') + '</span>' +
+          '<span class="fp-gt">' + esc(r.title) + '</span><span class="fp-gs">' +
+          esc(r.hours != null ? [r.hours2w ? fmtHours(r.hours2w) + ' past 2 weeks' : '', fmtHours(r.hours) ? fmtHours(r.hours) + ' total' : ''].filter(Boolean).join(' · ') : (r.last ? 'Played ' + ago(r.last) : '')) + '</span>' +
+          achLine(r) + '</button>').join('');
+        const tog = (p.together || []).map((t) =>
+          '<button class="fp-game tog" data-nav data-key="fpt-' + esc(t.gameId) + '" data-zone="fpgames" data-act="tog" data-id="' + esc(t.gameId) + '">' +
+          '<span class="fp-img tog">' + icon('users') + '<span class="fp-have">Played together</span></span>' +
+          '<span class="fp-gt">' + esc(t.title) + '</span><span class="fp-gs">' + esc(ago(t.last)) + (t.mins ? ' · about ' + fmtHours(t.mins / 60) + ' together' : '') + '</span></button>').join('');
+        h += cards || tog ? '<div class="fp-games">' + tog + cards + '</div>' : '<p class="hint fp-note">Nothing played lately.</p>';
       }
-      return h + '</div>';
+      return h + '</section></div>';
     };
     const layer = openLayer({
       className: 'fp-layer',
       html: html(),
+      // Down to Recent activity scrolls the page up to it; back up shows the whole header again.
+      onFocus: (el) => { const sc = el && el.closest && el.closest('.fprof'); if (sc) sc.scrollTo({ top: el.closest('.fp-below') ? sc.scrollHeight : 0, behavior: reduce() ? 'auto' : 'smooth' }); },
       onActivate: async (el) => {
         const act = el.dataset.act;
         if (act === 'do') { const f = Object.assign({}, known || {}, p || {}, { id }); if (!f.gamertag) f.gamertag = f.name || 'Friend'; return friendAct(f, el.dataset.do); }
@@ -3225,10 +3278,26 @@
         return powerMenu();
       case 'LB': case 'RB': {
         if (top) return;
-        const order = ['home', 'library', 'settings'];
-        const i = order.indexOf(S.view);
-        const n = b === 'LB' ? Math.max(0, i - 1) : Math.min(order.length - 1, i + 1);
-        if (n !== i) go(order[n]);
+        // Steps through every icon in the dock. Home, My library and Settings slide over to that
+        // page; the ones that open something (Search, Clips, Movies & TV, YouTube, Friends) are
+        // highlighted, and A opens them.
+        const onDock = el && el.closest && el.closest('#topbar') && el.dataset.action === 'nav' ? el.dataset.to : null;
+        const i = DOCK.indexOf(onDock || S.view);
+        const n = b === 'LB' ? Math.max(0, i - 1) : Math.min(DOCK.length - 1, i + 1);
+        if (n === i) return;
+        const to = DOCK[n];
+        if (!onDock && el && !el.closest('#topbar')) S.pageFocus = { view: S.view, key: el.dataset.key || null };
+        if (DOCK_VIEWS.includes(to)) {
+          if (to !== S.view) { S.pageFocus = null; return go(to); }
+          // Back to the page you're on: where you were before stepping onto the dock.
+          const pf = S.pageFocus && S.pageFocus.view === to && S.pageFocus.key;
+          const views = $$('#view .view'), cur = views[views.length - 1];
+          const back = (pf && cur && $('[data-key="' + cssEsc(pf) + '"]', cur)) || (cur && $('[data-nav]', cur));
+          if (back) setFocus(back);
+          return;
+        }
+        const btn = $('#topbar [data-key="nav-' + to + '"]');
+        if (btn) setFocus(btn);
         return;
       }
       case 'LT': return page('up');

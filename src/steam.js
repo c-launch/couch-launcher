@@ -132,21 +132,36 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
       const [p] = await summaries(c.key, [steamid]);
       if (!p) throw new Error('Couldn’t load that Steam profile');
       const f = person(p);
-      let level = null, games = null, recent = [];
+      let level = null, games = null, recent = [], badges = null, xp = null, friends = null;
       const open = Number(p.communityvisibilitystate) === 3; // 3 = public
+      const q = '?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid;
       if (open) {
         await Promise.all([
-          get(API + '/IPlayerService/GetSteamLevel/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid).then((j) => { level = j.response && typeof j.response.player_level === 'number' ? j.response.player_level : null; }, () => {}),
-          get(API + '/IPlayerService/GetOwnedGames/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid + '&include_played_free_games=1').then((j) => { games = j.response && typeof j.response.game_count === 'number' ? j.response.game_count : null; }, () => {}),
-          get(API + '/IPlayerService/GetRecentlyPlayedGames/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid + '&count=8').then((j) => {
+          // Level, badges and XP toward the next level (falls back to just the level).
+          get(API + '/IPlayerService/GetBadges/v1/' + q).then((j) => {
+            const r = j.response || {};
+            if (typeof r.player_level === 'number') level = r.player_level;
+            if (Array.isArray(r.badges)) badges = r.badges.length;
+            if (typeof r.player_xp === 'number') xp = { total: r.player_xp, toNext: Number(r.player_xp_needed_to_level_up) || 0, thisLevel: Number(r.player_xp_needed_current_level) || 0 };
+          }, () => get(API + '/IPlayerService/GetSteamLevel/v1/' + q).then((j) => { level = j.response && typeof j.response.player_level === 'number' ? j.response.player_level : null; }, () => {})),
+          get(API + '/IPlayerService/GetOwnedGames/v1/' + q + '&include_played_free_games=1').then((j) => { games = j.response && typeof j.response.game_count === 'number' ? j.response.game_count : null; }, () => {}),
+          get(API + '/ISteamUser/GetFriendList/v1/' + q + '&relationship=friend').then((j) => { friends = ((j.friendslist && j.friendslist.friends) || []).length || null; }, () => {}),
+          get(API + '/IPlayerService/GetRecentlyPlayedGames/v1/' + q + '&count=8').then((j) => {
             recent = ((j.response && j.response.games) || []).filter((g) => g && g.appid).map((g) => ({
               appid: String(g.appid), title: g.name || 'Steam game', img: appImg(g.appid),
               hours: Math.round((g.playtime_forever || 0) / 6) / 10, hours2w: Math.round((g.playtime_2weeks || 0) / 6) / 10
             }));
           }, () => {})
         ]);
+        // Achievements in their latest games: theirs, and yours next to them.
+        await Promise.all(recent.slice(0, 4).map(async (r) => {
+          const [theirs, mine] = await Promise.all([achOf(c.key, steamid, r.appid), achOf(c.key, c.steamid, r.appid)]);
+          if (theirs) r.ach = theirs;
+          if (mine) r.mine = mine;
+        }));
       }
-      return Object.assign(f, { id: f.xuid, name: f.gamertag, pic: f.picBig || f.pic, level, games, recent, private: !open,
+      return Object.assign(f, { id: f.xuid, name: f.gamertag, pic: f.picBig || f.pic, level, games, recent, private: !open, badges, xp, friends,
+        country: p.loccountrycode || null, realName: p.realname || null,
         since: p.timecreated ? p.timecreated * 1000 : null, lastOnline: p.lastlogoff ? p.lastlogoff * 1000 : null });
     },
     // Your achievements next to a friend's for one game.
