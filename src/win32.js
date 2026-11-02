@@ -42,6 +42,25 @@ function createWin32() {
       }
       return name;
     };
+    // Is a process running as administrator? (Windows then blocks other programs' key presses
+    // into it.) null when it can't be told.
+    let OpenProcessToken = null, GetTokenInformation = null;
+    try {
+      const adv = koffi.load('advapi32.dll');
+      OpenProcessToken = adv.func('__stdcall', 'OpenProcessToken', 'bool', ['void *', 'uint32', koffi.out(koffi.pointer('void *'))]);
+      GetTokenInformation = adv.func('__stdcall', 'GetTokenInformation', 'bool', ['void *', 'int', 'void *', 'uint32', koffi.out(koffi.pointer('uint32'))]);
+    } catch (_) { OpenProcessToken = null; }
+    const elevatedOf = (pid) => {
+      if (!OpenProcessToken || !pid) return null;
+      const h = OpenProcess(0x1000, false, pid);
+      if (!h) return null;
+      try {
+        const t = [null];
+        if (!OpenProcessToken(h, 0x8, t) || !t[0]) return true; // not allowed to look: it's above us
+        try { const buf = Buffer.alloc(4); const len = [0]; return GetTokenInformation(t[0], 20, buf, 4, len) ? buf.readUInt32LE(0) !== 0 : null; }
+        finally { CloseHandle(t[0]); }
+      } catch (_) { return null; } finally { CloseHandle(h); }
+    };
     const titleOf = (h) => { const buf = Buffer.alloc(512); const n = GetWindowTextW(h, buf, 256); return n > 0 ? buf.toString('utf16le', 0, n * 2) : ''; };
     const keybd_event = u.func('__stdcall', 'keybd_event', 'void', ['uint8', 'uint8', 'uint32', 'uintptr_t']);
     const PostMessageW = u.func('__stdcall', 'PostMessageW', 'bool', ['uintptr_t', 'uint32', 'uintptr_t', 'intptr_t']);
@@ -54,6 +73,18 @@ function createWin32() {
       hwndOf(browserWindow) {
         const b = browserWindow.getNativeWindowHandle();
         return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0);
+      },
+      // The program in front: its exe and whether it runs as administrator.
+      frontInfo() {
+        const h = GetForegroundWindow();
+        if (!h) return null;
+        const pid = [0];
+        GetWindowThreadProcessId(h, pid);
+        let exe = '';
+        try { exe = exeOf(pid[0]); } catch (_) { exe = ''; }
+        let elevated = null, selfElevated = null;
+        try { elevated = elevatedOf(pid[0]); selfElevated = elevatedOf(process.pid); } catch (_) { /* unknown */ }
+        return { hwnd: Number(h), pid: pid[0], exe, elevated, selfElevated };
       },
       foreground() {
         const h = GetForegroundWindow();

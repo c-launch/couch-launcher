@@ -1,6 +1,6 @@
 {
- "version": "1.14.7",
- "notes": "Fix: the Xbox Share button over Bluetooth. Windows sends this controller's buttons in its own format, where Share wasn't being looked for (and the View + RB backup got switched off too). Now: Settings › Controllers › Test the Share button › Find Share, press Share once, and it's remembered; until then View + RB still clips. Fix: save backups skipped EmuDeck emulators (their save folders are links, which looked empty); links are followed now, and Settings › Saves says why a backup didn't happen.",
- "file": "CouchLauncher-update-1.14.7.zip",
- "size": 289379
+ "version": "1.14.8",
+ "notes": "Medal: the launcher now checks with Windows whether it's in front before ignoring Share / View + bumper presses (its own focus check could be wrong while a game had the screen, so presses in games were dropped). Settings › Controllers › Test the Share button now shows your last press in a game and what happened to it, including when a game runs as administrator (Windows then blocks the key press).",
+ "file": "CouchLauncher-update-1.14.8.zip",
+ "size": 290526
 }

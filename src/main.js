@@ -51,9 +51,21 @@ if (!app.requestSingleInstanceLock()) {
     // While a movie or episode plays, the controller drives the player.
     // Share button -> Medal (tap: screenshot, hold: clip). Not inside the launcher itself.
     onCapture: (st) => {
-      if (!capture || !lib || lib.settings.medalShare === false) return;
-      if (win && !win.isDestroyed() && win.isFocused()) return;
-      if (overlayShown()) return;
+      if (!capture || !lib) return;
+      // Pressed just now (Share, or View + a bumper)? Written down for the Share test screen.
+      const down = !!(st.xShare || st.psShare || (st.xView && (st.xLB || st.xRB)));
+      const edge = down && !captureWasDown;
+      captureWasDown = down;
+      let why = null;
+      if (lib.settings.medalShare === false) why = 'off';
+      else if (overlayShown()) why = 'guide';
+      else if (launcherInFront()) why = 'launcher';
+      if (edge) {
+        let front = null;
+        try { front = w32 && w32.frontInfo ? w32.frontInfo() : null; } catch (_) { front = null; }
+        lastCapture = { at: Date.now(), what: st.xShare ? 'Share' : st.psShare ? 'Share (PlayStation)' : 'View + ' + (st.xRB ? 'RB' : 'LB'), why, front: front ? { exe: front.exe, elevated: front.elevated, selfElevated: front.selfElevated } : null, sent: null };
+      }
+      if (why) return;
       capture.input(st);
     },
     onButtons: (mask, lx, ly) => {
@@ -82,10 +94,19 @@ if (!app.requestSingleInstanceLock()) {
       return false;
     }
     lastMedalPress = { kind, at: Date.now() };
+    if (lastCapture && Date.now() - lastCapture.at < 5000) lastCapture.sent = kind;
     w32.keys(k.mods, k.vk).catch(() => {});
     return true;
   }
-  let lastMedalPress = null;
+  let lastMedalPress = null, lastCapture = null, captureWasDown = false;
+  // The launcher's own windows in front? (Checked with Windows itself: Electron's own idea of
+  // focus can lag behind when a game takes the screen.)
+  function launcherInFront() {
+    if (w32) {
+      try { const fg = w32.foreground(); if (fg) return fg.pid === process.pid; } catch (_) { /* fall back */ }
+    }
+    return !!(win && !win.isDestroyed() && win.isFocused());
+  }
   const pauser = createPauser();
   // Controller as a mouse in Apple Music / Spotify (setting, on by default).
   const padMouse = createPadMouse(loadXInput, () => !(lib && lib.settings && lib.settings.musicMouse === false));
@@ -728,7 +749,7 @@ if (!app.requestSingleInstanceLock()) {
   handle('capture:learn', () => controller.learnShare(15000));
   handle('capture:debug', () => Object.assign(saveLearnedShare(controller.shareDebug()), {
     clipKey: lib.settings.medalClipKey || 'F8', shotKey: lib.settings.medalShotKey || '', mode: lib.settings.medalXbox || 'auto',
-    on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32
+    on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32, lastCapture
   }));
   function saveLearnedShare(d) {
     const f = d && d.learn && d.learn.found;
