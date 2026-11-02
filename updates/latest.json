@@ -1,6 +1,6 @@
 {
- "version": "1.8.2",
- "notes": "Movies & TV: new monotone opening animation — the name slides into the mark, which glides to the middle and fades.",
- "file": "CouchLauncher-update-1.8.2.zip",
- "size": 205548
+ "version": "1.9.0",
+ "notes": "YouTube: its own app in the launcher (YouTube's TV interface, full screen, controller support, stays signed in).",
+ "file": "CouchLauncher-update-1.9.0.zip",
+ "size": 209066
 }

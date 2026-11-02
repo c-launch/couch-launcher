@@ -88,6 +88,14 @@ Open it from the dock (the TV button). It's Stremio with an Apple TV–style loo
 - **Torrent streams** use Stremio's own streaming engine, so the Stremio app (or Stremio Service) needs to be installed. Debrid and direct links work without it.
 - **Look:** Settings › Movies & TV › Appearance: Dark or Light.
 
+## YouTube
+
+Open it from the dock (the play button). It's YouTube's TV interface, the one smart TVs and consoles use, full screen on your chosen display.
+- **Controller:** D-pad / stick move · A select · B back · X play/pause · LB/RB jump back / forward. Works with Xbox and PlayStation controllers.
+- **Signing in:** YouTube shows a code; enter it at youtube.com/activate on your phone. You stay signed in (Settings › Movies & TV › Sign out of YouTube to forget it).
+- **Xbox / PS button:** the video pauses and you're back in the launcher. Open YouTube again to carry on where you were.
+- YouTube doesn't officially offer this interface on PCs, so the launcher tells YouTube it's a TV. If YouTube changes something, it tries another way by itself.
+
 ## Stores, Roblox, Microsoft Store
 
 - **Stores** card on Home: Steam Store (in Big Picture), Xbox app (Game Pass), Microsoft Store, Epic Games Store.

@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, globalShortcut, Menu, safeStorage, dialog, screen, Notification, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, globalShortcut, Menu, safeStorage, dialog, screen, Notification, clipboard, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFile } = require('child_process');
@@ -37,6 +37,7 @@ if (!app.requestSingleInstanceLock()) {
   // { gameId, child, pids, dir, startedAt, pending, seen, miss, watchTimer }
   let running = null;
   let tvPart = null; // Movies & TV (set up below, with the other features)
+  let yt = null;     // YouTube (its TV interface in its own window)
 
   // Xbox button opens the guide; View + Menu held during a game brings the launcher back.
   const controller = createControllerWatcher({
@@ -45,7 +46,10 @@ if (!app.requestSingleInstanceLock()) {
     onCombo: () => guidePressed(),
     usePs: () => !(lib && lib.settings && lib.settings.psPads === false),
     // While a movie or episode plays, the controller drives the player.
-    onButtons: (mask, lx, ly) => { if (tvPart && tvPart.playing) tvPart.input(mask, lx, ly); },
+    onButtons: (mask, lx, ly) => {
+      if (tvPart && tvPart.playing) tvPart.input(mask, lx, ly);
+      else if (yt && yt.isFront()) yt.input(mask, lx, ly);
+    },
     // B on the boot screen while Steam/Epic has focus (the launcher can't hear it then).
     onBack: () => {
       const r = running;
@@ -141,6 +145,8 @@ if (!app.requestSingleInstanceLock()) {
     if (!win || win.isDestroyed()) return;
     // Watching something: stop there (your spot is saved) and come back with the guide open.
     if (tvPart && tvPart.playing) { tvPart.stop('guide'); setTimeout(() => send('guide'), 450); return; }
+    // In YouTube: it pauses and steps aside; opening it again carries on where you were.
+    if (yt && yt.isFront()) { yt.hide(); bringBack(false); return; }
     if (overlayShown()) { hideOverlay(true); return; }
     const gameHasScreen = running && (win.isMinimized() || !win.isFocused());
     if (gameHasScreen) {
@@ -801,6 +807,9 @@ if (!app.requestSingleInstanceLock()) {
     settings: () => lib.settings, saveSettings: () => persist(),
     targetDisplay, toPx, presentApp, bringBack
   });
+  yt = require('./youtube').createYouTube({ BrowserWindow, session, targetDisplay, bringBack, settings: () => lib.settings, saveSettings: () => persist() });
+  handle('yt:open', () => yt.open());
+  handle('yt:reset', () => yt.reset());
 
   let xbox = null;
   const xb = () => xbox || (xbox = createXbox(app.getPath('userData'), safeStorage));
