@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: https:; media-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: https:; media-src 'self' file:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'">
 <title>Couch Launcher</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="tv.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=DM+Serif+Display&amp;display=swap">
 </head>
 <body>
 <div id="app">
@@ -21,6 +23,7 @@
 <div id="layers"></div>
 <div id="toasts" role="status" aria-live="polite"></div>
 <script src="themes.js"></script>
+<script src="tv.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

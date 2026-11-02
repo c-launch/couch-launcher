@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'">
+<title>Player controls</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=DM+Serif+Display&amp;display=swap">
+<link rel="stylesheet" href="hud.css">
+</head>
+<body>
+<div id="hud" class="hidden" aria-live="off">
+  <div class="shade-top"></div>
+  <div class="shade-bottom"></div>
+  <header class="head"><div class="title" id="title"></div><div class="sub" id="sub"></div></header>
+  <div class="center" id="center"></div>
+  <aside class="upnext" id="upnext" hidden><div class="un-k" id="un-k">UP NEXT</div><div class="un-t" id="un-t"></div><div class="un-b"><span class="g a">A</span>Play now<span class="g">B</span>Back</div></aside>
+  <aside class="menu" id="menu" hidden><h2 id="menu-t"></h2><div class="menu-list" id="menu-list"></div></aside>
+  <section class="controls">
+    <div class="bar" id="bar"><div class="fill" id="fill"></div><div class="knob" id="knob"><span class="tip" id="tip"></span></div></div>
+    <div class="times"><span id="pos">0:00</span><span id="left">0:00</span></div>
+    <div class="row">
+      <div class="btns" id="btns"></div>
+      <div class="hints"><span><span class="g a">A</span><b id="h-a">Pause</b></span><span><span class="g w">LB RB</span>−10 s / +30 s</span><span><span class="g">Y</span>Subtitles</span><span><span class="g">B</span>Back</span></div>
+    </div>
+  </section>
+</div>
+<script src="hud.js"></script>
+</body>
+</html>

@@ -24,6 +24,11 @@ const DEFAULT_SETTINGS = {
   customBg: null,        // your own Home background image (path)
   musicMouse: true,      // controller works as a mouse in Apple Music / Spotify / Discord
   discordPins: [],       // [{ name, url }] Discord channels / servers / invites shown in the guide
+  tvMode: 'dark',        // Movies & TV look: 'dark' | 'light'
+  tvQuality: '1080p',    // Movies & TV: preferred quality for "best match"
+  tvAutoPlay: false,     // Movies & TV: play the best match straight away instead of showing the streams
+  tvSubLang: 'en',       // Movies & TV: subtitles language ('off' for none)
+  mpvPath: '',           // Movies & TV: mpv.exe (found automatically when empty)
   psPads: true,          // read PlayStation pads from the app core (PS button opens the guide)
   autoCloseApps: true,   // close stores the launcher opened when you press the Xbox button to come back
   notifyBattery: true,   // pop-up when a controller battery runs low

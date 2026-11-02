@@ -83,8 +83,33 @@ contextBridge.exposeInMainWorld('launcher', {
   xboxProfile: () => call('xbox:profile'),
   xboxFriends: () => call('xbox:friends'),
   openXblSite: () => call('link:open', 'https://xbl.io'),
+  tvStatus: () => call('tv:status'),
+  tvLinkCreate: () => call('tv:linkCreate'),
+  tvLinkPoll: (code) => call('tv:linkPoll', String(code || '')),
+  tvLogin: (email, pw) => call('tv:login', String(email || ''), String(pw || '')),
+  tvLogout: () => call('tv:logout'),
+  tvAddons: (force) => call('tv:addons', !!force),
+  tvAddonInstall: (url) => call('tv:addonInstall', String(url || '')),
+  tvAddonClipboard: () => call('tv:addonClipboard'),
+  tvAddonRemove: (url) => call('tv:addonRemove', String(url || '')),
+  tvAddonMove: (url, dir) => call('tv:addonMove', String(url || ''), Number(dir) || 0),
+  tvAddonConfigure: (url) => call('tv:addonConfigure', String(url || '')),
+  tvDiscover: () => call('tv:discover'),
+  tvCatalogs: () => call('tv:catalogs'),
+  tvCatalog: (addon, type, id, extra) => call('tv:catalog', String(addon || ''), String(type || ''), String(id || ''), extra && typeof extra === 'object' ? extra : {}),
+  tvSearch: (q) => call('tv:search', String(q || '')),
+  tvMeta: (type, id) => call('tv:meta', String(type || ''), String(id || '')),
+  tvStreams: (type, videoId) => call('tv:streams', String(type || ''), String(videoId || '')),
+  tvLibrary: (force) => call('tv:library', !!force),
+  tvLibSet: (meta, on) => call('tv:libSet', meta, !!on),
+  tvWatched: (ids) => call('tv:watched', Array.isArray(ids) ? ids.map(String) : []),
+  tvSetWatched: (id, on) => call('tv:setWatched', String(id || ''), !!on),
+  tvResumeAt: (id, videoId) => call('tv:resumeAt', String(id || ''), videoId ? String(videoId) : null),
+  tvInstallMpv: () => call('tv:installMpv'),
+  tvSetMpv: (p) => call('tv:setMpv', p ? String(p) : ''),
+  tvPlay: (req) => call('tv:play', req),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'news'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'news', 'tv:ended', 'hud'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

@@ -39,10 +39,31 @@ function parseReport(pid, b, size) {
   if (n < base + 3) return null;
   const b1 = b[base], b2 = b[base + 1], b3 = b[base + 2];
   if ((b1 & 0x0f) > 8) return null; // the d-pad is 0-7 or 8 (centered): anything else isn't a button byte
+  // Everything again as Xbox (XInput) buttons, so the same code reads both kinds of pad.
+  const hat = b1 & 0x0f;
+  let mask = 0;
+  if (hat === 7 || hat === 0 || hat === 1) mask |= 0x0001; // up
+  if (hat >= 3 && hat <= 5) mask |= 0x0002;                // down
+  if (hat >= 5 && hat <= 7) mask |= 0x0004;                // left
+  if (hat >= 1 && hat <= 3) mask |= 0x0008;                // right
+  if (b2 & 0x20) mask |= 0x0010; // Options = Menu
+  if (b2 & 0x10) mask |= 0x0020; // Share / Create = View
+  if (b2 & 0x40) mask |= 0x0040; // L3
+  if (b2 & 0x80) mask |= 0x0080; // R3
+  if (b2 & 0x01) mask |= 0x0100; // L1 = LB
+  if (b2 & 0x02) mask |= 0x0200; // R1 = RB
+  if (b3 & 0x01) mask |= 0x0400; // PS = Xbox button
+  if (b1 & 0x20) mask |= 0x1000; // Cross = A
+  if (b1 & 0x40) mask |= 0x2000; // Circle = B
+  if (b1 & 0x10) mask |= 0x4000; // Square = X
+  if (b1 & 0x80) mask |= 0x8000; // Triangle = Y
+  // Left stick (0-255, middle 128; down is 255) as XInput values.
+  const lxAt = DUALSENSE.has(pid) ? (id === 0x31 ? 2 : 1) : base - 4;
+  const lx = ((b[lxAt] | 0) - 128) * 256, ly = (127 - (b[lxAt + 1] | 0)) * 256;
   return {
     cross: !!(b1 & 0x20), circle: !!(b1 & 0x40),
     share: !!(b2 & 0x10), options: !!(b2 & 0x20),
-    ps: !!(b3 & 0x01)
+    ps: !!(b3 & 0x01), mask, lx, ly
   };
 }
 

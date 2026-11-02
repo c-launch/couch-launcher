@@ -86,6 +86,7 @@
 
   // ---------------------------------------------------------------- icons
   const I = {
+    tv: '<rect x="2.5" y="6" width="19" height="13" rx="2.5"/><path d="M8 2.5l4 3.5 4-3.5"/>',
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
     plug: '<path d="M9 2v6M15 2v6M7 8h10v4a5 5 0 0 1-10 0zM12 17v5"/>',
     level: '<circle cx="12" cy="12" r="9"/><path d="M8 14l4-4 4 4"/>',
@@ -149,6 +150,7 @@
     host.appendChild(el);
     while (host.children.length > 3) host.firstChild.remove();
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }, isErr ? 5200 : 2800);
+    return el;
   }
 
   // ---------------------------------------------------------------- saving (all calls to the app core run one at a time)
@@ -481,7 +483,7 @@
   function renderTop() {
     const s = S.lib.settings;
     const n = games().length;
-    const navs = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
+    const navs = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['tv', 'tv', 'Movies & TV'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
     const x = s.xbox;
     const sub = profileFrom() === 'steam' ? icon('level') + '<span>' + esc(profileSub()) + '</span>'
       : x ? icon('trophy') + '<span>' + Number(x.gamerscore || 0).toLocaleString() + '</span>'
@@ -705,7 +707,7 @@
   }
 
   // ----- settings
-  const TABS = [['platforms', 'Platforms'], ['themes', 'Themes'], ['display', 'Display'], ['controllers', 'Controllers'], ['startup', 'Startup & power'], ['about', 'About']];
+  const TABS = [['platforms', 'Platforms'], ['themes', 'Themes'], ['display', 'Display'], ['controllers', 'Controllers'], ['tv', 'Movies & TV'], ['startup', 'Startup & power'], ['about', 'About']];
   function settingsHTML() {
     return '<div class="shell"><aside class="side"><h1>Settings</h1>' +
       TABS.map(([k, l]) => '<button class="sideitem' + (S.setTab === k ? ' sel' : '') + '" data-nav data-key="t-' + k + '" data-zone="side" data-action="tab" data-tab="' + k + '"><span>' + l + '</span></button>').join('') +
@@ -823,6 +825,28 @@
         toggleHTML('c-autoclose', 'Close stores when you press the Xbox button to come back', S.lib.settings.autoCloseApps !== false, 'Steam Big Picture, Epic Games, the Xbox app and Microsoft Store close when you return to the launcher. Music apps and Discord keep running.', 'set-toggle', 'data-k="autoCloseApps"') + '</div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;
+    }
+    if (tab === 'tv') {
+      const t = S.tvStatus;
+      if (!t) setTimeout(loadTvSettings, 0);
+      const row = (key, action, label, desc, value, extra) => '<button class="toggle-row" data-nav data-key="' + key + '" data-zone="body" data-action="' + action + '" ' + (extra || '') + '><span><div>' + esc(label) + '</div>' + (desc ? '<div class="d">' + esc(desc) + '</div>' : '') + '</span><span class="status ok">' + esc(value) + '</span></button>';
+      const QL = { '4K': '4K', '1080p': '1080p', '720p': '720p' };
+      const SL = { off: 'Off', en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian' };
+      const m = s.tvMode === 'light' ? 'light' : 'dark';
+      return '<div class="sect-h"><div><h2>Movies &amp; TV</h2><p>Stremio with your addons, made for the couch.</p></div><div class="btn-row"><button class="btn primary big" data-nav data-key="tv-open" data-zone="body" data-action="tv-open">' + icon('tv') + 'Open Movies &amp; TV</button></div></div>' +
+        '<div class="sub-h">Appearance</div><div class="btn-row tv-modes">' +
+        '<button class="btn big' + (m === 'dark' ? ' primary' : '') + '" data-nav data-key="tv-dark" data-zone="body" data-action="tv-mode" data-mode="dark" aria-pressed="' + (m === 'dark') + '">' + icon('moon') + 'Dark</button>' +
+        '<button class="btn big' + (m === 'light' ? ' primary' : '') + '" data-nav data-key="tv-light" data-zone="body" data-action="tv-mode" data-mode="light" aria-pressed="' + (m === 'light') + '">' + icon('star') + 'Light</button></div>' +
+        '<div class="sub-h">Stremio account</div><div class="toggles" style="grid-template-columns:1fr">' +
+        (!t ? '<p class="field-note">Checking…</p>' : t.signedIn
+          ? row('tv-out', 'tv-signout', 'Signed in' + (t.email ? ' as ' + t.email : ''), 'Your addons, library and Continue Watching sync with the Stremio app.', 'Sign out')
+          : row('tv-in', 'tv-signin', 'Sign in to Stremio', 'Bring your own addons, library and Continue Watching. Without an account you get Cinemeta and OpenSubtitles.', 'Sign in')) +
+        '</div><div class="sub-h">Playing</div><div class="toggles" style="grid-template-columns:1fr">' +
+        toggleHTML('tv-auto', 'Play the best match straight away', !!s.tvAutoPlay, 'Skips the stream list. Choose stream on a show’s page still lets you pick.', 'set-toggle', 'data-k="tvAutoPlay"') +
+        row('tv-q', 'tv-quality', 'Preferred quality', 'What “best match” looks for first.', QL[s.tvQuality] || '1080p') +
+        row('tv-s', 'tv-subs', 'Subtitles', 'Turned on automatically when a movie or episode has them.', SL[s.tvSubLang || 'en'] || 'English') +
+        (t ? row('tv-mpv', 'tv-mpv', 'Video player', t.mpv ? 'mpv · ' + (t.mpvPath || '') : 'Movies play in mpv, a free player that handles every format (4K, HDR, all audio).', t.mpv ? 'Change' : 'Install mpv') : '') +
+        '</div>' + (t ? '<p class="field-note">' + (t.engine ? 'Torrent streams use Stremio’s streaming engine from your Stremio app.' : 'Torrent streams need the Stremio app (or Stremio Service) installed on this PC. Debrid and direct links work without it.') + ' Controls while watching: A pause · ←/→ scrub · LB/RB skip · Y subtitles · X audio · B back.</p>' : '');
     }
     if (tab === 'startup') {
       return '<div class="sect-h"><div><h2>Startup &amp; power</h2><p>Turn on the PC, grab a controller.</p></div></div><div class="toggles" style="grid-template-columns:1fr">' +
@@ -1154,7 +1178,12 @@
   }
 
   // On-screen keyboard. Physical keyboards can type straight into the box too.
-  function osk(title, value, placeholder) {
+  // opts.email: an @ / .com row · opts.secret: hides what you type (passwords).
+  // Shift also turns the number row into symbols.
+  const SHIFTED = { 1: '!', 2: '@', 3: '#', 4: '$', 5: '%', 6: '^', 7: '&', 8: '*', 9: '(', 0: ')', '-': '_', '.': ',', "'": '"' };
+  const shiftOf = (k) => (SHIFTED[k] != null ? SHIFTED[k] : k.length === 1 ? k.toUpperCase() : k);
+  function osk(title, value, placeholder, opts) {
+    opts = opts || {};
     return new Promise((resolve) => {
       let result = null;
       let shift = false;
@@ -1165,6 +1194,7 @@
         ['SHIFT'].concat('zxcvbnm'.split(''), ['-', '.']),
         ['BKSP', 'SPACE', 'CLEAR', 'DONE']
       ];
+      if (opts.email) rows.splice(4, 0, ['@', '_', '.com', '+', '/', ':']);
       const keyHTML = (k) => {
         if (k === 'SHIFT') return '<button class="key" data-nav data-key="k-shift" data-k="SHIFT" aria-label="Shift">' + icon('shift') + '</button>';
         if (k === 'BKSP') return '<button class="key w2" data-nav data-key="k-bksp" data-k="BKSP" aria-label="Backspace">' + icon('bksp') + '</button>';
@@ -1174,7 +1204,7 @@
         return '<button class="key" data-nav data-key="k-' + esc(k) + '" data-k="' + esc(k) + '">' + esc(k) + '</button>';
       };
       const layer = openLayer({
-        html: '<div class="dialog osk"><h2>' + esc(title) + '</h2><input class="osk-input" type="text" spellcheck="false" maxlength="120" placeholder="' + esc(placeholder || '') + '" aria-label="' + esc(title) + '">' +
+        html: '<div class="dialog osk"><h2>' + esc(title) + '</h2><input class="osk-input" type="' + (opts.secret ? 'password' : 'text') + '" spellcheck="false" autocomplete="off" maxlength="200" placeholder="' + esc(placeholder || '') + '" aria-label="' + esc(title) + '">' +
           '<div class="keys">' + rows.map((r) => '<div class="krow">' + r.map(keyHTML).join('') + '</div>').join('') + '</div></div>',
         focus: 'k-q',
         onActivate: (el) => press(el.dataset.k),
@@ -1217,7 +1247,7 @@
         if (k === 'DONE') { result = input.value.trim(); closeLayer(layer); return; }
         if (k === 'SHIFT') {
           shift = !shift;
-          $$('.key[data-k]', layer.el).forEach((b) => { const v = b.dataset.k; if (v.length === 1 && /[a-z]/i.test(v)) { b.textContent = shift ? v.toUpperCase() : v.toLowerCase(); } });
+          $$('.key[data-k]', layer.el).forEach((b) => { const v = b.dataset.k; if (v.length === 1 && (/[a-z]/i.test(v) || SHIFTED[v] != null)) { b.textContent = shift ? shiftOf(v) : v; } });
           $('[data-k="SHIFT"]', layer.el).classList.toggle('on', shift);
           return;
         }
@@ -1230,7 +1260,7 @@
         }
         if (k === 'CLEAR') { input.value = ''; return; }
         if (k === 'SPACE') { insert(' '); return; }
-        insert(shift ? k.toUpperCase() : k);
+        insert(shift ? shiftOf(k) : k);
       }
     });
   }
@@ -2628,6 +2658,7 @@
         if (to === 'add') return openEdit(null);
         if (to === 'friends') return openFriends();
         if (to === 'clips') return openClips();
+        if (to === 'tv') return TV().open();
         if (to === 'search') { if (S.view !== 'library') go('library', 's-search'); return searchPrompt(); }
         return go(to);
       }
@@ -2641,6 +2672,21 @@
         return;
       }
       case 'players-setup': return setUpPlayersNow();
+      case 'tv-open': return TV().open();
+      case 'tv-mode': s.tvMode = el.dataset.mode === 'light' ? 'light' : 'dark'; save(); return refreshContent();
+      case 'tv-signin': return TV().signIn();
+      case 'tv-signout': {
+        if (!(await confirmBox('Sign out of Stremio?', 'Movies & TV goes back to Cinemeta and OpenSubtitles. Nothing is deleted from your account.', 'Sign out', true))) return;
+        try { await api.tvLogout(); toast('Signed out of Stremio'); } catch (e) { toast(e.message, true); }
+        return loadTvSettings();
+      }
+      case 'tv-quality': { const q = await openMenu('Preferred quality', [{ id: '4K', label: '4K', icon: 'star' }, { id: '1080p', label: '1080p (Full HD)', icon: 'monitor' }, { id: '720p', label: '720p (smaller, starts faster)', icon: 'monitor' }]); if (q) { s.tvQuality = q; save(); refreshContent(); } return; }
+      case 'tv-subs': {
+        const l = await openMenu('Subtitles', [['off', 'Off'], ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['pt', 'Portuguese'], ['it', 'Italian']].map(([id, label]) => ({ id, label, icon: (s.tvSubLang || 'en') === id ? 'check' : 'chat' })));
+        if (l) { s.tvSubLang = l; save(); refreshContent(); }
+        return;
+      }
+      case 'tv-mpv': { if (await TV().mpvSetup()) loadTvSettings(); return; }
       case 'collections': return collectionsMenu();
       case 'coop': S.libFilter = 'coop'; return go('library', 'f-coop');
       case 'go-settings': S.setTab = el.dataset.tab || 'platforms'; return go('settings', 't-' + S.setTab);
@@ -2809,7 +2855,7 @@
 
   function pollPads(now) {
     requestAnimationFrame(pollPads);
-    if (!document.hasFocus()) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; return; }
+    if (!document.hasFocus() || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; return; }
     let pads;
     try { pads = navigator.getGamepads(); } catch (_) { return; }
     const down = new Set();
@@ -2855,6 +2901,7 @@
   const KEYMAP = { Enter: 'A', ' ': 'A', Escape: 'B', Backspace: 'B', y: 'Y', Y: 'Y', F2: 'Y', m: 'MENU', M: 'MENU', ContextMenu: 'MENU', q: 'LB', Q: 'LB', e: 'RB', E: 'RB', PageUp: 'LT', PageDown: 'RT', Delete: 'X', Home: 'HOME' };
   const KEYDIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   document.addEventListener('keydown', (e) => {
+    if (S.tvPlaying) return; // the player has the keyboard
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     const top = topLayer();
     const typing = e.target && e.target.tagName === 'INPUT';
@@ -2965,6 +3012,7 @@
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
   api.on('pads', (list) => { S.pads = Array.isArray(list) ? list : null; const p = $('#padcount'); if (p) p.innerHTML = padsHTML(); if (S.onPads) S.onPads(); });
   api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.title); });
+  api.on('tv:ended', (p) => { suppressUntilRelease = true; TV().ended(p); if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) loadTvSettings(); });
   (async () => { try { S.pads = await api.pads(); tickClock(); } catch (_) { /* not available */ } })();
   api.on('game:started', (p) => { if (S.playing && p && S.playing.id === p.gameId) S.playing.started = true; });
   api.on('update:found', (r) => { if (!S.playing) checkForUpdate(true, r); });
@@ -3018,6 +3066,22 @@
     setInterval(refreshSteamMe, 600000);
     setInterval(() => refreshXbox(true), 600000);
   }
-  window.__couch = { S, move, button, setFocus, currentFocus, layers }; // used by tests
+  // Movies & TV (tv.js), made on first use.
+  let tvUi = null;
+  function TV() {
+    if (tvUi) return tvUi;
+    tvUi = window.CouchTV({
+      api, S, $, $$, esc, icon, toast, openLayer, closeLayer, setFocus, currentFocus, cssEsc, openMenu, confirmBox, osk, browse, reduce, save, layers, topLayer,
+      glyphText: (b) => (GLYPHS[S.input === 'pad' ? S.glyphs : 'key'] || {})[b] || b,
+      openSettings: () => { S.setTab = 'tv'; go('settings', 't-tv'); loadTvSettings(); },
+      refreshSettings: () => { if (S.view === 'settings' && S.setTab === 'tv') loadTvSettings(); }
+    });
+    return tvUi;
+  }
+  async function loadTvSettings() {
+    try { S.tvStatus = await api.tvStatus(); } catch (_) { S.tvStatus = S.tvStatus || { signedIn: false }; }
+    if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) refreshContent();
+  }
+  window.__couch = { S, move, button, setFocus, currentFocus, layers, TV }; // used by tests
   init().catch((e) => { document.body.innerHTML = '<pre style="color:#fff;padding:40px;font-size:18px">Couch Launcher couldn’t start:\n' + esc(e && e.stack || e) + '</pre>'; });
 })();
