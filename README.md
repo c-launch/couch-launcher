@@ -136,15 +136,17 @@ Open it from the dock (the TV button). It's Stremio with an Apple TV–style loo
 - **Playing:** movies play in **mpv** (free; the launcher installs it with one press). A pause · ←/→ scrub (hold to go faster) · LB −10 s / RB +30 s · Y subtitles · X audio · B back. The next episode starts by itself after a 10-second Up Next. Your spot is saved for Resume.
 - **Torrent streams** use Stremio's own streaming engine, so the Stremio app (or Stremio Service) needs to be installed. Debrid and direct links work without it.
 - **Look:** Settings › Movies & TV › Appearance: Dark or Light.
+- **Xbox / PS button while watching:** the video pauses and the guide opens over it. *Resume watching* (or the button again) carries on; *Stop watching* saves your spot and goes back.
+- Opening a title, its poster grows into the page (and shrinks back into its row when you go back).
 
 ## YouTube
 
 Open it from the dock (the play button). It's YouTube's TV interface, the one smart TVs and consoles use, full screen on your chosen display.
 - **Controller:** D-pad / stick move · A select · B back · X play/pause · LB/RB jump back / forward. Works with Xbox and PlayStation controllers.
 - **Signing in:** YouTube shows a code; enter it at youtube.com/activate on your phone. You stay signed in (Settings › Movies & TV › Sign out of YouTube to forget it).
-- **Xbox / PS button:** the video pauses and you're back in the launcher. Open YouTube again to carry on where you were.
+- **Xbox / PS button:** the video pauses and the guide opens over it: *Back to YouTube* (or the button again) carries on, *Close YouTube* goes back to the launcher (open it again to carry on where you were). YouTube and Movies & TV also show in the guide's Recent list.
 - **Ads are blocked** (video, home feed, search and Shorts ads), using the ad blocker from [VacuumTube](https://github.com/elytraVIII/VacuumTube) by shy, MIT License. Turn it off in Settings › Movies & TV if videos stop loading; YouTube changes things now and then.
-- YouTube doesn't officially offer this interface on PCs, so the launcher tells YouTube it's a TV. If YouTube changes something, it tries another way by itself.
+- YouTube doesn't officially offer this interface on PCs, so the launcher tells YouTube it's a desktop build of YouTube's TV app engine (Cobalt), the way VacuumTube does, which gets the full interface with its animations. If YouTube changes something, it tries another way by itself.
 
 ## Stores, Roblox, Microsoft Store
 

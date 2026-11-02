@@ -7,6 +7,11 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE = 'https://xbl.io/api/v2';
+// Xbox sends many pictures as http:// links; the launcher only shows https ones (the same
+// servers answer on https), so they're switched over.
+const secure = (u) => (typeof u === 'string' && u ? u.replace(/^http:\/\//i, 'https://') : null);
+// Store pictures can be huge: ask for a small one for badges and cards.
+const sized = (u, w) => { const s = secure(u); return s && /store-images\.s-microsoft\.com/i.test(s) && !/[?&]w=/.test(s) ? s + (s.includes('?') ? '&' : '?') + 'w=' + w : s; };
 
 function createXbox(userDataDir, safeStorage) {
   const keyFile = path.join(userDataDir, 'xbox.json');
@@ -61,7 +66,7 @@ function createXbox(userDataDir, safeStorage) {
       xuid: String(u.id || ''),
       gamertag,
       gamerscore: Number(get('Gamerscore')) || 0,
-      pic: get('GameDisplayPicRaw') || get('PublicGamerpic') || null,
+      pic: secure(get('GameDisplayPicRaw') || get('PublicGamerpic')) || null,
       at: Date.now()
     };
   }
@@ -73,7 +78,7 @@ function createXbox(userDataDir, safeStorage) {
         xuid: String(p.xuid || ''),
         gamertag: p.modernGamertag || p.gamertag || p.displayName || 'Friend',
         name: p.realName || '',
-        pic: p.displayPicRaw || null,
+        pic: secure(p.displayPicRaw) || null,
         online,
         status: p.presenceText || p.presenceState || '',
         gamerscore: Number(p.gamerScore) || 0,
@@ -99,7 +104,7 @@ function createXbox(userDataDir, safeStorage) {
     return titles.filter((t) => t && t.name && (t.type === 'Game' || !t.type || (Array.isArray(t.devices) && t.devices.length))).map((t) => {
       const a = t.achievement || {};
       return {
-        title: String(t.name), titleId: t.titleId ? String(t.titleId) : null, img: t.displayImage || null,
+        title: String(t.name), titleId: t.titleId ? String(t.titleId) : null, img: sized(t.displayImage, 480) || null,
         gamerscore: Number(a.currentGamerscore) || 0, total: Number(a.totalGamerscore) || 0, pct: Number(a.progressPercentage) || 0,
         last: Date.parse((t.titleHistory && t.titleHistory.lastTimePlayed) || '') || 0,
         achievements: Number(a.currentAchievements) || 0

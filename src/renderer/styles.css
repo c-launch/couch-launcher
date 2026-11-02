@@ -23,6 +23,10 @@ body {
 body.hide-cursor, body.hide-cursor * { cursor: none !important; }
 svg { width: 2.2rem; height: 2.2rem; flex-shrink: 0; }
 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; text-align: left; }
+/* Electron's Chromium gives buttons align-items: flex-start, which squeezes picture boxes inside
+   column buttons (episode and Continue Watching thumbnails, clip and profile cards) to nothing.
+   Newer Chromium dropped that; match it so cards look the same everywhere. */
+button { align-items: normal; }
 button:focus { outline: none; }
 img { -webkit-user-drag: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -880,3 +884,19 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .fp-game.small { width: 22rem; }
 .fp-game.small .fp-img { aspect-ratio: 16 / 10; }
 .fp-img.tog[style] { background-size: cover; }
+
+/* Guide over something you're watching */
+.gnow .mthumb.tvthumb { width: 5.4rem; height: 8rem; background-color: var(--chip); }
+.gnow-t { flex: 1; min-width: 0; }
+.gprog { display: block; height: 0.4rem; margin-top: 0.8rem; border-radius: 99rem; background: var(--chip); overflow: hidden; }
+.gprog i { display: block; height: 100%; background: var(--accent); }
+.gnow-t > small:not(.ach) { display: block; margin-top: 0.3rem; font-size: 1.35rem; font-weight: 600; color: var(--sub); }
+.fp-badge.game i { position: relative; overflow: hidden; font-size: 2rem; font-weight: 800; color: #fff; }
+.fp-badge.game i img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.fp-img { overflow: hidden; }
+.fp-img > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.fp-have { z-index: 1; }
+.mthumb.appthumb { display: flex; align-items: center; justify-content: center; color: #fff; }
+.mthumb.appthumb svg { width: 2rem; height: 2rem; }
+.mthumb.appthumb.tv { background: linear-gradient(145deg, #2B2B33, #0A0A0C); }
+.mthumb.appthumb.youtube { background: linear-gradient(145deg, #E53935, #A31515); }

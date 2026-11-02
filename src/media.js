@@ -160,10 +160,12 @@ function ProcOf($app) { if ($app -eq 'Apple Music') { 'AppleMusic' } elseif ($ap
 function TokenOf($app) { if ($app -eq 'Apple Music') { 'AppleInc.AppleMusic' } elseif ($app -eq 'Spotify') { 'Spotify.exe' } else { '' } }
 Say @{ ready = $true }
 $lastArtKey = ''
+# The launcher's own YouTube / player shows up as a media session too: never pick it for music.
+function Own($x) { $i = [string]$x.SourceAppUserModelId; return ($i -like '*Couch Launcher*' -or $i -like '*CouchLauncher*' -or $i -like 'electron.app*' -or $i -like '*mpv*') }
 function Pick($prefer) {
-  $sessions = @($mgr.GetSessions())
+  $sessions = @($mgr.GetSessions() | Where-Object { -not (Own $_) })
   if ($prefer) { $s = $sessions | Where-Object { $_.SourceAppUserModelId -like ('*' + $prefer + '*') } | Select-Object -First 1; if ($s) { return $s } }
-  $cur = $mgr.GetCurrentSession(); if ($cur) { return $cur }
+  $cur = $mgr.GetCurrentSession(); if ($cur -and -not (Own $cur)) { return $cur }
   return ($sessions | Select-Object -First 1)
 }
 function AppName($id) { if ($id -like '*AppleMusic*') { 'Apple Music' } elseif ($id -like '*Spotify*') { 'Spotify' } else { $id } }

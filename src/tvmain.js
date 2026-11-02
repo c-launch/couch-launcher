@@ -170,7 +170,7 @@ function setupTv(ctx) {
   function wire(s) {
     const { mpv } = s;
     mpv.on('time', ({ pos, dur }) => { if (session !== s) return; s.pos = pos; if (dur > 0) s.dur = dur; s.controls.setTime(pos, dur); });
-    mpv.on('pause', (p) => { if (session === s) s.controls.setPaused(p); });
+    mpv.on('pause', (p) => { if (session === s) { s.paused = !!p; s.controls.setPaused(p); } });
     mpv.on('buffering', (b) => { if (session === s) s.controls.setBuffering(b); });
     mpv.on('tracks', (t) => {
       if (session !== s) return;
@@ -258,6 +258,33 @@ function setupTv(ctx) {
     get playing() { return !!session; },
     input(mask, lx, ly) { if (session && session.controls) session.controls.input(mask, lx, ly); },
     stop: (reason) => end(reason || 'back'),
+    // The guide over what you're watching: pause (and hide the player controls) while it's open,
+    // carry on when it closes. Something you'd already paused stays paused.
+    pauseForGuide() {
+      const s = session;
+      if (!s) return;
+      if (!s.inGuide) s.resumeAfterGuide = !s.paused;
+      s.inGuide = true;
+      s.mpv.pause(true);
+      if (hud && !hud.isDestroyed()) { hudSend({ visible: false }); hud.hide(); }
+    },
+    resumeFromGuide() {
+      const s = session;
+      if (!s || !s.inGuide) return;
+      s.inGuide = false;
+      if (s.resumeAfterGuide) s.mpv.pause(false);
+      s.resumeAfterGuide = false;
+      const h = hudWindow();
+      h.setBounds(targetDisplay().bounds);
+      h.showInactive();
+      h.setAlwaysOnTop(true, 'screen-saver');
+    },
+    get inGuide() { return !!(session && session.inGuide); },
+    now() {
+      const s = session;
+      if (!s) return null;
+      return { title: s.meta.name, subtitle: s.video ? epLabel(s.video) : '', poster: s.meta.poster || null, pos: Math.round(s.pos || 0), dur: Math.round(s.dur || 0), paused: !s.resumeAfterGuide };
+    },
     quit() { if (session) end('quit'); if (store) store.flush(); if (hud && !hud.isDestroyed()) hud.destroy(); }
   };
 }
