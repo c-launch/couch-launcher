@@ -101,7 +101,8 @@ function createXbox(userDataDir, safeStorage) {
       return {
         title: String(t.name), titleId: t.titleId ? String(t.titleId) : null, img: t.displayImage || null,
         gamerscore: Number(a.currentGamerscore) || 0, total: Number(a.totalGamerscore) || 0, pct: Number(a.progressPercentage) || 0,
-        last: Date.parse((t.titleHistory && t.titleHistory.lastTimePlayed) || '') || 0
+        last: Date.parse((t.titleHistory && t.titleHistory.lastTimePlayed) || '') || 0,
+        achievements: Number(a.currentAchievements) || 0
       };
     }).sort((a, b) => b.last - a.last);
   }
@@ -109,12 +110,27 @@ function createXbox(userDataDir, safeStorage) {
   async function friendProfile(xuid) {
     xuid = String(xuid || '');
     if (!/^\d{1,20}$/.test(xuid)) throw new Error('Unknown Xbox friend');
-    const acc = parseAccount(await call('/account/' + xuid));
-    let recent = [];
+    const raw = await call('/account/' + xuid);
+    const acc = parseAccount(raw);
+    const u = settingsOf(raw) || {};
+    const set = (k) => { const x = (Array.isArray(u.settings) ? u.settings : []).find((y) => y.id === k); return x && x.value ? String(x.value) : null; };
+    let titles = [];
     for (const ep of ['/player/titleHistory/' + xuid, '/achievements/player/' + xuid]) {
-      try { recent = parseTitles(await call(ep)).slice(0, 8); if (recent.length) break; } catch (_) { /* try the other */ }
+      try { titles = parseTitles(await call(ep)); if (titles.length) break; } catch (_) { /* try the other */ }
     }
-    return { id: xuid, xuid, service: 'xbox', name: acc.gamertag, gamertag: acc.gamertag, pic: acc.pic, gamerscore: acc.gamerscore, recent };
+    const rep = { GoodPlayer: 'Good player', NeedsWork: 'Needs work', AvoidMe: 'Avoid me' }[set('XboxOneRep')] || null;
+    const tenure = Number(set('TenureLevel')) || null;
+    // Their profile colour (Xbox › Profile › Customize), when it's sent.
+    let color = null;
+    const pc = set('PreferredColor');
+    if (pc && /^https?:\/\/[a-z0-9.-]+\.xboxlive\.com\//i.test(pc)) { try { const cj = await (await fetch(pc, { signal: AbortSignal.timeout(5000) })).json(); if (/^[0-9a-f]{6}$/i.test(cj.primaryColor || '')) color = '#' + cj.primaryColor; } catch (_) { /* default colour */ } }
+    return {
+      id: xuid, xuid, service: 'xbox', name: acc.gamertag, gamertag: acc.gamertag, pic: acc.pic, gamerscore: acc.gamerscore,
+      recent: titles.slice(0, 8), games: titles.length || null,
+      achievements: titles.reduce((n, t) => n + (t.achievements || 0), 0) || null,
+      completed: titles.filter((t) => t.pct >= 100).length || null,
+      tier: set('AccountTier'), rep, tenure, realName: set('RealName'), bio: set('Bio'), location: set('Location'), color
+    };
   }
 
   return {

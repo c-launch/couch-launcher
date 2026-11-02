@@ -32,6 +32,8 @@ Building it yourself instead: install **Node.js LTS**, then double-click **Build
 | LB / RB | Q / E | Home, Library, Settings |
 | LT / RT | Page Up / Down | Jump through long lists |
 
+**LB / RB:** step through every icon in the top dock. Home, My library and Settings slide over to that page; Search, Clips, Movies & TV, YouTube and Friends are highlighted with their name, and **A** opens them.
+
 **Xbox button:** opens the guide (Games, Friends, Profile & system). During a game it brings the launcher back with the guide open, where you can resume, close the game, or switch to another game. If the Xbox button doesn't work on your PC, hold **View + Menu** for 1 second instead.
 
 **PlayStation controllers** (DualShock 4, DualSense, DualSense Edge, USB or Bluetooth): the **PS button** opens the guide the same way, also during games; Circle is B, and **Share/Create + Options** held is the View + Menu fallback.
@@ -78,7 +80,7 @@ Connect Xbox (xbl.io key) and/or Steam (Steam Web API key) in the guide › Frie
 - **Join** (Steam): when a friend is in a lobby or on a server you can join, the launcher starts your copy of the game straight into it with Steam's own join link, the same as *Join Game* in Steam. If you're already playing that game it just joins. Their Steam profile has to be public for Steam to share this.
 - **Play the same game**: when you have it in the launcher (Steam games by app, everything else by name). Xbox doesn't let other apps join friends' games, so for Xbox friends this is the way.
 - **See it on Steam / find it in the Store**: when you don't have it.
-- **Profile**: picture, status, Steam level, game count and member-since (or Xbox gamerscore), what they've played lately with your achievements next to theirs (Steam), and the games you've played together.
+- **Profile**: a full-screen page in the style of the Xbox One profile, in their Xbox profile colour. Steam: level with XP to the next level, games, friends, badges, member since, and their latest games with their achievements next to yours (and the latest one they unlocked). Xbox: gamerscore, games played, achievements, 100%-completed games, years on Xbox, Gold and reputation, bio, and gamerscore per game. Plus the games you've played together.
 - **Friends playing now** on Home (scroll down from the cards): who's in a game right now, tagged *Join* or *You have it*.
 - **Join alerts**: when a Steam friend starts a game you can join you get a pop-up; click it to join, or open the guide, where *Join a friend* is at the top of Games for 20 minutes. Steam doesn't let other apps read invites, so this is the closest thing. Turn it off in Settings › Controllers.
 - **Played with recently**: while you play, the launcher notes friends who are in the same game at the same time (checked every 2 minutes). See them in Friends, on each friend's profile, and in a game's menu (☰ › *Played with…*). It's kept only on this PC.
