@@ -39,8 +39,8 @@
 .tv-tab { padding: 1rem 2.3rem; border-radius: 99px; font-size: 1.85rem; font-weight: 500; color: var(--tv-sub); transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast); }
 .tv-tab.ic { width: 4.4rem; height: 4.4rem; padding: 0; display: flex; align-items: center; justify-content: center; }
 .tv-nav { position: relative; }
-.tv-nav-ind { position: absolute; top: .5rem; bottom: .5rem; left: 0; width: 0; border-radius: 99px; background: var(--tv-chip); z-index: 0; pointer-events: none;
-  transition: left 340ms cubic-bezier(.32,.72,0,1), width 340ms cubic-bezier(.32,.72,0,1); }
+.tv-nav-ind { position: absolute; top: .5rem; bottom: .5rem; left: 0; width: 0; border-radius: 99px; background: var(--tv-chip); z-index: 0; pointer-events: none; }
+.tv-nav-ind.anim { transition: left 340ms cubic-bezier(.32,.72,0,1), width 340ms cubic-bezier(.32,.72,0,1); }
 .reduce-motion .tv-nav-ind { transition: none; }
 .tv-tab { position: relative; z-index: 1; }
 .tv-tab.on { color: var(--tv-text); font-weight: 600; }

@@ -1141,6 +1141,14 @@ if (!app.requestSingleInstanceLock()) {
   }
   handle('downloads:get', () => downloads);
 
+  // ---------- Sound output (guide › Profile & system › Sound) ----------
+  let audioMod = null;
+  const audio = () => audioMod || (audioMod = require('./audio').createAudio(app.getPath('userData')));
+  handle('audio:state', () => audio().state());
+  handle('audio:output', (id) => audio().setOutput(String(id || '')));
+  handle('audio:volume', (v) => audio().setVolume(Number(v)));
+  handle('audio:mute', (on) => audio().setMute(!!on));
+
   // ---------- Playtime stats ----------
   let statsMod = null;
   function statsPart() { return statsMod || (statsMod = require('./stats').createStats({ userDataDir: app.getPath('userData') })); }
@@ -1759,7 +1767,7 @@ if (!app.requestSingleInstanceLock()) {
     try { globalShortcut.register('Control+Alt+Home', () => guidePressed()); } catch (_) { /* taken */ }
   });
 
-  app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); if (tvPart) tvPart.quit(); });
+  app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); if (tvPart) tvPart.quit(); if (audioMod) audioMod.stop(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', () => { pauser.resumeAll(); if (overlay && !overlay.isDestroyed()) overlay.destroy(); if (media) media.stop(); });
 }

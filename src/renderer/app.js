@@ -1894,6 +1894,35 @@
     let gclips = null, gclipsErr = null;
     let music = null, musicErr = null, musicTimer = null;
     let joinables = [];
+    // Sound output and volume (Windows' default device), loaded when Profile & system opens.
+    let snd = null, sndErr = null, sndBusy = false;
+    const kindIcon = (o) => ({ headset: 'headset', tv: 'tv', soundbar: 'speaker', speaker: 'speaker' }[o && o.kind] || 'speaker');
+    function soundHTML() {
+      if (sndErr) return '';
+      if (!snd) return '<div class="glabel">Sound</div><p class="hint gpad">Checking your sound outputs…</p>';
+      const cur = snd.current;
+      let h = '<div class="glabel">Sound</div>' +
+        item('s-out', kindIcon(cur), 'Plays on: ' + esc(cur ? cur.label : 'nothing') + (snd.outputs.length > 1 ? '<small>' + (snd.outputs.length - 1) + ' more · press to switch</small>' : ''), 'data-act="audio-out"', 'gsound');
+      if (snd.volume >= 0) {
+        const v = snd.muted ? 0 : snd.volume;
+        h += '<div class="mvol"><button class="mvbtn" data-nav data-key="s-vdown" data-zone="gbody" data-lock="svol" data-act="sv-down" aria-label="Volume down">' + icon('minus') + '</button>' +
+          '<div class="mvbar" role="meter" aria-label="Volume" aria-valuenow="' + v + '" aria-valuemin="0" aria-valuemax="100"><span style="width:' + v + '%"></span></div>' +
+          '<button class="mvbtn' + (snd.muted ? ' on' : '') + '" data-nav data-key="s-mute" data-zone="gbody" data-lock="svol" data-act="sv-mute" aria-label="' + (snd.muted ? 'Unmute' : 'Mute') + '">' + icon(snd.muted ? 'x' : 'volume') + '</button>' +
+          '<span class="mvpct">' + (snd.muted ? 'Muted' : snd.volume + '%') + '</span>' +
+          '<button class="mvbtn" data-nav data-key="s-vup" data-zone="gbody" data-lock="svol" data-act="sv-up" aria-label="Volume up">' + icon('plus') + '</button></div>';
+      }
+      return h;
+    }
+    function loadSound() {
+      Promise.resolve().then(() => api.audioState()).then((st) => { snd = st; sndErr = null; }, (e) => { sndErr = e.message; })
+        .then(() => { if (layers.indexOf(layer) >= 0 && tab === 'system') redraw(); });
+    }
+    async function soundCmd(fn) {
+      if (sndBusy) return;
+      sndBusy = true;
+      try { snd = await fn(); } catch (e) { toast(e.message, true); } finally { sndBusy = false; }
+      if (layers.indexOf(layer) >= 0 && tab === 'system') redraw();
+    }
     const item = (key, ic, label, attrs, cls) => '<button class="mitem' + (cls ? ' ' + cls : '') + '" data-nav data-key="' + key + '" data-zone="gbody" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
     const thumb = (g) => '<span class="mthumb" style="background-color:' + tileColor(g) + (g.art && g.art.tile ? ';background-image:url(&quot;' + esc(fileUrl(g.art.tile)) + '&quot;)' : '') + '"></span>';
     function body() {
@@ -1954,6 +1983,7 @@
         (s.xbox ? icon('trophy') + Number(s.xbox.gamerscore || 0).toLocaleString() : 'Edit profile') + '</span></span></button>' +
         (s.xbox ? '' : item('s-connect', 'link', 'Connect Xbox account', 'data-act="connect"')) +
         (Array.isArray(S.pads) && S.pads.length ? '<div class="glabel">Controllers</div><div class="gpads">' + padsHTML() + '</div>' : '') +
+        soundHTML() +
         '<div class="gsep"></div>' +
         item('s-stats', 'chart', 'Play time', 'data-act="stats"') +
         item('s-players', 'users', 'Set up players', 'data-act="players-setup"') +
@@ -1985,6 +2015,7 @@
       if (first) setFocus(first, { instant: true });
       if (tab === 'friends' && !friends) loadFriends();
       if (tab === 'friends') loadDiscord();
+      if (tab === 'system') loadSound();
       clearInterval(musicTimer);
       if (tab === 'games') { musicCmd('state'); musicTimer = setInterval(() => musicCmd('state'), 2000); }
     }
@@ -2144,6 +2175,17 @@
         if (act === 'friend') return friendMenu(el.dataset.friend);
         if (act === 'tv-resume') return resumeGame();
         if (act === 'stats') return openStats();
+        if (act === 'audio-out' && snd) {
+          const pick = await openMenu('Play sound on', snd.outputs.map((o) => ({ id: o.id, label: o.label + (o.isDefault ? ' · now' : ''), icon: o.isDefault ? 'check' : kindIcon(o) })));
+          if (!pick || (snd.current && pick === snd.current.id)) return;
+          const name = (snd.outputs.find((o) => o.id === pick) || {}).label;
+          await soundCmd(() => api.audioOutput(pick));
+          if (snd && snd.current && snd.current.id === pick) toast('Sound now plays on ' + name);
+          return;
+        }
+        if (act === 'sv-down' && snd) return soundCmd(() => api.audioVolume(Math.max(0, snd.volume - 5)));
+        if (act === 'sv-up' && snd) return soundCmd(() => (snd.muted ? api.audioMute(false) : api.audioVolume(Math.min(100, snd.volume + 5))));
+        if (act === 'sv-mute' && snd) return soundCmd(() => api.audioMute(!snd.muted));
         if (act === 'open-app') {
           const id = el.dataset.app;
           closeLayer(layer);
@@ -2300,6 +2342,7 @@
       window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
     });
     if (tab === 'friends') { loadFriends(); loadDiscord(); }
+    if (tab === 'system') loadSound();
     if (tab === 'games') { musicCmd('state'); clearInterval(musicTimer); musicTimer = setInterval(() => musicCmd('state'), 2000); }
     Promise.resolve().then(() => api.friendJoinable()).then((l) => {
       if (!Array.isArray(l) || !l.length || layers.indexOf(layer) < 0) return;

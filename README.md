@@ -67,6 +67,10 @@ Settings › Platforms › **Emulators** (one row, its own page). The launcher l
 - EmuDeck's Steam shortcuts for these emulators are hidden when the same game is found directly.
 - You need your own BIOS / firmware and game dumps for each emulator.
 
+## Sound
+
+Guide › Profile & system › **Sound**: *Plays on* shows where the sound goes (TV, headset, soundbar, speakers); press it to switch, for everything at once, like the taskbar's sound menu. Below it: volume down / mute / up.
+
 ## Play time
 
 Guide › Profile & system › **Play time** (or your profile): today, this week (against last week), your streak of days in a row, all-time hours, the last 12 weeks as bars, your most-played games, and *Your year so far* (hours, days, sessions, longest session, favorite day). Sessions are counted from this version on; all-time totals include everything before.
