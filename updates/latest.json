@@ -1,6 +1,6 @@
 {
- "version": "1.8.0",
- "notes": "Movies & TV: Stremio with an Apple TV look, built for the controller (your account, addons, library, Continue Watching, light/dark). Guide now works in exclusive full-screen games.",
- "file": "CouchLauncher-update-1.8.0.zip",
- "size": 204151
+ "version": "1.8.1",
+ "notes": "Movies & TV: a smooth opening animation (any button skips; turn it off in Settings › Movies & TV).",
+ "file": "CouchLauncher-update-1.8.1.zip",
+ "size": 205221
 }

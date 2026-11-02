@@ -842,6 +842,7 @@
           ? row('tv-out', 'tv-signout', 'Signed in' + (t.email ? ' as ' + t.email : ''), 'Your addons, library and Continue Watching sync with the Stremio app.', 'Sign out')
           : row('tv-in', 'tv-signin', 'Sign in to Stremio', 'Bring your own addons, library and Continue Watching. Without an account you get Cinemeta and OpenSubtitles.', 'Sign in')) +
         '</div><div class="sub-h">Playing</div><div class="toggles" style="grid-template-columns:1fr">' +
+        toggleHTML('tv-intro', 'Opening animation', s.tvIntro !== false, 'Plays the first time you open Movies & TV each session.', 'set-toggle', 'data-k="tvIntro"') +
         toggleHTML('tv-auto', 'Play the best match straight away', !!s.tvAutoPlay, 'Skips the stream list. Choose stream on a show’s page still lets you pick.', 'set-toggle', 'data-k="tvAutoPlay"') +
         row('tv-q', 'tv-quality', 'Preferred quality', 'What “best match” looks for first.', QL[s.tvQuality] || '1080p') +
         row('tv-s', 'tv-subs', 'Subtitles', 'Turned on automatically when a movie or episode has them.', SL[s.tvSubLang || 'en'] || 'English') +
