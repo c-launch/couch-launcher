@@ -849,7 +849,8 @@
         row('tv-s', 'tv-subs', 'Subtitles', 'Turned on automatically when a movie or episode has them.', SL[s.tvSubLang || 'en'] || 'English') +
         (t ? row('tv-mpv', 'tv-mpv', 'Video player', t.mpv ? 'mpv · ' + (t.mpvPath || '') : 'Movies play in mpv, a free player that handles every format (4K, HDR, all audio).', t.mpv ? 'Change' : 'Install mpv') : '') +
         '</div><div class="sub-h">YouTube</div><div class="toggles" style="grid-template-columns:1fr">' +
-        row('yt-reset', 'yt-reset', 'Sign out of YouTube', 'Forgets the YouTube account and settings on this PC. Open YouTube from the dock to sign in again.', 'Sign out') +
+        toggleHTML('yt-ads', 'Block ads in YouTube', s.ytAdblock !== false, 'Uses the ad blocker from VacuumTube by shy (MIT License). Takes effect the next time YouTube opens. Turn off if videos stop loading.', 'set-toggle', 'data-k="ytAdblock"') +
+                row('yt-reset', 'yt-reset', 'Sign out of YouTube', 'Forgets the YouTube account and settings on this PC. Open YouTube from the dock to sign in again.', 'Sign out') +
         '</div>' + (t ? '<p class="field-note">' + (t.engine ? 'Torrent streams use Stremio’s streaming engine from your Stremio app.' : 'Torrent streams need the Stremio app (or Stremio Service) installed on this PC. Debrid and direct links work without it.') + ' Controls while watching: A pause · ←/→ scrub · LB/RB skip · Y subtitles · X audio · B back.</p>' : '');
     }
     if (tab === 'startup') {
@@ -867,6 +868,7 @@
       '<dt>Full screen</dt><dd>' + (S.info.windowed ? 'Off (windowed mode)' : 'On') + '</dd></dl>' +
       '<div class="btn-row" style="margin-top:3rem"><button class="btn big primary" data-nav data-key="ab-update" data-zone="body" data-action="update-check">' + icon('refresh') + 'Check for update</button>' +
       '<button class="btn big" data-nav data-key="ab-rescan" data-zone="body" data-action="rescan">' + icon('refresh') + 'Rescan games</button></div>' +
+      '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">YouTube’s ad blocker is adapted from VacuumTube by shy (github.com/elytraVIII/VacuumTube), MIT License. Thank you!</p>' +
       '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">To update: put the CouchLauncher-update zip from the chat in your Downloads folder or G:\\launcher. The launcher finds it there.</p>';
   }
   function padKind(id) {

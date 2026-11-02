@@ -25,7 +25,8 @@ const DEFAULT_SETTINGS = {
   musicMouse: true,      // controller works as a mouse in Apple Music / Spotify / Discord
   discordPins: [],       // [{ name, url }] Discord channels / servers / invites shown in the guide
   tvMode: 'dark',        // Movies & TV look: 'dark' | 'light'
-  tvIntro: true,         // Movies & TV opening animation
+  tvIntro: true,
+  ytAdblock: true,       // YouTube: block ads (ad blocker adapted from VacuumTube, MIT License)         // Movies & TV opening animation
   tvQuality: '1080p',    // Movies & TV: preferred quality for "best match"
   tvAutoPlay: false,     // Movies & TV: play the best match straight away instead of showing the streams
   tvSubLang: 'en',       // Movies & TV: subtitles language ('off' for none)
