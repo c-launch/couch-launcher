@@ -79,7 +79,7 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
   let joining = false; // "Who's playing?" screen: report A presses per controller
   const prevSlot = [0, 0, 0, 0];
   let sony = null;
-  try { sony = require('./sonypads').createSonyPads(); } catch (_) { sony = null; }
+  try { sony = require('./sonypads').createSonyPads({ wantPs: () => !usePs || usePs() }); } catch (_) { sony = null; }
 
   function read(i) {
     const st = {};
@@ -109,12 +109,15 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
       if (b & GUIDE) guide = true;
       if (b & 0x2000) back = true; // B
     }
-    if (sony && usePs && !usePs()) { if (sony.count) sony.close(); }
-    else if (sony) {
+    // PlayStation pads switched off in Settings: only those are let go. The Xbox Share button
+    // (Medal) is read either way. (It used to stop too, so Share did nothing.)
+    if (sony && usePs && !usePs() && sony.closePs) sony.closePs();
+    if (sony) {
       let states = [];
       try { states = sony.read(); } catch (_) { states = []; }
       for (const st of states) {
         if (st.kind === 'xbox') { if (st.xshare) cap.xShare = true; continue; } // only its Share button
+        if (usePs && !usePs()) continue; // PlayStation pads switched off
         if (st.share) cap.psShare = true;
         if (st.options) cap.psOptions = true;
         if (st.ps) guide = true;
@@ -150,7 +153,8 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
     stop() { if (timer) { clearInterval(timer); timer = null; } if (sony) sony.close(); },
     setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; },
     setJoin(on) { joining = !!on; },
-    get xboxShareReadable() { return !!(sony && sony.xboxCount); }
+    get xboxShareReadable() { return !!(sony && sony.xboxCount); },
+    shareDebug() { return sony && sony.debug ? sony.debug() : { xbox: [], otherMicrosoft: [], unavailable: true }; }
   };
 }
 

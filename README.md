@@ -67,6 +67,10 @@ Settings › Platforms › **Emulators** (one row, its own page). The launcher l
 - EmuDeck's Steam shortcuts for these emulators are hidden when the same game is found directly.
 - You need your own BIOS / firmware and game dumps for each emulator.
 
+## Play time
+
+Guide › Profile & system › **Play time** (or your profile): today, this week (against last week), your streak of days in a row, all-time hours, the last 12 weeks as bars, your most-played games, and *Your year so far* (hours, days, sessions, longest session, favorite day). Sessions are counted from this version on; all-time totals include everything before.
+
 ## Saves, resume, achievements, sleep timer
 
 - **Save backups** (Settings › Saves & backups): each emulator's saves are copied before a game starts and after it closes (only when something changed), to **Google Drive** (with Google Drive for desktop: *My Drive › Couch Launcher › Save backups*), **OneDrive**, or any folder or USB drive. The newest copies are kept (10 by default); *Restore* puts one back (your current saves are copied first, so it can be undone). EmuDeck's `Emulation\saves` folder is used for EmuDeck emulators.
@@ -118,6 +122,7 @@ Tap **Share** for a screenshot, hold it for a clip; the launcher presses Medal's
 - **PlayStation:** the Share / Create button. (Share + Options held is still "back to the launcher".) If Steam takes its own screenshot too, turn off Steam's screenshot shortcut for the controller in Steam › Settings › Controller.
 - **Xbox Series:** its Share button works over **Bluetooth** (Windows keeps it to itself on USB or the Xbox wireless adapter). Otherwise hold **View + RB** for a clip, **View + LB** for a screenshot.
 - **Keys:** clips use F8 (Medal's default). Set a screenshot key in Medal › Settings › Capture Hotkeys and pick the same one in the launcher.
+- **Not working?** Settings › Controllers › *Test the Share button* shows whether the launcher sees your controller and its Share button live, and can send Medal a test clip (to check Medal's clip key).
 
 ## Players, saves and TV settings
 
