@@ -63,7 +63,9 @@ if (!app.requestSingleInstanceLock()) {
       if (edge) {
         let front = null;
         try { front = w32 && w32.frontInfo ? w32.frontInfo() : null; } catch (_) { front = null; }
-        lastCapture = { at: Date.now(), what: st.xShare ? 'Share' : st.psShare ? 'Share (PlayStation)' : 'View + ' + (st.xRB ? 'RB' : 'LB'), why, front: front ? { exe: front.exe, elevated: front.elevated, selfElevated: front.selfElevated } : null, sent: null };
+        let hid = null;
+        try { const x = (controller.shareDebug().xbox || [])[0]; hid = x ? { age: x.lastAt ? Date.now() - x.lastAt : null, reports: x.reports, buttons: x.buttons } : null; } catch (_) { hid = null; }
+        lastCapture = { at: Date.now(), what: st.xShare ? 'Share' : st.psShare ? 'Share (PlayStation)' : 'View + ' + (st.xRB ? 'RB' : 'LB'), why, front: front ? { exe: front.exe, elevated: front.elevated, selfElevated: front.selfElevated } : null, sent: null, hid };
       }
       if (why) return;
       capture.input(st);

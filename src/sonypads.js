@@ -279,7 +279,13 @@ function createSonyPads(opts) {
         const bytes = n > 0 ? api.bytes(p.buf, p.size) : null;
         const st = !bytes ? null : p.kind === 'xbox' ? parseXbox(p, bytes, p.size, now(), shareMap()) : parseReport(p.pid, bytes, p.size);
         if (bytes && p.kind === 'xbox' && learn && !learn.found && now() < learn.until) learnFrom(p, bytes);
-        if (bytes && p.kind === 'xbox') { p.last = Array.from(bytes); if (!p.first) p.first = p.last.slice(); p.reports = (p.reports || 0) + 1; }
+        if (bytes && p.kind === 'xbox') {
+          const prev = p.last;
+          p.last = Array.from(bytes); if (!p.first) p.first = p.last.slice(); p.reports = (p.reports || 0) + 1; p.lastAt = now();
+          // Any change in the button bytes (after sticks and triggers), for the Share test.
+          const from = bytes[0] === 0x01 && p.size >= 17 ? 13 : 11;
+          if (prev && p.last.some((v, i) => i >= from && v !== prev[i])) p.buttonsAt = { at: now(), bytes: p.last.slice(from), from };
+        }
         if (st && p.kind === 'xbox') { p.state = st; start(p); continue; }
         if (st) {
           if (p.state && st.ps !== p.state.ps) {
@@ -321,7 +327,7 @@ function createSonyPads(opts) {
       pid: p.pid, size: p.size, reports: p.reports || 0, shareAt: p.x && p.x.lock != null ? p.x.lock : null,
       windowsReport: !!(p.state && p.state.generic), learned: (() => { const m = shareMap(); return m && m.pid === p.pid && m.size === p.size ? m : null; })(),
       bad: p.x ? Object.keys(p.x.bad || {}).map(Number) : [], share: !!(p.state && p.state.xshare),
-      last: p.last || null, first: p.first || null
+      last: p.last || null, first: p.first || null, lastAt: p.lastAt || 0, buttons: p.buttonsAt || null
     }));
     return { xbox, otherMicrosoft: [...seenMs.keys()], learn: learnResult() };
   }

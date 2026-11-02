@@ -1,6 +1,6 @@
 {
- "version": "1.14.8",
- "notes": "Medal: the launcher now checks with Windows whether it's in front before ignoring Share / View + bumper presses (its own focus check could be wrong while a game had the screen, so presses in games were dropped). Settings › Controllers › Test the Share button now shows your last press in a game and what happened to it, including when a game runs as administrator (Windows then blocks the key press).",
- "file": "CouchLauncher-update-1.14.8.zip",
- "size": 290526
+ "version": "1.14.9",
+ "notes": "Medal: View + RB (clip) and View + LB (screenshot) now always work in Auto, even after the Share button has been found (they were switched off then, so neither worked in games where Share doesn't come through). The Share test also shows what the controller sent at the moment of your last in-game press.",
+ "file": "CouchLauncher-update-1.14.9.zip",
+ "size": 290870
 }

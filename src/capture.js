@@ -17,7 +17,9 @@ function createCapture({ fire, now, mode }) {
     const m = mode();
     const t = now();
     const useXShare = m === 'share' || (m === 'auto' && st.xShareReadable);
-    const useCombo = m === 'combo' || (m === 'auto' && !st.xShareReadable);
+    // Auto: the View combo always works too (Share can stop coming through while some games
+    // have the controller).
+    const useCombo = m === 'combo' || m === 'auto';
     const down = !!st.psShare || (useXShare && !!st.xShare);
     if (st.psOptions) cancelled = true;
     if (down && !wasDown) { downAt = t; fired = false; cancelled = !!st.psOptions; }
