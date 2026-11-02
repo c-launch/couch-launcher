@@ -577,7 +577,7 @@
       const target = S.baseFocus && $('[data-key="' + cssEsc(S.baseFocus) + '"]', next);
       setFocus(target || $('[data-nav]', next) || $('[data-nav]', $('#topbar')), { instant: true });
     }
-    if (S.view === 'home') updateHero(true);
+    if (S.view === 'home') { updateHero(true); paintFriendsNow(); }
     if (S.downloads && S.downloads.length) paintDownloads();
     updatePrompts();
   }
@@ -617,7 +617,7 @@
       '<div class="row home-tiles"><div class="row-inner">' + tiles + '</div></div>' +
       '<div class="row home-cards"><div class="row-inner">' + cards.map(([k, ic, t, s, attrs]) =>
         '<button class="card" data-nav data-key="' + k + '" data-zone="cards" data-lock="cards" ' + attrs + '>' + icon(ic) + '<div><div class="t">' + t + '</div><div class="s">' + esc(s) + '</div></div></button>').join('') + '</div></div>' +
-      '<section class="home-news" aria-label="Gaming news"><div class="news-head">' + icon('news') + '<h2>Gaming news</h2><span class="news-sub" id="news-sub">' + esc(newsSub()) + '</span></div>' +
+      '<section class="home-news" aria-label="Gaming news"><div class="home-friends" id="home-friends"></div><div class="news-head">' + icon('news') + '<h2>Gaming news</h2><span class="news-sub" id="news-sub">' + esc(newsSub()) + '</span></div>' +
       '<div class="news-list" id="news-list">' + newsCardsHTML() + '</div></section>';
   }
 
@@ -821,6 +821,7 @@
           ({ saved: 'Use my saved players', ask: 'Ask every time', auto: 'Ask every time', always: 'Ask every time', off: 'Leave as set in the emulator' }[S.lib.settings.pickPlayers || 'saved']) + '</span></button>' +
         toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
         toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
+        toggleHTML('c-njoin', 'Tell me when a friend starts a game I can join', S.lib.settings.notifyJoin !== false, 'Steam friends in a lobby or on a server (their Steam profile has to be public). Join from the alert or the guide.', 'set-toggle', 'data-k="notifyJoin"') +
         toggleHTML('c-ncall', 'Tell me when someone joins or leaves my Discord call', S.lib.settings.notifyCalls !== false, 'Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="notifyCalls"') +
         toggleHTML('c-ndl', 'Tell me when a Steam download finishes', S.lib.settings.notifyDownloads !== false, 'Installs and updates.', 'set-toggle', 'data-k="notifyDownloads"') +
         toggleHTML('c-pspads', 'Read PlayStation controllers in the background', S.lib.settings.psPads !== false, 'The PS button opens the guide, also during games (DualShock 4, DualSense). Turn off if a PlayStation controller acts up.', 'set-toggle', 'data-k="psPads"') +
@@ -995,12 +996,12 @@
     onFocusChanged(el);
   }
   function ensureVisible(el, instant) {
-    const sc = el.closest('.row, .content, .fb-list, .side, .flist, .gbody, .news-list');
+    const sc = el.closest('.row, .hf-row, .fp-games, .content, .fb-list, .side, .flist, .gbody, .news-list, .fprof');
     if (!sc) return;
     const r = el.getBoundingClientRect(), c = sc.getBoundingClientRect();
     const rem = remPx();
     const behavior = instant || reduce() ? 'auto' : 'smooth';
-    if (sc.classList.contains('row')) {
+    if (sc.classList.contains('row') || sc.classList.contains('hf-row') || sc.classList.contains('fp-games')) {
       const pad = 5.6 * rem;
       let dx = 0;
       if (r.left < c.left + pad) dx = r.left - (c.left + pad);
@@ -1535,20 +1536,22 @@
     });
   }
 
-  async function play(id) {
+  async function play(id, extra) {
+    extra = extra || {};
     const g = byId(id);
     if (!g) return;
     if (S.playing) {
       if (S.playing.id === id && !layers.some((l) => l.className === 'launching')) { resumeGame(); return; }
       let st = null;
       try { st = await api.gameStatus(); } catch (_) { /* treat as nothing running */ }
-      if (st && st.canClose) { await switchTo(id); return; }
+      if (st && st.canClose) { await switchTo(id, extra); return; }
       try { await api.cancelLaunch(); } catch (_) { /* ignore */ }
       S.playing = null;
     }
     if (g.launch && g.launch.type === 'emu' && !(await setUpPlayers(g))) return; // cancelled on "Who's playing?"
     // Dolphin, RetroArch, DuckStation, PCSX2: offer the state saved when you last closed it.
     const opts = {};
+    if (extra.join) opts.join = extra.join; // straight into a friend's lobby
     if (g.launch && g.launch.type === 'emu' && ['dolphin', 'retroarch', 'duckstation', 'pcsx2'].includes(g.launch.emu) && S.lib.settings.saveStates !== false) {
       let info = null;
       try { info = await api.savedState(id); } catch (_) { info = null; }
@@ -1651,7 +1654,7 @@
     return gone;
   }
 
-  async function switchTo(id) {
+  async function switchTo(id, extra) {
     const g = byId(id);
     const cur = S.playing && byId(S.playing.id);
     const ok = await confirmBox('Switch to ' + g.title + '?',
@@ -1662,7 +1665,7 @@
     S.switching = true;
     let closed = false;
     try { closed = await closeCurrentGame(); } finally { S.switching = false; }
-    if (closed) play(id);
+    if (closed) play(id, extra);
     else if (!S.playing) renderView(false);
   }
 
@@ -1689,11 +1692,17 @@
     const TABS_G = [['games', 'grid', 'Games'], ['clips', 'film', 'Clips'], ['friends', 'users', 'Friends'], ['system', 'user', 'Profile & system']];
     let gclips = null, gclipsErr = null;
     let music = null, musicErr = null, musicTimer = null;
+    let joinables = [];
     const item = (key, ic, label, attrs, cls) => '<button class="mitem' + (cls ? ' ' + cls : '') + '" data-nav data-key="' + key + '" data-zone="gbody" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
     const thumb = (g) => '<span class="mthumb" style="background-color:' + tileColor(g) + (g.art && g.art.tile ? ';background-image:url(&quot;' + esc(fileUrl(g.art.tile)) + '&quot;)' : '') + '"></span>';
     function body() {
       if (tab === 'games') {
         let h = item('g-home', 'home', 'Home', 'data-act="home" data-top') + '<div class="gsep"></div>' + musicHTML();
+        // Friends who started a game you can join (Steam lobbies / servers).
+        if (joinables.length) h += '<div class="glabel">Join a friend</div>' + joinables.slice(0, 3).map((f) =>
+          '<button class="mitem gjoin" data-nav data-key="gj-' + esc(f.id) + '" data-zone="gbody" data-act="friend" data-friend="' + esc(f.id) + '">' +
+          '<span class="fpic small">' + esc(f.gamertag.charAt(0).toUpperCase()) + (f.pic ? '<img src="' + esc(f.pic) + '" alt="">' : '') + '</span>' +
+          '<span>Join ' + esc(f.gamertag) + '<small>' + esc(f.game || 'Steam game') + '</small></span></button>').join('') + '<div class="gsep"></div>';
         const cur = S.playing && byId(S.playing.id);
         if (cur) {
           h += '<div class="glabel">Now playing</div><div class="gnow">' + thumb(cur) + '<div class="gnow-t">' + esc(cur.title) +
@@ -1710,7 +1719,7 @@
         h += item('g-lib', 'grid', 'My library', 'data-act="library"') + item('g-add', 'plus', 'Add a game', 'data-act="add"');
         return h;
       }
-      if (tab === 'friends') return discordHTML() + friendSectionsHTML(friends, 'gbody');
+      if (tab === 'friends') return discordHTML() + friendSectionsHTML(friends, 'gbody') + playedWithHTML(friends, 'gbody');
       if (tab === 'clips') {
         if (gclipsErr) return '<p class="hint gpad">' + esc(gclipsErr) + '</p>';
         if (!gclips) { loadClips(false).then((v) => { gclips = v; if (layers.indexOf(layer) >= 0 && tab === 'clips') redraw(); }, (e) => { gclipsErr = e.message; redraw(); }); return '<p class="hint gpad">Loading your Medal clips…</p>'; }
@@ -1911,6 +1920,8 @@
       onActivate: async (el) => {
         const act = el.dataset.act;
         if (act === 'tab') return setTab(el.dataset.tab);
+        if (act === 'friend') return friendMenu(el.dataset.friend);
+        if (act === 'friend-recent') return openFriendProfile(el.dataset.friend);
         if (act === 'm-bal') { if (S.input !== 'mouse') setBalance(0); return; } // A: back to the middle
         // Over the game: anything that needs the full launcher is handed to it.
         if (act === 'dc-leave') { try { await api.dcRpcLeave(); toast('Left the call'); } catch (e) { toast(e.message, true); } return pollRpc(); }
@@ -1955,7 +1966,7 @@
           try { await api.discordType(text); } catch (e) { toast(e.message, true); }
           return;
         }
-        if (OVERLAY && !['resume', 'friends-retry', 'm-toggle', 'm-next', 'm-prev', 'm-shuffle', 'm-pref', 'm-open', 'm-voldown', 'm-volup', 'clip', 'clips-all'].includes(act)) {
+        if (OVERLAY && !['resume', 'friend', 'friend-recent', 'friends-retry', 'm-toggle', 'm-next', 'm-prev', 'm-shuffle', 'm-pref', 'm-open', 'm-voldown', 'm-volup', 'clip', 'clips-all'].includes(act)) {
           const req = act === 'play' ? { action: S.playing ? 'switch' : 'goto', id: el.dataset.id, target: 'library' }
             : act === 'close' ? { action: 'close' } : { action: 'goto', target: act };
           closeLayer(layer);
@@ -2059,6 +2070,11 @@
     });
     if (tab === 'friends') { loadFriends(); loadDiscord(); }
     if (tab === 'games') { musicCmd('state'); clearInterval(musicTimer); musicTimer = setInterval(() => musicCmd('state'), 2000); }
+    Promise.resolve().then(() => api.friendJoinable()).then((l) => {
+      if (!Array.isArray(l) || !l.length || layers.indexOf(layer) < 0) return;
+      joinables = l; rememberFriends(l);
+      if (tab === 'games') redraw();
+    }, () => {});
   }
 
   async function loadAllFriends() {
@@ -2067,9 +2083,168 @@
     try { out.steam.on = await api.steamStatus(); } catch (_) { /* not connected */ }
     await Promise.all([
       out.xbox.on ? api.xboxFriends().then((l) => { out.xbox.list = l; }, (e) => { out.xbox.err = e.message; }) : null,
-      out.steam.on ? api.steamFriends().then((l) => { out.steam.list = l; }, (e) => { out.steam.err = e.message; }) : null
+      out.steam.on ? api.steamFriends().then((l) => { out.steam.list = l; }, (e) => { out.steam.err = e.message; }) : null,
+      Promise.resolve().then(() => api.friendRecent()).then((l) => { out.recent = Array.isArray(l) ? l : []; }, () => { out.recent = []; })
     ]);
+    rememberFriends([].concat(out.xbox.list || [], out.steam.list || []));
     return out;
+  }
+  // ----- friends: join, play the same game, store, profiles
+  S.friendMap = new Map();
+  function rememberFriends(list) { for (const f of list || []) if (f && (f.id || f.xuid)) S.friendMap.set(f.id || f.xuid, Object.assign({ id: f.id || f.xuid }, f)); }
+  function playedWithHTML(fr, zone) {
+    const list = (fr && fr.recent) || [];
+    if (!list.length) return '';
+    const z = zone ? ' data-zone="' + zone + '"' : '';
+    return '<div class="gsep"></div><div class="glabel">Played with recently</div>' + list.slice(0, 8).map((p) =>
+      '<button class="friend pw" data-nav data-key="pw-' + esc(p.id) + '"' + z + ' data-act="friend-recent" data-friend="' + esc(p.id) + '">' +
+      '<div class="fpic">' + esc(String(p.name || '?').charAt(0).toUpperCase()) + (p.pic ? '<img src="' + esc(p.pic) + '" alt="">' : '') + '</div>' +
+      '<div class="finfo"><div class="fname">' + esc(p.name || 'Friend') + '</div><div class="fstatus">' + esc(p.games.slice(0, 2).map((x) => x.title).join(', ')) + ' · ' + esc(ago(p.last)) + '</div></div></button>').join('');
+  }
+  // What you can do with a friend: join them, play the same game, find it, see their profile.
+  function friendItems(f) {
+    const items = [];
+    const mine = f.owned && byId(f.owned);
+    const what = f.game || (mine && mine.title) || 'their game';
+    if (f.joinable) items.push({ id: 'join', label: 'Join ' + f.gamertag + ' in ' + what, icon: 'play' });
+    if (mine && !(S.playing && S.playing.id === mine.id)) items.push({ id: 'play', label: (f.joinable ? 'Just play ' : 'Play ') + mine.title, icon: f.joinable ? 'pad' : 'play' });
+    if (!mine && f.store && (f.game || f.gameid)) items.push({ id: 'store', label: (f.service === 'steam' ? 'See ' + what + ' on Steam' : 'Find ' + what + ' in the Store'), icon: 'store' });
+    items.push({ id: 'profile', label: 'View profile', icon: 'user' });
+    return items;
+  }
+  function closeGuides() { for (const l of layers.slice().reverse()) if (l.isGuide || l.className === 'side-layer' || l.className === 'fp-layer') closeLayer(l); }
+  async function friendAct(f, pick) {
+    if (!f || !pick) return;
+    if (pick === 'profile') return openFriendProfile(f.id);
+    if (pick === 'store') { try { await api.friendStore(f.id); } catch (e) { toast(e.message, true); } return; }
+    const mine = f.owned && byId(f.owned);
+    if (pick === 'join') {
+      // Already in that game, or not in your library: Steam's own join link does it.
+      if (!mine || (S.playing && S.playing.id === mine.id)) {
+        try { await api.friendJoin(f.id); toast('Joining ' + f.gamertag + '…'); closeGuides(); } catch (e) { toast(e.message, true); }
+        return;
+      }
+      if (OVERLAY) { closeGuides(); try { await api.overlayAction({ action: 'join', id: mine.id, friend: f.id }); } catch (e) { toast(e.message, true); } return; }
+      closeGuides();
+      return S.playing ? switchTo(mine.id, { join: f.id }) : play(mine.id, { join: f.id });
+    }
+    if (pick === 'play' && mine) {
+      if (OVERLAY) { closeGuides(); try { await api.overlayAction({ action: S.playing ? 'switch' : 'goto', id: mine.id, target: 'library' }); } catch (e) { toast(e.message, true); } return; }
+      closeGuides();
+      return S.playing ? switchTo(mine.id) : play(mine.id);
+    }
+  }
+  async function friendMenu(id) {
+    const f = S.friendMap.get(id);
+    if (!f) return openFriendProfile(id);
+    const sub = f.online ? (f.status || 'Online') : 'Offline';
+    const pick = await openMenu(f.gamertag + ' · ' + sub, friendItems(f));
+    return friendAct(f, pick);
+  }
+  function fmtHours(h) { return h >= 1 ? (h >= 10 ? Math.round(h) : h) + ' h' : h > 0 ? Math.round(h * 60) + ' min' : ''; }
+  async function openFriendProfile(id) {
+    let p = null, err = null;
+    const known = S.friendMap.get(id) || null;
+    const html = () => {
+      const f = p || known || { gamertag: 'Friend', id };
+      const name = f.name || f.gamertag;
+      const svc = (f.service || (String(id).startsWith('steam-') ? 'steam' : 'xbox')) === 'steam' ? 'Steam' : 'Xbox';
+      const stats = [];
+      if (p) {
+        if (p.level != null) stats.push(['Level', p.level]);
+        if (p.games != null) stats.push(['Games', p.games.toLocaleString()]);
+        if (p.gamerscore) stats.push(['Gamerscore', p.gamerscore.toLocaleString()]);
+        if (p.since) stats.push(['Member since', new Date(p.since).getFullYear()]);
+      }
+      const acts = p || known ? friendItems(Object.assign({}, known || {}, p || {}, { id })).filter((x) => x.id !== 'profile') : [];
+      const pic = f.picBig || f.pic;
+      let h = '<div class="fprof"><div class="fp-head"><div class="fp-av">' + esc(String(name).charAt(0).toUpperCase()) + (pic ? '<img src="' + esc(pic) + '" alt="">' : '') + '</div>' +
+        '<div class="fp-who"><div class="fp-svc">' + svc + '</div><h1>' + esc(name) + '</h1>' +
+        '<div class="fp-status' + (f.online ? ' on' : '') + '">' + esc(f.online ? (f.status || 'Online') : (p && p.lastOnline ? 'Last online ' + ago(p.lastOnline) : 'Offline')) + '</div>' +
+        (stats.length ? '<div class="fp-stats">' + stats.map(([k, v]) => '<span><b>' + esc(String(v)) + '</b>' + esc(k) + '</span>').join('') + '</div>' : '') + '</div></div>';
+      h += '<div class="fp-acts">' + acts.map((a, i) => '<button class="btn big' + (i === 0 ? ' primary' : '') + '" data-nav data-key="fpa-' + a.id + '" data-zone="fpacts" data-act="do" data-do="' + a.id + '">' + icon(a.icon) + esc(a.label) + '</button>').join('') + '</div>';
+      if (err) h += '<p class="hint fp-note">' + esc(err) + '</p>';
+      else if (!p) h += '<p class="hint fp-note">Loading profile…</p>';
+      else {
+        if (p.private) h += '<p class="hint fp-note">' + esc(name) + '’s game details are private on Steam, so only their name and status show.</p>';
+        if (p.recent && p.recent.length) {
+          h += '<h2 class="fp-h">Recently played</h2><div class="fp-games">' + p.recent.map((r, i) =>
+            '<button class="fp-game" data-nav data-key="fpg-' + i + '" data-zone="fpgames" data-act="game" data-i="' + i + '">' +
+            '<span class="fp-img"' + (r.img ? ' style="background-image:url(&quot;' + esc(r.img) + '&quot;)"' : '') + '>' + (r.img ? '' : icon('pad')) + '</span>' +
+            '<span class="fp-gt">' + esc(r.title) + '</span><span class="fp-gs">' +
+            esc(r.hours != null ? [r.hours2w ? fmtHours(r.hours2w) + ' past 2 weeks' : '', fmtHours(r.hours) ? fmtHours(r.hours) + ' total' : ''].filter(Boolean).join(' · ') : (r.total ? r.gamerscore + ' / ' + r.total + ' G' : r.last ? ago(r.last) : '')) +
+            '</span>' + (r.owned ? '<span class="fp-have">In your library</span>' : '') + '</button>').join('') + '</div>';
+        }
+        if (p.together && p.together.length) {
+          h += '<h2 class="fp-h">Played together</h2><div class="fp-together">' + p.together.map((t) =>
+            '<button class="mitem" data-nav data-key="fpt-' + esc(t.gameId) + '" data-zone="fptog" data-act="tog" data-id="' + esc(t.gameId) + '">' + icon('users') + '<span>' + esc(t.title) + '<small>' + esc(ago(t.last)) + (t.mins ? ' · about ' + fmtHours(t.mins / 60) + ' together' : '') + '</small></span></button>').join('') + '</div>';
+        }
+      }
+      return h + '</div>';
+    };
+    const layer = openLayer({
+      className: 'fp-layer',
+      html: html(),
+      onActivate: async (el) => {
+        const act = el.dataset.act;
+        if (act === 'do') { const f = Object.assign({}, known || {}, p || {}, { id }); if (!f.gamertag) f.gamertag = f.name || 'Friend'; return friendAct(f, el.dataset.do); }
+        if (act === 'tog') { const g = byId(el.dataset.id); if (g) { closeGuides(); return S.playing ? switchTo(g.id) : play(g.id); } return; }
+        if (act === 'game') {
+          const r = p && p.recent[Number(el.dataset.i)];
+          if (!r) return;
+          const items = [];
+          let line = '';
+          if (p.service === 'steam' && r.appid) {
+            const c = await api.friendCompare(id, r.appid).catch(() => null);
+            if (c) line = 'Achievements: you ' + (c.mine ? c.mine.got + '/' + c.mine.total : 'none yet') + ' · ' + (p.name || 'them') + ' ' + (c.theirs ? c.theirs.got + '/' + c.theirs.total : 'private');
+          } else if (r.total) line = (p.name || 'They') + ' has ' + r.gamerscore + ' of ' + r.total + ' gamerscore (' + Math.round(r.pct) + '%)';
+          if (r.owned && byId(r.owned)) items.push({ id: 'play', label: 'Play ' + byId(r.owned).title, icon: 'play' });
+          else items.push({ id: 'store', label: p.service === 'steam' ? 'See it on Steam' : 'Find it in the Store', icon: 'store' });
+          const pick = await openMenu(r.title + (line ? ' · ' + line : ''), items);
+          if (pick === 'play') { closeGuides(); const g = byId(r.owned); return OVERLAY ? api.overlayAction({ action: S.playing ? 'switch' : 'goto', id: g.id, target: 'library' }).catch((e) => toast(e.message, true)) : S.playing ? switchTo(g.id) : play(g.id); }
+          if (pick === 'store') { try { await api.friendStore(id, p.service === 'steam' ? { appid: r.appid } : { title: r.title }); } catch (e) { toast(e.message, true); } }
+        }
+      },
+      onBack: () => closeLayer(layer),
+      prompts: () => [['A', 'Select'], ['B', 'Back']]
+    });
+    try { p = await api.friendProfile(id); if (p) rememberFriends([p]); } catch (e) { err = e.message; }
+    if (layers.indexOf(layer) < 0) return;
+    const key = layer.focusKey;
+    layer.el.innerHTML = html();
+    const el = (key && $('[data-key="' + cssEsc(key) + '"]', layer.el)) || $('[data-nav]', layer.el);
+    if (el && topLayer() === layer) setFocus(el, { instant: true });
+  }
+  // Home: friends in a game right now.
+  let friendsNowTimer = null;
+  function friendsNowHTML(list) {
+    if (!list || !list.length) return '';
+    return '<div class="news-head hf-head">' + icon('users') + '<h2>Friends playing now</h2><span class="news-sub">' + list.length + ' in a game</span></div>' +
+      '<div class="hf-row"><div class="hf-inner">' + list.slice(0, 16).map((f) => {
+        const mine = f.owned && byId(f.owned);
+        const tag = f.joinable ? '<span class="hf-tag join">Join</span>' : mine ? '<span class="hf-tag have">You have it</span>' : '';
+        return '<button class="hf-card" data-nav data-key="hf-' + esc(f.id) + '" data-zone="hfriends" data-action="friend" data-friend="' + esc(f.id) + '">' +
+          '<span class="fpic">' + esc(f.gamertag.charAt(0).toUpperCase()) + (f.pic ? '<img src="' + esc(f.pic) + '" alt="">' : '') + '<span class="fdot"></span></span>' +
+          '<span class="hf-t"><span class="hf-name">' + esc(f.gamertag) + '</span><span class="hf-game">' + esc(f.game || (mine && mine.title) || 'In a game') + '</span></span>' + tag + '</button>';
+      }).join('') + '</div></div>';
+  }
+  async function paintFriendsNow() {
+    clearTimeout(friendsNowTimer);
+    if (OVERLAY) return;
+    friendsNowTimer = setTimeout(paintFriendsNow, 2 * 60 * 1000);
+    if (S.view !== 'home' || S.playing) return;
+    let list = [];
+    try { list = await api.friendPlaying(); } catch (_) { list = []; }
+    if (!Array.isArray(list)) list = [];
+    rememberFriends(list);
+    const hosts = $$('#home-friends'), host = hosts[hosts.length - 1]; // the new view (the old one may still be fading out)
+    if (!host || S.view !== 'home') return;
+    const sig = JSON.stringify(list.map((f) => [f.id, f.game, f.joinable, f.owned, f.pic]));
+    if (host.dataset.sig === sig) return;
+    host.dataset.sig = sig;
+    const f = currentFocus(), key = f && f.closest('.home-friends') ? f.dataset.key : null;
+    host.innerHTML = friendsNowHTML(list);
+    if (key) { const el = $('[data-key="' + cssEsc(key) + '"]', host) || $('[data-nav]', host) || $('.ncard', $('#news-list')) || $('[data-key="c-lib"]'); if (el) setFocus(el, { instant: true }); }
   }
   function friendSectionsHTML(fr, zone) {
     if (!fr) return '<p class="hint gpad">Loading…</p>';
@@ -2094,10 +2269,11 @@
   }
 
   function friendItemsHTML(fr, zone) {
-    return fr.map((f) => '<button class="friend' + (f.online ? ' online' : '') + '" data-nav data-key="fr-' + esc(f.xuid || f.gamertag) + '"' + (zone ? ' data-zone="' + zone + '"' : '') + '>' +
+    return fr.map((f) => '<button class="friend' + (f.online ? ' online' : '') + '" data-nav data-key="fr-' + esc(f.xuid || f.gamertag) + '"' + (zone ? ' data-zone="' + zone + '"' : '') + ' data-act="friend" data-friend="' + esc(f.id || f.xuid) + '">' +
       '<div class="fpic">' + esc(f.gamertag.charAt(0).toUpperCase()) + (f.pic ? '<img src="' + esc(f.pic) + '" alt="">' : '') + '<span class="fdot"></span></div>' +
       '<div class="finfo"><div class="fname">' + esc(f.gamertag) + (f.favorite ? ' <span class="fstar">' + starIcon + '</span>' : '') + '</div>' +
-      '<div class="fstatus">' + esc(f.status || (f.online ? 'Online' : 'Offline')) + '</div></div></button>').join('');
+      '<div class="fstatus">' + esc(f.status || (f.online ? 'Online' : 'Offline')) + '</div></div>' +
+      (f.joinable ? '<span class="hf-tag join">Join</span>' : '') + '</button>').join('');
   }
 
   async function gameMenu(g) {
@@ -2113,6 +2289,10 @@
     const alts = g.launch && Array.isArray(g.launch.alts) ? g.launch.alts : null;
     const REG = { usa: 'USA', world: 'World', europe: 'Europe', japan: 'Japan', other: 'Other' };
     if (alts && alts.length > 1) { const cur = alts.find((x) => x.file === (g.altFile || g.launch.file)) || alts[0]; items.splice(1, 0, { id: 'region', label: 'Version: ' + (REG[cur.region] || cur.region), icon: 'refresh' }); }
+    // Friends who were in this game while you played it.
+    let mates = [];
+    try { mates = await api.friendPlayedWith(g.id); } catch (_) { mates = []; }
+    if (Array.isArray(mates) && mates.length) items.splice(1, 0, { id: 'mates', label: 'Played with ' + mates.slice(0, 2).map((m) => m.name).join(', ') + (mates.length > 2 ? ' +' + (mates.length - 2) : ''), icon: 'users' });
     items.push(g.hidden ? { id: 'unhide', label: 'Unhide', icon: 'refresh' } : { id: 'hide', label: 'Hide from library', icon: 'x' });
     if (g.source === 'custom') items.push({ id: 'remove', label: 'Remove from library', icon: 'trash', danger: true });
     const pick = await openMenu(g.title, items);
@@ -2120,6 +2300,11 @@
     if (pick === 'play') return play(g.id);
     if (pick === 'edit') return openEdit(g);
     if (pick === 'cols') return editCollections(g);
+    if (pick === 'mates') {
+      const who = await openMenu('Played ' + g.title + ' with', mates.map((m) => ({ id: m.id, label: m.name + ' · ' + ago(m.last) + (m.mins ? ' · about ' + fmtHours(m.mins / 60) : ''), icon: 'user' })));
+      if (who) openFriendProfile(who);
+      return;
+    }
     if (pick === 'tv') return displaySettings(g);
     if (pick === 'region') {
       const REG = { usa: 'USA', world: 'World', europe: 'Europe', japan: 'Japan', other: 'Other' };
@@ -2533,6 +2718,8 @@
       onActivate: async (el) => {
         if (el.dataset.act === 'connect') { if (await connectXbox()) load(); }
         if (el.dataset.act === 'connect-steam') { if (await connectSteam()) load(); }
+        if (el.dataset.act === 'friend') return friendMenu(el.dataset.friend);
+        if (el.dataset.act === 'friend-recent') return openFriendProfile(el.dataset.friend);
       },
       onBack: () => closeLayer(layer),
       onButton: (b) => { if (b === 'X') { load(); return true; } return false; },
@@ -2546,7 +2733,7 @@
       fr = next;
       const keep = layer.focusKey;
       subEl.textContent = friendSummary(fr);
-      list.innerHTML = friendSectionsHTML(fr);
+      list.innerHTML = friendSectionsHTML(fr) + playedWithHTML(fr);
       const el = (keep && $('[data-key="' + cssEsc(keep) + '"]', list)) || $('[data-nav]', list);
       if (el && topLayer() === layer) setFocus(el, { instant: true });
     }
@@ -2776,6 +2963,7 @@
       case 'profile': return openProfile();
       case 'stores': return storesMenu();
       case 'news': { const it = S.news && S.news.items[Number(el.dataset.i)]; if (it) openNews(it); return; }
+      case 'friend': return friendMenu(el.dataset.friend);
       case 'pick-mode': {
         const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
         if (m) { s.pickPlayers = m; save(); refreshContent(); }
@@ -3172,6 +3360,10 @@
     S.noGuideUntil = Date.now() + 2500; // coming forward for this request, not to show the guide
     for (const l of layers.slice().reverse()) if (l.isGuide || l.className === 'launching') closeLayer(l);
     if (r.action === 'switch' && r.id) return switchTo(r.id);
+    if (r.action === 'join' && r.id && r.friend) {
+      if (S.playing && S.playing.id === r.id) return api.friendJoin(r.friend).catch((e) => toast(e.message, true));
+      return S.playing ? switchTo(r.id, { join: r.friend }) : play(r.id, { join: r.friend });
+    }
     if (r.action === 'close') {
       const cur = S.playing && byId(S.playing.id);
       if (await confirmBox('Close ' + (cur ? cur.title : 'the game') + '?', 'It will be closed the normal way, like pressing its X. Save first if the game doesn’t save on its own.', 'Close game', true)) await closeCurrentGame();
@@ -3223,7 +3415,7 @@
   api.on('news', (n) => { if (n && Array.isArray(n.items)) { S.news = n; S.newsErr = null; paintNews(); } });
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
   api.on('pads', (list) => { S.pads = Array.isArray(list) ? list : null; const p = $('#padcount'); if (p) p.innerHTML = padsHTML(); if (S.onPads) S.onPads(); });
-  api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.title); });
+  api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.join ? n.title + ' · open Friends to join' : n.title); });
   api.on('tv:ended', (p) => { suppressUntilRelease = true; TV().ended(p); if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) loadTvSettings(); });
   (async () => { try { S.pads = await api.pads(); tickClock(); } catch (_) { /* not available */ } })();
   api.on('game:started', (p) => { if (S.playing && p && S.playing.id === p.gameId) S.playing.started = true; });
@@ -3307,6 +3499,6 @@
     try { S.tvStatus = await api.tvStatus(); } catch (_) { S.tvStatus = S.tvStatus || { signedIn: false }; }
     if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) refreshContent();
   }
-  window.__couch = { S, move, button, setFocus, currentFocus, layers, TV }; // used by tests
+  window.__couch = { S, move, button, setFocus, currentFocus, layers, TV, go }; // used by tests
   init().catch((e) => { document.body.innerHTML = '<pre style="color:#fff;padding:40px;font-size:18px">Couch Launcher couldn’t start:\n' + esc(e && e.stack || e) + '</pre>'; });
 })();

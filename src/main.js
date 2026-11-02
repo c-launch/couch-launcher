@@ -15,6 +15,7 @@ const { createDisplay } = require('./display');
 const { createNews } = require('./news');
 const clipsMod = require('./clips');
 const { createSteam } = require('./steam');
+const friendsLib = require('./friends');
 const { createMedia } = require('./media');
 const { createPauser } = require('./pause');
 const { createWin32 } = require('./win32');
@@ -622,7 +623,8 @@ if (!app.requestSingleInstanceLock()) {
     if (L.type === 'url') {
       running = { gameId, child: null, pids: [], dir: L.dir || null, startedAt: Date.now(), pending: true, seen: false, miss: 0 };
       if (running.dir) { watchStoreGame(running); holdBoot(running); }
-      shell.openExternal(L.url);
+      // Joining a friend: Steam's join link starts the game straight into their lobby / server.
+      shell.openExternal(opts.joinUrl && /^steam:\/\/(joinlobby|connect)\//.test(opts.joinUrl) ? opts.joinUrl : L.url);
     } else if (L.type === 'appx') {
       // Microsoft Store / Xbox app game: started the way the Start menu does it.
       if (!/^[\w.-]+_[a-z0-9]+![\w.-]+$/i.test(String(L.aumid || ''))) throw new Error('This Store game can’t be started');
@@ -725,9 +727,15 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   // Windows notification (shows over games too) plus a toast in the launcher.
-  function notify(title, body) {
-    try { if (Notification.isSupported()) new Notification({ title, body, silent: false }).show(); } catch (_) { /* not available */ }
-    send('notice', { title, body });
+  function notify(title, body, onClick, extra) {
+    try {
+      if (Notification.isSupported()) {
+        const n = new Notification({ title, body, silent: false });
+        if (onClick) n.on('click', () => { try { onClick(); } catch (_) { /* ignore */ } });
+        n.show();
+      }
+    } catch (_) { /* not available */ }
+    send('notice', Object.assign({ title, body }, extra || {}));
   }
   function sendOverlay(ch, payload) { if (overlay && !overlay.isDestroyed()) overlay.webContents.send(ch, payload); }
 
@@ -921,7 +929,7 @@ if (!app.requestSingleInstanceLock()) {
   handle('xbox:connect', (key) => xb().connect(key));
   handle('xbox:disconnect', () => { xb().disconnect(); return true; });
   handle('xbox:profile', () => xb().profile());
-  handle('xbox:friends', () => xb().friends());
+  handle('xbox:friends', () => friendsOf('xbox'));
   handle('link:open', (url) => {
     // Only the Xbox key page can be opened from inside the app.
     if (!['https://xbl.io', 'https://steamcommunity.com/dev/apikey', 'https://www.steamgriddb.com/profile/preferences/api', 'https://discord.com/developers/applications'].includes(url)) throw new Error('Not allowed');
@@ -974,7 +982,15 @@ if (!app.requestSingleInstanceLock()) {
     // Emulator games: copy their saves first (only when backups are on and something changed).
     const g = lib.games.find((x) => x.id === gameId);
     if (g && g.launch && g.launch.type === 'emu' && !running) await Promise.race([backupNow(g.launch.emu, 'before'), wait(15000)]).catch(() => null);
-    return launchGame(gameId, opts && typeof opts === 'object' ? { resume: !!opts.resume } : {});
+    const o = opts && typeof opts === 'object' ? { resume: !!opts.resume } : {};
+    if (opts && opts.join) {
+      // Only a Steam join link for the friend's game, and only when this is that game.
+      const f = fr().get(opts.join);
+      const url = f && friendsLib.joinUrl(f);
+      if (!url || friendsLib.matchGame(f, lib.games) !== gameId) throw new Error('That game can’t be joined any more');
+      o.joinUrl = url;
+    }
+    return launchGame(gameId, o);
   });
   handle('launch:cancel', () => { cancelLaunch(); return true; });
   let updater = null;
@@ -1030,7 +1046,7 @@ if (!app.requestSingleInstanceLock()) {
   handle('steam:status', () => st().connected());
   handle('steam:connect', (key, profile) => st().connect(key, profile));
   handle('steam:disconnect', () => { st().disconnect(); return true; });
-  handle('steam:friends', () => st().friends());
+  handle('steam:friends', () => friendsOf('steam'));
   handle('steam:me', () => st().me());
 
   // ---------- Gaming news (Home) ----------
@@ -1089,20 +1105,109 @@ if (!app.requestSingleInstanceLock()) {
   }
   handle('downloads:get', () => downloads);
 
+  // ---------- Friends: join, play the same game, profiles, played with recently ----------
+  let friendsPart = null;
+  const fr = () => friendsPart || (friendsPart = friendsLib.createFriends({ userDataDir: app.getPath('userData') }));
+  const friendsAt = { xbox: 0, steam: 0 };
+  async function friendsOf(svc) {
+    const mod = svc === 'steam' ? st() : xb();
+    const list = friendsLib.decorate(await mod.friends(), lib.games);
+    fr().remember(list);
+    friendsAt[svc] = Date.now();
+    return list;
+  }
+  const friendIn = (id) => fr().get(id) || null;
+  // Steam: "Join". Your copy of their game starts straight into their lobby; when that game is
+  // already running (or you don't have it in the launcher) Steam's join link is opened as is.
+  function joinDirect(id) {
+    const f = friendIn(id);
+    const url = f && friendsLib.joinUrl(f);
+    if (!url) throw new Error('That game can’t be joined any more');
+    hideOverlay();
+    return shell.openExternal(url).then(() => true);
+  }
+  function joinFromAlert(f) {
+    const owned = friendsLib.matchGame(f, lib.games);
+    if (!owned || (running && running.gameId === owned)) return joinDirect(f.id).catch(() => {});
+    bringBack(false);
+    send('remote', { action: 'join', id: owned, friend: f.id, target: null });
+  }
+  handle('friend:join', (id) => joinDirect(String(id || '')));
+  handle('friend:store', (id, what) => {
+    let url = null;
+    if (what && what.appid != null) url = /^\d{1,10}$/.test(String(what.appid)) ? 'steam://store/' + what.appid : null;
+    else if (what && what.title) url = 'ms-windows-store://search/?query=' + encodeURIComponent(String(what.title).slice(0, 100));
+    else url = friendsLib.storeUrl(friendIn(String(id || '')));
+    if (!url) throw new Error('No store page for that game');
+    hideOverlay();
+    return shell.openExternal(url).then(() => { placeNextWindow(10000); return true; });
+  });
+  handle('friend:profile', async (id) => {
+    id = String(id || '');
+    const steamid = friendsLib.steamIdOf({ xuid: id });
+    const p = steamid ? await st().profile(steamid) : await xb().friendProfile(id);
+    const cur = friendIn(id);
+    if (cur && !steamid) { p.online = cur.online; p.status = cur.status; p.game = cur.game; p.favorite = cur.favorite; }
+    const svc = steamid ? 'steam' : 'xbox';
+    const deco = friendsLib.decorate([Object.assign({}, cur || {}, p, { xuid: steamid ? 'steam-' + steamid : id, service: svc })], lib.games)[0];
+    deco.recent = (p.recent || []).map((r) => Object.assign(r, { owned: friendsLib.matchGame({ service: svc, gameid: r.appid, game: r.title }, lib.games) }));
+    deco.together = fr().withFriend(id).map((x) => { const g = lib.games.find((y) => y.id === x.gameId); return g ? { gameId: x.gameId, title: g.title, last: x.last, mins: x.mins } : null; }).filter(Boolean).slice(0, 6);
+    return deco;
+  });
+  handle('friend:compare', (id, appid) => {
+    const steamid = friendsLib.steamIdOf({ xuid: String(id || '') });
+    return steamid ? st().compare(steamid, String(appid || '')) : null;
+  });
+  handle('friend:playedWith', (gameId) => fr().playedWith(String(gameId || '')));
+  handle('friend:recent', () => fr().recent(20).map((p) => Object.assign(p, {
+    games: p.games.map((x) => { const g = lib.games.find((y) => y.id === x.gameId); return g ? { gameId: x.gameId, title: g.title, last: x.last } : null; }).filter(Boolean)
+  })).filter((p) => p.games.length));
+  handle('friend:joinable', () => friendsLib.decorate(fr().recentJoinable(), lib.games));
+  // Friends in a game right now (Home's "Friends playing" row). Lists are at most a minute old.
+  handle('friend:playing', async () => {
+    const out = [];
+    for (const svc of ['xbox', 'steam']) {
+      const mod = svc === 'steam' ? st() : xb();
+      if (!mod.connected()) continue;
+      let list = null;
+      // xbl.io's free plan allows about 150 requests an hour, so Xbox lists are reused longer.
+      if (Date.now() - friendsAt[svc] > (svc === 'xbox' ? 150000 : 60000)) { try { list = await friendsOf(svc); } catch (_) { list = null; } }
+      if (!list) list = fr().all(svc);
+      out.push(...list.filter((f) => f.online && (f.game || f.gameid)));
+    }
+    return out.sort((a, b) => (b.joinable - a.joinable) || (!!b.owned - !!a.owned) || (b.favorite - a.favorite) || a.gamertag.localeCompare(b.gamertag));
+  });
+
   // ---------- Alerts: friends coming online, people joining / leaving your Discord call ----------
   function startAlerts() {
     const seen = { xbox: null, steam: null };
     const friendId = (f) => f.xuid || f.steamid || f.id || f.gamertag;
+    let recordedAt = 0;
     async function friendsCheck() {
-      const fresh = [];
+      const fresh = [], joinNow = [];
+      // While you play: who's in the same game (for "Played with recently").
+      const g = running && !running.cancelled && lib.games.find((x) => x.id === running.gameId);
+      const mins = g ? Math.min(5, Math.max(1, Math.round((Date.now() - Math.max(recordedAt, running.startedAt || 0)) / 60000))) : 0;
       for (const [svc, mod] of [['xbox', xb], ['steam', st]]) {
         let list = null;
-        try { if (mod().connected()) list = await mod().friends(); } catch (_) { list = null; }
+        try { if (mod().connected()) list = await friendsOf(svc); } catch (_) { list = null; }
         if (!list) continue;
+        if (g) fr().record(g.id, g, list, mins);
+        joinNow.push(...fr().newlyJoinable(svc, list));
         const online = new Set(list.filter((f) => f.online).map(friendId));
         // The first check only learns who's online; after that, newcomers get a heads-up.
         if (seen[svc]) for (const f of list) if (f.online && !seen[svc].has(friendId(f))) fresh.push(f);
         seen[svc] = online;
+      }
+      if (g) recordedAt = Date.now();
+      // Someone started a game you can join (Steam lobbies / servers).
+      if (lib.settings.notifyJoin !== false) {
+        for (const f of joinNow.slice(0, 2)) {
+          const have = friendsLib.matchGame(f, lib.games);
+          notify(f.gamertag + ' is in a game you can join', (f.game || 'Steam game') + (have ? ' · Click to join, or open the guide › Friends' : ' · Click to join through Steam'), () => joinFromAlert(f), { join: f.id });
+        }
+        const shown = new Set(joinNow.map((f) => f.id));
+        for (let i = fresh.length - 1; i >= 0; i--) if (shown.has(fresh[i].id)) fresh.splice(i, 1); // one alert per person
       }
       if (!fresh.length || lib.settings.notifyFriends === false) return;
       const names = fresh.map((f) => f.gamertag);
@@ -1124,7 +1229,7 @@ if (!app.requestSingleInstanceLock()) {
       callId = s.call.id; callPeople = now;
     }
     friendsCheck(); callCheck();
-    setInterval(friendsCheck, 3 * 60 * 1000);
+    setInterval(friendsCheck, 2 * 60 * 1000);
     setInterval(callCheck, 15000);
   }
   const achCache = new Map(); // appid -> { at, value }
@@ -1374,12 +1479,12 @@ if (!app.requestSingleInstanceLock()) {
   });
   // Something in the over-the-game guide needs the full launcher (switch, close, library, settings...).
   handle('overlay:action', (req) => {
-    const allowed = ['switch', 'close', 'goto'];
+    const allowed = ['switch', 'close', 'goto', 'join'];
     if (!req || !allowed.includes(req.action)) throw new Error('Unknown action');
     if (req.target === 'home' && running) releaseBoot(running);
     hideOverlay();
     bringBack(false);
-    send('remote', { action: req.action, id: req.id ? String(req.id) : null, target: req.target ? String(req.target) : null });
+    send('remote', { action: req.action, id: req.id ? String(req.id) : null, target: req.target ? String(req.target) : null, friend: req.friend ? String(req.friend) : null });
     return true;
   });
   handle('art:import', (src, gameId, kind) => {

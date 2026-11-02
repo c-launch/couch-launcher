@@ -1,6 +1,6 @@
 {
- "version": "1.12.0",
- "notes": "Save backups to Google Drive, OneDrive or a folder (with restore); save and resume for PCSX2, DuckStation and RetroArch; RetroAchievements; sleep timer in the guide; emulator updates.",
- "file": "CouchLauncher-update-1.12.0.zip",
- "size": 245636
+ "version": "1.13.0",
+ "notes": "Friends: Join a Steam friend's lobby or server straight from the launcher, play the same game (Xbox and Steam), or find it in the store. Friend profiles (level, games, recently played, achievements side by side). Friends playing now on Home, join alerts with a Join button, and Played with recently.",
+ "file": "CouchLauncher-update-1.13.0.zip",
+ "size": 257121
 }

@@ -71,6 +71,18 @@ Settings › Platforms › **Emulators** (one row, its own page). The launcher l
 - **Sleep timer** (guide › Profile & system): 15 minutes to 2 hours. A minute before, a pop-up; at the end your game closes the normal way (so it can save), then the PC turns off or sleeps.
 - **Emulator updates** (Emulators page › Check for updates): newest releases from each emulator's GitHub, installed in place (only the program files are replaced; settings and saves stay). Emulators installed by EmuDeck, winget, scoop or their own installer are left to those. `.7z` downloads need Windows 11's built-in support or 7-Zip.
 
+## Friends: join, profiles, played with
+
+Connect Xbox (xbl.io key) and/or Steam (Steam Web API key) in the guide › Friends. Then press **A** on any friend, in the Friends panel, the guide or Home:
+
+- **Join** (Steam): when a friend is in a lobby or on a server you can join, the launcher starts your copy of the game straight into it with Steam's own join link, the same as *Join Game* in Steam. If you're already playing that game it just joins. Their Steam profile has to be public for Steam to share this.
+- **Play the same game**: when you have it in the launcher (Steam games by app, everything else by name). Xbox doesn't let other apps join friends' games, so for Xbox friends this is the way.
+- **See it on Steam / find it in the Store**: when you don't have it.
+- **Profile**: picture, status, Steam level, game count and member-since (or Xbox gamerscore), what they've played lately with your achievements next to theirs (Steam), and the games you've played together.
+- **Friends playing now** on Home (scroll down from the cards): who's in a game right now, tagged *Join* or *You have it*.
+- **Join alerts**: when a Steam friend starts a game you can join you get a pop-up; click it to join, or open the guide, where *Join a friend* is at the top of Games for 20 minutes. Steam doesn't let other apps read invites, so this is the closest thing. Turn it off in Settings › Controllers.
+- **Played with recently**: while you play, the launcher notes friends who are in the same game at the same time (checked every 2 minutes). See them in Friends, on each friend's profile, and in a game's menu (☰ › *Played with…*). It's kept only on this PC.
+
 ## Updates
 
 Updates come online from this GitHub page (Releases). The launcher checks when it starts and every few hours (never during a game), downloads a new version in the background and asks **New version available · Update now?** It restarts by itself in a few seconds. You can also check from **Settings › About › Check for update**. An update zip saved in Downloads or G:\launcher still works too. You only need Build.bat again if a message says so.
@@ -87,7 +99,7 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 - **Controllers**: each Xbox-style controller shows in the top bar (and guide › Profile & system) with its battery; you get a pop-up when one runs low.
 - **Collections**: open a game's options (Menu button) › Collections to group games ("Party games", "Racing"...). They show in the library and on Home › Collections.
 - **Steam achievements** for the selected game on Home and in the guide (needs Steam connected).
-- **Alerts** when a friend comes online, someone joins or leaves your Discord call, or a Steam download finishes. Turn each off in Settings › Controllers.
+- **Alerts** when a friend comes online or starts a game you can join, someone joins or leaves your Discord call, or a Steam download finishes. Turn each off in Settings › Controllers.
 - **Steam downloads**: installs and updates show a progress bar on the game's tile; new installs appear by themselves.
 
 ## News and clips

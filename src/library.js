@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
   autoCloseApps: true,   // close stores the launcher opened when you press the Xbox button to come back
   notifyBattery: true,   // pop-up when a controller battery runs low
   notifyFriends: true,   // pop-up when a friend comes online
+  notifyJoin: true,      // pop-up when a Steam friend starts a game you can join
   notifyCalls: true,     // pop-up when someone joins / leaves your Discord call
   notifyDownloads: true, // pop-up when a Steam download finishes
   pickPlayers: 'saved',  // emulator players: 'saved' (use the players set up in Settings) | 'ask' (screen each time, 2+ controllers) | 'off'
