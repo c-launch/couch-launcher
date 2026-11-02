@@ -86,6 +86,11 @@
 
   // ---------------------------------------------------------------- icons
   const I = {
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12M12 8S10.5 3.5 8 4.5 9 8 12 8zm0 0s1.5-4.5 4-3.5S15 8 12 8z"/>',
+    tag: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+    download: '<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>',
+    speaker: '<rect x="6" y="3" width="12" height="18" rx="2"/><circle cx="12" cy="14" r="3"/><circle cx="12" cy="7.5" r="1"/>',
     playc: '<circle cx="12" cy="12" r="9.5"/><path d="M10 8.6v6.8l5.4-3.4z"/>',
     tv: '<rect x="2.5" y="6" width="19" height="13" rx="2.5"/><path d="M8 2.5l4 3.5 4-3.5"/>',
     home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
@@ -837,7 +842,8 @@
         '<button class="toggle-row" data-nav data-key="m-clip" data-zone="body" data-action="medal-key" data-which="clip"><span><div>Medal’s clip key</div><div class="d">Match Medal › Settings › Capture Hotkeys.</div></span><span class="status ok">' + esc(S.lib.settings.medalClipKey || 'F8') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-shot" data-zone="body" data-action="medal-key" data-which="shot"><span><div>Medal’s screenshot key</div><div class="d">Set a screenshot key in Medal, then pick the same one here.</div></span><span class="status ' + (S.lib.settings.medalShotKey ? 'ok' : 'warn') + '">' + esc(S.lib.settings.medalShotKey || 'Not set') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-xbox" data-zone="body" data-action="medal-xbox"><span><div>Xbox controllers</div><div class="d">' + esc(S.captureInfo == null ? 'Checking your controller…' : S.captureInfo.xboxShareReadable ? 'Your Xbox controller’s Share button can be read (Bluetooth).' : 'No Xbox Share button readable right now: it only works over Bluetooth. Hold View + RB for a clip, View + LB for a screenshot.') + '</div></span><span class="status ok">' +
-          ({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button></div>' +
+          ({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button>' +
+        '<button class="toggle-row" data-nav data-key="m-test" data-zone="body" data-action="share-test"><span><div>Test the Share button</div><div class="d">See what the launcher reads from your controller, and send Medal a test clip.</div></span><span class="status ok">Test</span></button></div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;
     }
@@ -1736,6 +1742,103 @@
     return gone;
   }
 
+  // ----- Settings › Controllers › Test the Share button (Medal)
+  function shareTest() {
+    let d = null, err = null, timer = null, pressed = false, msg = '';
+    const hex = (a) => (a || []).map((x) => (x | 0).toString(16).padStart(2, '0')).join(' ');
+    const pidHex = (n) => (n | 0).toString(16).toUpperCase().padStart(4, '0');
+    const body = () => {
+      if (err) return '<p class="hint">' + esc(err) + '</p>';
+      if (!d) return '<p class="hint">Looking for your controller…</p>';
+      const x = d.xbox[0];
+      let h = '<dl class="kv">';
+      h += '<dt>Share button for Medal</dt><dd>' + (d.on ? 'On' : 'Off (Settings › Controllers)') + ' · ' + esc({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[d.mode] || d.mode) + '</dd>';
+      h += '<dt>Xbox controller over Bluetooth</dt><dd>' + (x ? 'Found (model ' + pidHex(x.pid) + ', ' + x.size + '-byte reports, ' + x.reports + ' read)' : 'Not found' + (d.otherMicrosoft.length ? ' (other Xbox controllers seen: ' + d.otherMicrosoft.map(pidHex).join(', ') + ')' : '') + '. Over USB or the Xbox adapter, Windows doesn’t share the Share button: use View + RB.') + '</dd>';
+      if (x) {
+        h += '<dt>Share button</dt><dd class="' + (x.share ? 'st-yes' : '') + '">' + (x.share ? 'Pressed' : x.shareAt != null ? 'Not pressed (found at byte ' + x.shareAt + ')' : 'Press it once, with no other buttons held, so the launcher can find it') + '</dd>';
+        const changed = x.first && x.last ? x.last.map((v, i) => (v !== x.first[i] ? i + ': ' + v : null)).filter(Boolean) : [];
+        h += '<dt>Report</dt><dd class="mono">' + esc(hex(x.last)) + '</dd><dt>Changed since start</dt><dd class="mono">' + esc(changed.join(' · ') || 'nothing yet') + '</dd>';
+      }
+      h += '<dt>Medal keys</dt><dd>Clip ' + esc(d.clipKey) + ' · Screenshot ' + esc(d.shotKey || 'not set') + (d.lastPress ? ' · last sent: ' + esc(d.lastPress.kind) + ' ' + ago(d.lastPress.at) : '') + '</dd></dl>';
+      if (msg) h += '<p class="hint">' + esc(msg) + '</p>';
+      return h;
+    };
+    const layer = openLayer({
+      html: '<div class="dialog sharetest"><h2>Test the Share button</h2><div class="st-body">' + body() + '</div>' +
+        '<div class="dialog-foot"><button class="btn big" data-nav data-key="t-close" data-act="close">Close</button>' +
+        '<button class="btn big primary" data-nav data-key="t-clip" data-act="clip">' + icon('film') + 'Send Medal a test clip in 3 s</button></div></div>',
+      focus: 't-clip',
+      onActivate: async (el) => {
+        if (el.dataset.act === 'close') return closeLayer(layer);
+        msg = 'Sending in 3 seconds… switch to a game if you like (Alt+Tab). Medal should show its “Clip saved” pop-up.';
+        draw();
+        setTimeout(async () => { try { const ok = await api.captureTest('clip'); msg = ok ? 'Sent ' + (d ? d.clipKey : 'the clip key') + '. If Medal didn’t save a clip, its clip key isn’t ' + (d ? d.clipKey : 'that') + ' (Medal › Settings › Capture Hotkeys), or Medal isn’t running.' : 'Couldn’t send the key on this PC.'; } catch (e) { msg = e.message; } draw(); }, 3000);
+      },
+      onBack: () => closeLayer(layer),
+      onClose: () => clearInterval(timer),
+      prompts: () => [['A', 'Select'], ['B', 'Close']]
+    });
+    function draw() { const b = $('.st-body', layer.el); if (b) b.innerHTML = body(); }
+    async function poll() {
+      try { d = await api.captureDebug(); err = null; } catch (e) { err = e.message; }
+      if (layers.indexOf(layer) < 0) return;
+      const x = d && d.xbox && d.xbox[0];
+      if (x && x.share && !pressed) { pressed = true; msg = 'Share seen. In a game, hold it for a clip (tap for a screenshot).'; }
+      draw();
+    }
+    poll();
+    timer = setInterval(poll, 200);
+  }
+  // ----- Playtime stats
+  async function openStats() {
+    let st = null, err = null;
+    const fmtH = (h) => (h >= 100 ? Math.round(h).toLocaleString() : h >= 10 ? (Math.round(h * 10) / 10).toString() : h > 0 ? (Math.round(h * 10) / 10).toString() : '0');
+    const mins = (h) => (h < 1 ? Math.round(h * 60) + ' min' : fmtH(h) + ' h');
+    const date = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const html = () => {
+      if (err) return '<div class="stats"><h1>' + icon('chart') + 'Play time</h1><p class="hint">' + esc(err) + '</p></div>';
+      if (!st) return '<div class="stats"><h1>' + icon('chart') + 'Play time</h1><p class="hint">Loading…</p></div>';
+      const max = Math.max(1, ...st.weeks.map((w) => w.hours));
+      const diff = st.week - st.lastWeek;
+      const tile = (label, value, sub) => '<div class="st-tile"><small>' + label + '</small><b>' + value + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</div>';
+      const y = st.year;
+      const part = { morning: 'Mornings', afternoon: 'Afternoons', evening: 'Evenings', night: 'Late nights' }[y.topPart] || '';
+      let h = '<div class="stats"><div class="st-head"><h1>' + icon('chart') + 'Play time</h1><span class="st-since">' + (st.since ? 'Sessions counted since ' + esc(new Date(st.since).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })) : 'Sessions are counted from now on') + '</span></div>' +
+        '<div class="st-tiles">' +
+        tile('Today', mins(st.today)) +
+        tile('This week', mins(st.week), st.lastWeek || st.week ? (diff === 0 ? 'Same as last week' : (diff > 0 ? '▲ ' : '▼ ') + mins(Math.abs(diff)) + ' vs last week') : '') +
+        tile('Streak', st.streak + (st.streak === 1 ? ' day' : ' days'), 'Best: ' + st.bestStreak + (st.bestStreak === 1 ? ' day' : ' days')) +
+        tile('All time', fmtH(st.total) + ' h', st.games + (st.games === 1 ? ' game' : ' games')) + '</div>' +
+        '<div class="st-cols"><section class="st-card"><h2>Last 12 weeks</h2><div class="st-bars">' + st.weeks.map((w, i) =>
+          '<div class="st-bar' + (i === 11 ? ' now' : '') + '" title="' + esc(date(w.start)) + '"><span style="height:' + Math.max(w.hours ? 3 : 0, Math.round((w.hours / max) * 100)) + '%"></span><em>' + (w.hours ? fmtH(w.hours) : '') + '</em><i>' + esc(date(w.start)) + '</i></div>').join('') + '</div></section>' +
+        '<section class="st-card"><h2>Most played</h2>' + (st.top.length ? st.top.map((g, i) => {
+          const gg = byId(g.gameId);
+          return '<button class="st-game" data-nav data-key="stg-' + i + '" data-zone="stg" data-act="game" data-id="' + esc(g.gameId) + '">' + (gg ? '<span class="mthumb" style="background-color:' + tileColor(gg) + (gg.art && gg.art.tile ? ';background-image:url(&quot;' + esc(fileUrl(gg.art.tile)) + '&quot;)' : '') + '"></span>' : '<span class="mthumb"></span>') +
+            '<span class="st-gt"><b>' + esc(g.title) + '</b><span class="st-gbar"><i style="width:' + Math.max(2, Math.round((g.hours / st.top[0].hours) * 100)) + '%"></i></span></span><span class="st-gh">' + fmtH(g.hours) + ' h</span></button>';
+        }).join('') : '<p class="hint">Play something and it shows up here.</p>') + '</section></div>' +
+        '<section class="st-card st-year"><h2>Your ' + y.year + ' so far</h2>' + (y.sessions ? '<div class="st-ytiles">' +
+          tile('Hours played', fmtH(y.hours)) + tile('Days you played', y.days) + tile('Games', y.games) + tile('Sessions', y.sessions) +
+          (y.longest ? tile('Longest session', mins(y.longest.hours), esc(y.longest.title) + ' · ' + esc(date(y.longest.at))) : '') +
+          (y.topDay ? tile('Favorite day', y.topDay, part ? part + ' are your time' : '') : '') + '</div>' +
+          (y.top.length ? '<div class="st-ytop">' + y.top.map((g, i) => '<span><em>' + (i + 1) + '</em>' + esc(g.title) + '<small>' + fmtH(g.hours) + ' h</small></span>').join('') + '</div>' : '')
+          : '<p class="hint">Your year shows up here as you play.</p>') + '</section></div>';
+      return h;
+    };
+    const layer = openLayer({
+      className: 'stats-layer',
+      html: html(),
+      onActivate: async (el) => {
+        if (el.dataset.act === 'game') { const g = byId(el.dataset.id); if (g) { closeLayer(layer); for (const l of layers.slice().reverse()) if (l.isGuide) closeLayer(l); return S.playing ? switchTo(g.id) : play(g.id); } }
+      },
+      onBack: () => closeLayer(layer),
+      prompts: () => [['A', 'Play'], ['B', 'Back']]
+    });
+    try { st = await api.stats(); } catch (e) { err = e.message; }
+    if (layers.indexOf(layer) < 0) return;
+    layer.el.innerHTML = html();
+    const f = $('[data-nav]', layer.el);
+    if (f) setFocus(f, { instant: true });
+  }
   // Leaving whatever is open over the launcher's pages (Movies & TV, Clips, a friend's profile,
   // the Friends panel…), for the guide's "go to" choices. The guide and the boot screen stay.
   function leaveApps() {
@@ -1852,6 +1955,7 @@
         (s.xbox ? '' : item('s-connect', 'link', 'Connect Xbox account', 'data-act="connect"')) +
         (Array.isArray(S.pads) && S.pads.length ? '<div class="glabel">Controllers</div><div class="gpads">' + padsHTML() + '</div>' : '') +
         '<div class="gsep"></div>' +
+        item('s-stats', 'chart', 'Play time', 'data-act="stats"') +
         item('s-players', 'users', 'Set up players', 'data-act="players-setup"') +
         item('s-settings', 'gear', 'Settings', 'data-act="settings"') +
         item('s-themes', 'palette', 'Themes', 'data-act="themes"') +
@@ -2039,6 +2143,7 @@
         if (act === 'tab') return setTab(el.dataset.tab);
         if (act === 'friend') return friendMenu(el.dataset.friend);
         if (act === 'tv-resume') return resumeGame();
+        if (act === 'stats') return openStats();
         if (act === 'open-app') {
           const id = el.dataset.app;
           closeLayer(layer);
@@ -2704,6 +2809,7 @@
         opt('xbox', 'trophy', 'Xbox', x ? esc(x.gamertag) : 'Not connected') +
         opt('steam', 'level', 'Steam', s.steamProfile ? esc(s.steamProfile.name) : 'Not connected') +
         opt('own', 'user', 'My own', esc(s.userName && s.userName !== 'Player' ? s.userName : 'Name + picture')) + '</div>');
+      rows.push('<button class="mitem" data-nav data-key="pf-stats" data-act="stats">' + icon('chart') + '<span>Play time</span></button>');
       rows.push('<button class="mitem" data-nav data-key="pf-name" data-act="name">' + icon('edit') + '<span>' + (s.userName && s.userName !== 'Player' ? 'Change name (' + esc(s.userName) + ')' : 'Set your name') + '</span></button>');
       rows.push('<button class="mitem" data-nav data-key="pf-pic" data-act="pic">' + icon('image') + '<span>' + (s.avatar ? 'Change picture' : 'Choose a picture') + '</span></button>');
       if (s.avatar) rows.push('<button class="mitem" data-nav data-key="pf-nopic" data-act="nopic">' + icon('x') + '<span>Remove picture</span></button>');
@@ -2741,6 +2847,7 @@
           s.profileFrom = k; s.useXboxProfile = k === 'xbox';
           save(); layer.focusKey = 'pf-from-' + k; redraw(); return;
         }
+        if (act === 'stats') return openStats();
         if (act === 'name') { const v = await osk('Your name', s.userName === 'Player' ? '' : s.userName, 'Name'); if (v) { s.userName = v; save(); redraw(); } return; }
         if (act === 'pic') {
           const p = await browse({ title: 'Choose a profile picture', exts: ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'] });
@@ -3201,6 +3308,7 @@
         if (which === 'clip') s.medalClipKey = k; else s.medalShotKey = k === '-' ? '' : k;
         save(); return refreshContent();
       }
+      case 'share-test': return shareTest();
       case 'medal-xbox': {
         const m = await openMenu('Xbox controllers', [
           { id: 'auto', label: 'Share button when it can be read, else View combo', icon: (s.medalXbox || 'auto') === 'auto' ? 'check' : 'pad' },

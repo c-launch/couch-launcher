@@ -1,6 +1,6 @@
 {
- "version": "1.14.4",
- "notes": "Movies & TV: switching sections slides smoothly (the highlight glides across the top bar and the page slides in from that side), and Continue Watching in Library no longer sits right under the filter chips.",
- "file": "CouchLauncher-update-1.14.4.zip",
- "size": 273547
+ "version": "1.14.5",
+ "notes": "Fix: the Xbox controller's Share button (Bluetooth) stopped working for Medal when PlayStation controllers were switched off in Settings; it's read either way now. New: Settings › Controllers › Test the Share button shows what the launcher sees from your controller live and can send Medal a test clip. New: Play time (guide › Profile & system): this week, streaks, most played, the last 12 weeks and your year so far.",
+ "file": "CouchLauncher-update-1.14.5.zip",
+ "size": 280248
 }

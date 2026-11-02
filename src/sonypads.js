@@ -207,6 +207,9 @@ function createSonyPads(opts) {
   const later = opts.later || setTimeout;
   const pads = new Map(); // path -> { h, pid, buf, ov, state }
   let lastScan = -Infinity;
+  // PlayStation pads can be switched off in Settings; Xbox Share reading stays on either way.
+  const wantPs = opts.wantPs || (() => true);
+  const seenMs = new Map(); // other Microsoft controllers seen (for the Share button test)
 
   function drop(path) {
     const p = pads.get(path);
@@ -236,8 +239,9 @@ function createSonyPads(opts) {
       const h = api.open(path);
       if (!h) continue;
       const ids = api.ids(h);
-      const isPs = ids && ids.vid === SONY && PADS.has(ids.pid);
+      const isPs = ids && ids.vid === SONY && PADS.has(ids.pid) && wantPs();
       const isXbox = ids && ids.vid === MICROSOFT && XBOX_SHARE.has(ids.pid);
+      if (ids && ids.vid === MICROSOFT && !isXbox) seenMs.set(ids.pid, now());
       if (!isPs && !isXbox) { api.close(h); continue; }
       let size = 0;
       try { size = api.reportSize(h); } catch (_) { size = 0; }
@@ -259,6 +263,7 @@ function createSonyPads(opts) {
         if (n < 0) { drop(path); break; }
         const bytes = n > 0 ? api.bytes(p.buf, p.size) : null;
         const st = !bytes ? null : p.kind === 'xbox' ? parseXbox(p, bytes, p.size, now()) : parseReport(p.pid, bytes, p.size);
+        if (bytes && p.kind === 'xbox') { p.last = Array.from(bytes); if (!p.first) p.first = p.last.slice(); p.reports = (p.reports || 0) + 1; }
         if (st && p.kind === 'xbox') { p.state = st; start(p); continue; }
         if (st) {
           if (p.state && st.ps !== p.state.ps) {
@@ -276,8 +281,19 @@ function createSonyPads(opts) {
     return out;
   }
   function close() { for (const path of [...pads.keys()]) drop(path); }
+  // PlayStation pads off: drop them (Xbox ones stay).
+  function closePs() { for (const [path, p] of [...pads]) if (p.kind === 'ps') drop(path); }
+  // For Settings › Controllers › Test the Share button.
+  function debug() {
+    const xbox = [...pads.values()].filter((p) => p.kind === 'xbox').map((p) => ({
+      pid: p.pid, size: p.size, reports: p.reports || 0, shareAt: p.x && p.x.lock != null ? p.x.lock : null,
+      bad: p.x ? Object.keys(p.x.bad || {}).map(Number) : [], share: !!(p.state && p.state.xshare),
+      last: p.last || null, first: p.first || null
+    }));
+    return { xbox, otherMicrosoft: [...seenMs.keys()] };
+  }
   return {
-    read, close, available: true,
+    read, close, closePs, debug, available: true,
     get count() { return pads.size; },
     get xboxCount() { return [...pads.values()].filter((p) => p.kind === 'xbox').length; }
   };

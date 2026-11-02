@@ -69,17 +69,21 @@ if (!app.requestSingleInstanceLock()) {
   let shotHintAt = 0;
   const capture = require('./capture').createCapture({
     mode: () => (lib && lib.settings.medalXbox) || 'auto',
-    fire: (kind) => {
-      if (!w32 || !lib) return;
-      const key = kind === 'clip' ? (lib.settings.medalClipKey || 'F8') : lib.settings.medalShotKey;
-      const k = require('./capture').parseKey(key);
-      if (!k) {
-        if (Date.now() - shotHintAt > 30000) { shotHintAt = Date.now(); notify('Screenshot key not set', 'Hold Share for a clip. For screenshots, set Medal’s screenshot key in Settings › Controllers.'); }
-        return;
-      }
-      w32.keys(k.mods, k.vk).catch(() => {});
-    }
+    fire: (kind) => pressMedal(kind)
   });
+  function pressMedal(kind) {
+    if (!w32 || !lib) return false;
+    const key = kind === 'clip' ? (lib.settings.medalClipKey || 'F8') : lib.settings.medalShotKey;
+    const k = require('./capture').parseKey(key);
+    if (!k) {
+      if (Date.now() - shotHintAt > 30000) { shotHintAt = Date.now(); notify('Screenshot key not set', 'Hold Share for a clip. For screenshots, set Medal’s screenshot key in Settings › Controllers.'); }
+      return false;
+    }
+    lastMedalPress = { kind, at: Date.now() };
+    w32.keys(k.mods, k.vk).catch(() => {});
+    return true;
+  }
+  let lastMedalPress = null;
   const pauser = createPauser();
   // Controller as a mouse in Apple Music / Spotify (setting, on by default).
   const padMouse = createPadMouse(loadXInput, () => !(lib && lib.settings && lib.settings.musicMouse === false));
@@ -525,7 +529,7 @@ if (!app.requestSingleInstanceLock()) {
     controller.setGameRunning(false);
     const seconds = extra && extra.error ? 0 : Math.round((Date.now() - r.startedAt) / 1000);
     const g = lib.games.find((x) => x.id === r.gameId);
-    if (g && seconds) { g.playtime = (g.playtime || 0) + seconds; persist(); }
+    if (g && seconds) { g.playtime = (g.playtime || 0) + seconds; persist(); try { statsPart().record(g.id, g.title, r.startedAt, seconds); } catch (_) { /* fine */ } }
     if (r.emu && g && g.launch && rsm().supported(r.emu) && lib.settings.saveStates !== false) { try { rsm().recordAfter(r.emu, (lib.platforms[r.emu] || {}).exe, r.gameId, g.launch, r.startedAt); } catch (_) { /* fine */ } }
     if (r.emu && typeof afterGameBackup === 'function') afterGameBackup(r.emu);
     bringBack(false);
@@ -715,6 +719,13 @@ if (!app.requestSingleInstanceLock()) {
   }
   handle('pads:get', () => pads);
   handle('capture:status', () => ({ xboxShareReadable: controller.xboxShareReadable }));
+  // Settings › Controllers › Test the Share button: what the launcher sees, live.
+  handle('capture:debug', () => Object.assign(controller.shareDebug(), {
+    clipKey: lib.settings.medalClipKey || 'F8', shotKey: lib.settings.medalShotKey || '', mode: lib.settings.medalXbox || 'auto',
+    on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32
+  }));
+  // …and a test clip, to check Medal hears the launcher's key press.
+  handle('capture:test', (kind) => pressMedal(kind === 'shot' ? 'shot' : 'clip'));
 
   // ---------- "Who's playing?": controllers into Player 1-4 of the emulator ----------
   const emuOf = (gameId) => {
@@ -1129,6 +1140,11 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(check, 15000);
   }
   handle('downloads:get', () => downloads);
+
+  // ---------- Playtime stats ----------
+  let statsMod = null;
+  function statsPart() { return statsMod || (statsMod = require('./stats').createStats({ userDataDir: app.getPath('userData') })); }
+  handle('stats:get', () => statsPart().get(lib.games.filter((g) => !g.hidden)));
 
   // ---------- Friends: join, play the same game, profiles, played with recently ----------
   let friendsPart = null;
