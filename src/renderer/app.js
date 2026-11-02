@@ -1768,7 +1768,17 @@
         const changed = x.first && x.last ? x.last.map((v, i) => (v !== x.first[i] ? i + ': ' + v : null)).filter(Boolean) : [];
         h += '<dt>Report</dt><dd class="mono">' + esc(hex(x.last)) + '</dd><dt>Changed since start</dt><dd class="mono">' + esc(changed.join(' · ') || 'nothing yet') + '</dd>';
       }
-      h += '<dt>Medal keys</dt><dd>Clip ' + esc(d.clipKey) + ' · Screenshot ' + esc(d.shotKey || 'not set') + (d.lastPress ? ' · last sent: ' + esc(d.lastPress.kind) + ' ' + ago(d.lastPress.at) : '') + '</dd></dl>';
+      h += '<dt>Medal keys</dt><dd>Clip ' + esc(d.clipKey) + ' · Screenshot ' + esc(d.shotKey || 'not set') + (d.lastPress ? ' · last sent: ' + esc(d.lastPress.kind) + ' ' + ago(d.lastPress.at) : '') + '</dd>';
+      // The last press outside this screen (in a game), and what happened to it.
+      const c = d.lastCapture;
+      if (c) {
+        const WHY = { off: 'not sent: Share button for Medal is off', guide: 'not sent: the guide was open', launcher: 'not sent: the launcher was in front' };
+        const front = c.front && c.front.exe ? ' (in ' + c.front.exe + ')' : '';
+        let res = c.why ? WHY[c.why] || c.why : c.sent ? 'sent the ' + c.sent + ' key' : (c.what === 'Share' ? 'held too briefly for a clip, or no screenshot key' : 'not sent');
+        h += '<dt>Last press</dt><dd>' + esc(c.what + front + ', ' + ago(c.at) + ': ' + res) + '</dd>';
+        if (c.front && c.front.elevated && !c.front.selfElevated) h += '<dt></dt><dd class="bk-why">' + esc(c.front.exe + ' runs as administrator, so Windows doesn’t let the launcher press keys in it (Medal never sees them). Start the game normally, or run Couch Launcher as administrator too.') + '</dd>';
+      } else h += '<dt>Last press</dt><dd>' + esc('None yet: hold Share in a game, then come back here') + '</dd>';
+      h += '</dl>';
       if (msg) h += '<p class="hint">' + esc(msg) + '</p>';
       return h;
     };
