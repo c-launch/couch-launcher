@@ -1,6 +1,6 @@
 {
- "version": "1.14.5",
- "notes": "Fix: the Xbox controller's Share button (Bluetooth) stopped working for Medal when PlayStation controllers were switched off in Settings; it's read either way now. New: Settings › Controllers › Test the Share button shows what the launcher sees from your controller live and can send Medal a test clip. New: Play time (guide › Profile & system): this week, streaks, most played, the last 12 weeks and your year so far.",
- "file": "CouchLauncher-update-1.14.5.zip",
- "size": 280248
+ "version": "1.14.6",
+ "notes": "Fix: the highlight in Movies & TV's top bar could get stuck off its section (when the font finished loading after it was placed); it stays exactly on the section now. New: Sound in the guide (Profile & system): switch where sound plays (TV, headset, soundbar, speakers) and change the volume or mute with the controller.",
+ "file": "CouchLauncher-update-1.14.6.zip",
+ "size": 286663
 }

@@ -941,3 +941,5 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .sharetest .kv dd { word-break: break-word; }
 .sharetest .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 1.35rem; color: var(--sub); }
 .sharetest .st-yes { color: #3CC48A; font-weight: 800; }
+.guide .mitem.gsound span small { display: block; }
+.mvbtn.on { background: color-mix(in srgb, var(--danger, #E2506B) 28%, var(--chip)); }

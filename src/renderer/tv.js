@@ -29,7 +29,7 @@ window.CouchTV = function (k) {
       onMove: () => { if (T.intro) { endIntro(); return true; } return false; },
       onBack: back,
       onFocus: focused,
-      onClose: () => { clearInterval(T.heroTimer); endZooms(); T.layer = null; },
+      onClose: () => { clearInterval(T.heroTimer); endZooms(); if (T.navWatch) T.navWatch.disconnect(); T.navInd = null; T.layer = null; },
       prompts: prompts
     });
     // Pictures that don't load: try the poster instead (wide art), else show the title.
@@ -86,18 +86,32 @@ window.CouchTV = function (k) {
     $('.tv-nav', T.layer.el).innerHTML = SECTIONS.map(([id, label]) => '<button class="tv-tab' + (top === id ? ' on' : '') + '" data-nav data-key="tvn-' + id + '" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="' + id + '">' + label + '</button>').join('') +
       '<button class="tv-tab ic' + (top === 'search' ? ' on' : '') + '" data-nav data-key="tvn-search" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="search" aria-label="Search">' + icon('search') + '</button>';
     // The highlight behind the current section slides over to the new one.
-    const bar = $('.tv-nav', T.layer.el), on = $('.tv-tab.on', bar);
-    if (!on) { T.navInd = null; return; }
+    const bar = $('.tv-nav', T.layer.el);
     const ind = document.createElement('span');
     ind.className = 'tv-nav-ind';
     bar.prepend(ind);
+    placeInd(true);
+    // Tabs change size when the font arrives or the window does: keep it exactly on the tab.
+    if (!T.navWatch && window.ResizeObserver) { T.navWatch = new ResizeObserver(() => placeInd(false)); }
+    if (T.navWatch) { T.navWatch.disconnect(); T.navWatch.observe(bar); for (const t of $$('.tv-tab', bar)) T.navWatch.observe(t); }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => placeInd(false));
+  }
+  // Puts the highlight on the current section: gliding from where it was (animate), or straight there.
+  function placeInd(animate) {
+    if (!T.layer) return;
+    const bar = $('.tv-nav', T.layer.el), ind = bar && $('.tv-nav-ind', bar), on = bar && $('.tv-tab.on', bar);
+    if (!ind) return;
+    if (!on || !on.offsetWidth) { ind.style.opacity = '0'; return; }
+    ind.style.opacity = '';
     const to = { left: on.offsetLeft, width: on.offsetWidth };
-    const from = T.navInd || to;
-    Object.assign(ind.style, { left: from.left + 'px', width: from.width + 'px' });
-    if (from.left !== to.left || from.width !== to.width) {
-      if (reduce()) Object.assign(ind.style, { left: to.left + 'px', width: to.width + 'px' });
-      else { void ind.offsetWidth; Object.assign(ind.style, { left: to.left + 'px', width: to.width + 'px' }); }
-    }
+    const from = animate && T.navInd && T.navInd.width ? T.navInd : null;
+    ind.classList.remove('anim');
+    Object.assign(ind.style, from ? { left: from.left + 'px', width: from.width + 'px' } : { left: to.left + 'px', width: to.width + 'px' });
+    if (from && (from.left !== to.left || from.width !== to.width) && !reduce()) {
+      void ind.offsetWidth;
+      ind.classList.add('anim');
+      Object.assign(ind.style, { left: to.left + 'px', width: to.width + 'px' });
+    } else Object.assign(ind.style, { left: to.left + 'px', width: to.width + 'px' });
     T.navInd = to;
   }
   // Pages slide in from the side you're heading to (Home → Movies slides left, and so on).
