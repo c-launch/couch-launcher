@@ -897,6 +897,6 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .fp-img > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .fp-have { z-index: 1; }
 .mthumb.appthumb { display: flex; align-items: center; justify-content: center; color: #fff; }
-.mthumb.appthumb svg { width: 2rem; height: 2rem; }
-.mthumb.appthumb.tv { background: linear-gradient(145deg, #2B2B33, #0A0A0C); }
-.mthumb.appthumb.youtube { background: linear-gradient(145deg, #E53935, #A31515); }
+.mthumb.appthumb svg { width: 2.8rem; height: 2.8rem; }
+.mthumb.appthumb.app-tv { background: linear-gradient(145deg, #2B2B33, #0A0A0C); }
+.mthumb.appthumb.app-youtube { background: linear-gradient(145deg, #E53935, #A31515); }

@@ -1,6 +1,6 @@
 {
- "version": "1.14.0",
- "notes": "Fixes: thumbnails missing in Movies & TV and on friend profiles (Continue Watching, episodes, game cards), the featured banner running into Continue Watching, empty Xbox badges, and the launcher's own player showing up as music. New: the Xbox/PS button now pauses what you're watching (Movies & TV and YouTube) and opens the guide over it, with Resume; YouTube and Movies & TV show in the guide's Recent list; posters grow into the page when you open a title (and game tiles into the boot screen); YouTube gets its full TV interface with smooth animations and no black boxes behind titles.",
- "file": "CouchLauncher-update-1.14.0.zip",
- "size": 270762
+ "version": "1.14.1",
+ "notes": "Fix: the Movies & TV icon in the guide's Recent list covered its name.",
+ "file": "CouchLauncher-update-1.14.1.zip",
+ "size": 270487
 }

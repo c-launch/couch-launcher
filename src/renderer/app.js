@@ -1797,7 +1797,7 @@
           const pct = tvn.dur ? Math.min(100, Math.round(tvn.pos / tvn.dur * 100)) : 0;
           const left = tvn.dur ? Math.max(0, Math.round((tvn.dur - tvn.pos) / 60)) : 0;
           h += '<div class="glabel">Paused</div><div class="gnow">' +
-            (tvn.yt ? '<span class="mthumb appthumb youtube">' + icon('playc') + '</span>' : '<span class="mthumb tvthumb"' + (tvn.poster ? ' style="background-image:url(&quot;' + esc(tvn.poster) + '&quot;)"' : '') + '></span>') +
+            (tvn.yt ? '<span class="mthumb appthumb app-youtube">' + icon('playc') + '</span>' : '<span class="mthumb tvthumb"' + (tvn.poster ? ' style="background-image:url(&quot;' + esc(tvn.poster) + '&quot;)"' : '') + '></span>') +
             '<div class="gnow-t">' + esc(tvn.title) + '<small>' + esc([tvn.subtitle, left ? left + ' min left' : ''].filter(Boolean).join(' · ')) + '</small>' +
             (pct ? '<span class="gprog"><i style="width:' + pct + '%"></i></span>' : '') + '</div></div>' +
             item('g-tvresume', 'resume', tvn.yt ? 'Back to YouTube' : 'Resume watching', 'data-act="tv-resume"') +
@@ -1824,7 +1824,7 @@
           .sort((a, b) => b.at - a.at).slice(0, 7);
         if (recent.length) {
           h += '<div class="glabel">' + (cur ? 'Switch to' : 'Recent') + '</div>' + recent.map((r) => r.app
-            ? '<button class="mitem gitem2" data-nav data-key="ga-' + r.app + '" data-zone="gbody" data-act="open-app" data-app="' + r.app + '"><span class="mthumb appthumb ' + r.app + '">' + icon(APPS[r.app].icon) + '</span><span>' + APPS[r.app].title + '</span></button>'
+            ? '<button class="mitem gitem2" data-nav data-key="ga-' + r.app + '" data-zone="gbody" data-act="open-app" data-app="' + r.app + '"><span class="mthumb appthumb app-' + r.app + '">' + icon(APPS[r.app].icon) + '</span><span>' + APPS[r.app].title + '</span></button>'
             : '<button class="mitem gitem2" data-nav data-key="g-' + esc(r.g.id) + '" data-zone="gbody" data-act="play" data-id="' + esc(r.g.id) + '">' + thumb(r.g) + '<span>' + esc(r.g.title) + '</span></button>').join('');
           h += '<div class="gsep"></div>';
         }
