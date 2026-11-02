@@ -1,6 +1,6 @@
 {
- "version": "1.14.3",
- "notes": "Fix: going to Settings, Themes, Platforms, Home or My library from the guide while in Movies & TV now takes you there (it used to stay hidden behind Movies & TV until you closed it).",
- "file": "CouchLauncher-update-1.14.3.zip",
- "size": 273032
+ "version": "1.14.4",
+ "notes": "Movies & TV: switching sections slides smoothly (the highlight glides across the top bar and the page slides in from that side), and Continue Watching in Library no longer sits right under the filter chips.",
+ "file": "CouchLauncher-update-1.14.4.zip",
+ "size": 273547
 }

@@ -38,7 +38,12 @@
 .tv-nav { display: flex; align-items: center; gap: .4rem; padding: .5rem; border-radius: 99px; background: var(--tv-nav); backdrop-filter: blur(24px); pointer-events: auto; }
 .tv-tab { padding: 1rem 2.3rem; border-radius: 99px; font-size: 1.85rem; font-weight: 500; color: var(--tv-sub); transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast); }
 .tv-tab.ic { width: 4.4rem; height: 4.4rem; padding: 0; display: flex; align-items: center; justify-content: center; }
-.tv-tab.on { color: var(--tv-text); background: var(--tv-chip); font-weight: 600; }
+.tv-nav { position: relative; }
+.tv-nav-ind { position: absolute; top: .5rem; bottom: .5rem; left: 0; width: 0; border-radius: 99px; background: var(--tv-chip); z-index: 0; pointer-events: none;
+  transition: left 340ms cubic-bezier(.32,.72,0,1), width 340ms cubic-bezier(.32,.72,0,1); }
+.reduce-motion .tv-nav-ind { transition: none; }
+.tv-tab { position: relative; z-index: 1; }
+.tv-tab.on { color: var(--tv-text); font-weight: 600; }
 .tv-tab.focused { background: var(--tv-focus-bg); color: var(--tv-focus-text); transform: scale(1.06); }
 .tv-me { position: absolute; right: 10rem; top: .3rem; width: 4.8rem; height: 4.8rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--tv-nav); color: var(--tv-sub); pointer-events: auto; transition: transform var(--t-fast); }
 .tv-me.focused { background: var(--tv-focus-bg); color: var(--tv-focus-text); transform: scale(1.08); }
@@ -77,7 +82,9 @@
 .tv-row, .tv-chips { scrollbar-width: none; }
 .tv-row::-webkit-scrollbar, .tv-chips::-webkit-scrollbar { display: none; }
 .tv-row { display: flex; gap: 2.4rem; overflow: hidden; margin: 0 -10rem; padding: 2rem 10rem 2.6rem; scroll-padding: 0 10rem; }
-.tv-cw .tv-sec { margin-top: -1rem; position: relative; }
+.tv-cw .tv-sec { position: relative; }
+.page-home .tv-cw .tv-sec { margin-top: -1rem; } /* tucked under the featured banner */
+.page-library .tv-cw .tv-sec { margin-top: 1.8rem; } /* clear of the filter chips, like the other headings */
 .tv-loading { padding: 4rem 10rem; font-size: 1.9rem; color: var(--tv-sub); }
 .tv-empty { padding: 3rem 10rem; display: flex; flex-direction: column; align-items: flex-start; gap: 2rem; }
 .tv-empty p { margin: 0; font-size: 2rem; line-height: 1.45; color: var(--tv-sub); max-width: 80rem; }

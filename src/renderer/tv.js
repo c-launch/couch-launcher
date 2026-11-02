@@ -85,10 +85,34 @@ window.CouchTV = function (k) {
     const top = T.page === 'show' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
     $('.tv-nav', T.layer.el).innerHTML = SECTIONS.map(([id, label]) => '<button class="tv-tab' + (top === id ? ' on' : '') + '" data-nav data-key="tvn-' + id + '" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="' + id + '">' + label + '</button>').join('') +
       '<button class="tv-tab ic' + (top === 'search' ? ' on' : '') + '" data-nav data-key="tvn-search" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="search" aria-label="Search">' + icon('search') + '</button>';
+    // The highlight behind the current section slides over to the new one.
+    const bar = $('.tv-nav', T.layer.el), on = $('.tv-tab.on', bar);
+    if (!on) { T.navInd = null; return; }
+    const ind = document.createElement('span');
+    ind.className = 'tv-nav-ind';
+    bar.prepend(ind);
+    const to = { left: on.offsetLeft, width: on.offsetWidth };
+    const from = T.navInd || to;
+    Object.assign(ind.style, { left: from.left + 'px', width: from.width + 'px' });
+    if (from.left !== to.left || from.width !== to.width) {
+      if (reduce()) Object.assign(ind.style, { left: to.left + 'px', width: to.width + 'px' });
+      else { void ind.offsetWidth; Object.assign(ind.style, { left: to.left + 'px', width: to.width + 'px' }); }
+    }
+    T.navInd = to;
+  }
+  // Pages slide in from the side you're heading to (Home → Movies slides left, and so on).
+  const ORDER = SECTIONS.map((x) => x[0]).concat(['search']);
+  function slideIn(dir) {
+    const sc = scroller();
+    if (!sc || !dir || reduce()) return;
+    sc.animate([{ opacity: 0, transform: 'translateX(' + (dir * 4) + 'rem)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.32,.72,0,1)' });
   }
   function go(page) {
+    const from = T.page === 'show' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
+    const a = ORDER.indexOf(from), b = ORDER.indexOf(page);
     T.page = page; T.stack = [];
     render();
+    if (a >= 0 && b >= 0 && a !== b) slideIn(b > a ? 1 : -1);
   }
   function back() {
     if (T.stack.length) {
