@@ -393,8 +393,10 @@
   const steamAppId = (g) => (g && g.source === 'steam' && /^steam:(\d+)$/.exec(g.key || '') || [])[1] || null;
   async function steamAch(g) {
     const id = steamAppId(g);
-    if (!id) return null;
-    try { return await api.steamAchievements(id); } catch (_) { return null; }
+    if (id) { try { return await api.steamAchievements(id); } catch (_) { return null; } }
+    // Emulator games: RetroAchievements (when connected and the game is on RetroAchievements)
+    if (g && g.launch && g.launch.type === 'emu' && S.raOn) { try { return await api.raProgress(g.id); } catch (_) { return null; } }
+    return null;
   }
 
   // Your own groups ("Party games", "Racing"...), kept on each game.
@@ -708,7 +710,7 @@
   }
 
   // ----- settings
-  const TABS = [['platforms', 'Platforms'], ['themes', 'Themes'], ['display', 'Display'], ['controllers', 'Controllers'], ['tv', 'Movies & TV'], ['startup', 'Startup & power'], ['about', 'About']];
+  const TABS = [['platforms', 'Platforms'], ['themes', 'Themes'], ['display', 'Display'], ['controllers', 'Controllers'], ['tv', 'Movies & TV'], ['saves', 'Saves & backups'], ['startup', 'Startup & power'], ['about', 'About']];
   function settingsHTML() {
     return '<div class="shell"><aside class="side"><h1>Settings</h1>' +
       TABS.map(([k, l]) => '<button class="sideitem' + (S.setTab === k ? ' sel' : '') + '" data-nav data-key="t-' + k + '" data-zone="side" data-action="tab" data-tab="' + k + '"><span>' + l + '</span></button>').join('') +
@@ -745,6 +747,9 @@
           '<span class="status ' + (setUp.length ? 'ok' : 'warn') + '">' + (setUp.length ? setUp.length + ' set up · ' + n + ' game' + (n === 1 ? '' : 's') : 'None set up') + '</span>' +
           '<button class="btn primary" data-nav data-key="p-emus" data-zone="body" data-action="emu-page">' + icon('gear') + 'Open</button></div>';
       }
+      h += '<div class="prow"><div class="picon" style="background:#6B4A1F">' + icon('trophy') + '</div><div class="pinfo"><div class="t">RetroAchievements</div><div class="p">' + esc(S.raOn ? 'Signed in as ' + S.raUser + ' · progress shows on retro games' : 'Achievements for retro games, shown like Steam’s (earn them in the emulators)') + '</div></div>' +
+        (S.raOn ? '<span class="status ok">Connected</span><button class="btn" data-nav data-key="p-ra-off" data-zone="body" data-action="ra-off">Disconnect</button>'
+          : '<span class="status off">Not connected</span><button class="btn" data-nav data-key="p-ra-on" data-zone="body" data-action="ra-on">' + icon('link') + 'Connect</button>') + '</div>';
       h += '<div class="prow"><div class="picon" style="background:var(--chip);color:var(--text)">' + icon('image') + '</div><div class="pinfo"><div class="t">Game art · SteamGridDB</div><div class="p">Finds tiles and backgrounds by game name</div></div>' +
         (S.artOn ? '<span class="status ok">Connected</span><button class="btn" data-nav data-key="p-art-find" data-zone="body" data-action="art-find">' + icon('search') + (S.artRunning ? 'Finding…' : 'Find missing art') + '</button>' +
           '<button class="btn" data-nav data-key="p-art-all" data-zone="body" data-action="art-all">' + icon('refresh') + 'Find all art</button>' +
@@ -814,7 +819,6 @@
         '<button class="toggle-row" data-nav data-key="c-players" data-zone="body" data-action="players-setup"><span><div>Players</div><div class="d">' + esc(playersLabel()) + '</div></span><span class="status ok">Set up</span></button>' +
         '<button class="toggle-row" data-nav data-key="c-pick" data-zone="body" data-action="pick-mode"><span><div>Players in emulator games</div><div class="d">Ryujinx, Dolphin and RPCS3 (Xbox-style controllers).</div></span><span class="status ok">' +
           ({ saved: 'Use my saved players', ask: 'Ask every time', auto: 'Ask every time', always: 'Ask every time', off: 'Leave as set in the emulator' }[S.lib.settings.pickPlayers || 'saved']) + '</span></button>' +
-        toggleHTML('c-states', 'Save Dolphin games when closing or switching', S.lib.settings.saveStates !== false, 'Makes a save state first, and offers to pick up from it next time. (Ryujinx and RPCS3 use your in-game saves.)', 'set-toggle', 'data-k="saveStates"') +
         toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
         toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
         toggleHTML('c-ncall', 'Tell me when someone joins or leaves my Discord call', S.lib.settings.notifyCalls !== false, 'Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="notifyCalls"') +
@@ -844,11 +848,14 @@
         const e = E[id], c = P[id] || {};
         const off = c.enabled === false;
         const status = kind === 'found' ? ['ok', 'Found on this PC'] : kind === 'none' ? ['off', 'Not found'] : off ? ['off', 'Turned off'] : !e.noFolder && !c.dir ? ['warn', 'Needs games folder'] : ['ok', cnt(id) + ' game' + (cnt(id) === 1 ? '' : 's')];
-        const where = kind === 'found' ? found[id].exe + (found[id].dirs.length ? '  →  ' + found[id].dirs.join(' + ') : '') : c.exe ? c.exe + (c.dir ? '  →  ' + c.dir.split(';').join(' + ') : e.noFolder ? '  →  its own game list' : '') : e.system;
+        const u = kind === 'set' && S.emuUpdates && S.emuUpdates[id];
+        const upNote = u ? (u.status === 'managed' ? (u.managedBy === 'installer' ? '  ·  updates with its own installer' : '  ·  kept up to date by ' + u.managedBy) : u.status === 'current' ? '  ·  up to date' : u.status === 'update' ? '  ·  update available' : '') : '';
+        const where = (kind === 'found' ? found[id].exe + (found[id].dirs.length ? '  →  ' + found[id].dirs.join(' + ') : '') : c.exe ? c.exe + (c.dir ? '  →  ' + c.dir.split(';').join(' + ') : e.noFolder ? '  →  its own game list' : '') : e.system) + upNote;
         let btns = '';
         if (kind === 'found') btns = '<button class="btn primary" data-nav data-key="e-' + id + '-setup" data-zone="body" data-action="emu-setup" data-src="' + id + '">' + icon('check') + 'Set up</button>';
         else if (kind === 'none') btns = '<button class="btn" data-nav data-key="e-' + id + '-exe" data-zone="body" data-action="plat-exe" data-src="' + id + '">Set program</button>';
-        else btns = '<button class="btn" data-nav data-key="e-' + id + '-toggle" data-zone="body" data-action="emu-toggle" data-src="' + id + '">' + (off ? 'Turn on' : 'Turn off') + '</button>' +
+        else btns = (S.emuUpdates && S.emuUpdates[id] && S.emuUpdates[id].status === 'update' ? '<button class="btn primary" data-nav data-key="e-' + id + '-upd" data-zone="body" data-action="emu-update" data-src="' + id + '">' + icon('up') + 'Update' + (S.emuUpdates[id].latest && S.emuUpdates[id].latest.tag ? ' to ' + esc(String(S.emuUpdates[id].latest.tag).slice(0, 16)) : '') + '</button>' : '') +
+          '<button class="btn" data-nav data-key="e-' + id + '-toggle" data-zone="body" data-action="emu-toggle" data-src="' + id + '">' + (off ? 'Turn on' : 'Turn off') + '</button>' +
           '<button class="btn" data-nav data-key="e-' + id + '-exe" data-zone="body" data-action="plat-exe" data-src="' + id + '">Program</button>' +
           (e.noFolder && id !== 'shadps4' ? '' : '<button class="btn" data-nav data-key="e-' + id + '-dir" data-zone="body" data-action="plat-dir" data-src="' + id + '">' + (c.dir ? 'Folder' : 'Games folder') + '</button>') +
           '<button class="btn" data-nav data-key="e-' + id + '-scan" data-zone="body" data-action="rescan" data-src="' + id + '"' + (off ? ' disabled' : '') + '>Rescan</button>' +
@@ -859,12 +866,35 @@
       let h = '<div class="sect-h"><div><h2>Emulators</h2><p>' + (found === null ? 'Looking for emulators on this PC…' : setUp.length + ' set up' + (foundOnly.length ? ' · ' + foundOnly.length + ' more found on this PC' : '')) + '. EmuDeck folders (Emulation\\roms) are found by themselves.</p></div>' +
         '<div class="btn-row"><button class="btn big" data-nav data-key="e-back" data-zone="body" data-action="emu-back">' + icon('prev') + 'Platforms</button>' +
         (foundOnly.length ? '<button class="btn primary big" data-nav data-key="e-all" data-zone="body" data-action="emu-setup">' + icon('check') + 'Set up all ' + foundOnly.length + '</button>' : '') +
-        '<button class="btn big" data-nav data-key="e-find" data-zone="body" data-action="emu-find">' + icon('search') + 'Find again</button></div></div>';
+        '<button class="btn big" data-nav data-key="e-find" data-zone="body" data-action="emu-find">' + icon('search') + 'Find again</button>' +
+        (setUp.length ? '<button class="btn big" data-nav data-key="e-upd" data-zone="body" data-action="emu-updates">' + icon('up') + 'Check for updates</button>' : '') + '</div></div>';
       if (setUp.length) h += '<div class="sub-h">Set up</div><div class="plist">' + setUp.map((id) => row(id, 'set')).join('') + '</div>';
       if (foundOnly.length) h += '<div class="sub-h">Found on this PC</div><div class="plist">' + foundOnly.map((id) => row(id, 'found')).join('') + '</div>';
       if (rest.length) h += S.emuShowAll ? '<div class="sub-h">More emulators</div><div class="plist">' + rest.map((id) => row(id, 'none')).join('') + '</div>'
         : '<div class="btn-row" style="margin-top:2rem"><button class="dashed" data-nav data-key="e-more" data-zone="body" data-action="emu-more">' + icon('plus') + 'Show ' + rest.length + ' more emulators</button></div>';
       h += '<p class="field-note" style="margin-top:2rem">You need your own BIOS / firmware files and game dumps for each emulator. Multi-disc games show once (an .m3u playlist is used when there is one); a game in several regions shows once too — pick the version in its menu (☰).</p>';
+      return h;
+    }
+    if (tab === 'saves') {
+      const b = S.backupInfo;
+      if (b === undefined) { S.backupInfo = null; Promise.resolve().then(() => api.backupStatus()).then((x) => { S.backupInfo = x || {}; if (S.view === 'settings' && S.setTab === 'saves' && !layers.length) refreshContent(); }).catch(() => { S.backupInfo = {}; }); }
+      const to = s.backupTo || 'off';
+      const where = to === 'off' ? 'Off' : to === 'folder' ? (s.backupFolder ? baseName(s.backupFolder) : 'Choose a folder') : to === 'gdrive' ? 'Google Drive' : 'OneDrive';
+      const warn = to !== 'off' && b && !b.root;
+      let h = '<div class="sect-h"><div><h2>Saves &amp; backups</h2><p>Your emulator saves, copied before a game starts and after it closes (only when something changed).</p></div>' +
+        '<div class="btn-row">' + (to !== 'off' ? '<button class="btn primary big" data-nav data-key="bk-now" data-zone="body" data-action="bk-now">' + icon('refresh') + 'Back up now</button>' : '') + '</div></div>' +
+        '<div class="toggles" style="grid-template-columns:1fr">' +
+        '<button class="toggle-row" data-nav data-key="bk-to" data-zone="body" data-action="bk-to"><span><div>Back up to</div><div class="d">' + esc(warn ? (to === 'gdrive' ? 'Google Drive for desktop isn’t running or signed in on this PC.' : to === 'onedrive' ? 'OneDrive isn’t set up on this PC.' : 'That folder isn’t there right now.') : to === 'off' ? 'Google Drive, OneDrive or any folder.' : (b && b.root ? b.root + '\\Couch Launcher\\Save backups' : '')) + '</div></span><span class="status ' + (warn ? 'warn' : to === 'off' ? 'off' : 'ok') + '">' + esc(where) + '</span></button>' +
+        '<button class="toggle-row" data-nav data-key="bk-keep" data-zone="body" data-action="bk-keep"><span><div>Copies to keep</div><div class="d">Per emulator. The oldest go first.</div></span><span class="status ok">' + (Number(s.backupKeep) || 10) + '</span></button>' +
+        toggleHTML('c-states', 'Save and resume', s.saveStates !== false, 'Closing or switching a game saves where you are; next time you’re asked whether to pick up from there. Dolphin, PCSX2, DuckStation and RetroArch.', 'set-toggle', 'data-k="saveStates"') +
+        '</div>';
+      if (b && b.emus && b.emus.length) {
+        h += '<div class="sub-h">Emulators</div><div class="plist">' + b.emus.map((e) => '<div class="prow"><div class="picon" style="background:' + ((SOURCES[e.id] && SOURCES[e.id].color) || '#444A52') + '">' + esc(e.name.charAt(0)) + '</div><div class="pinfo"><div class="t">' + esc(e.name) + '</div><div class="p">' +
+          esc(e.sources.length ? e.sources.map((x) => x.path).join(' + ') : 'Its saves are next to the games (backed up with EmuDeck’s saves folder)') + '</div></div>' +
+          '<span class="status ' + (e.last ? 'ok' : 'off') + '">' + (e.last ? esc(fmtWhen(e.last).replace(/^Played /, 'Backed up ')) + ' · ' + e.count : 'No backups yet') + '</span>' +
+          (e.count ? '<button class="btn" data-nav data-key="bk-r-' + e.id + '" data-zone="body" data-action="bk-restore" data-src="' + e.id + '">Restore</button>' : '') +
+          (to !== 'off' && e.sources.length ? '<button class="btn" data-nav data-key="bk-n-' + e.id + '" data-zone="body" data-action="bk-now" data-src="' + e.id + '">Back up</button>' : '') + '</div>').join('') + '</div>';
+      } else if (b) h += '<p class="field-note">Set up emulators in Settings › Platforms › Emulators, and their saves show up here.</p>';
       return h;
     }
     if (tab === 'tv') {
@@ -1517,9 +1547,9 @@
       S.playing = null;
     }
     if (g.launch && g.launch.type === 'emu' && !(await setUpPlayers(g))) return; // cancelled on "Who's playing?"
-    // Dolphin: offer the save state made when you last closed it.
+    // Dolphin, RetroArch, DuckStation, PCSX2: offer the state saved when you last closed it.
     const opts = {};
-    if (g.launch && g.launch.type === 'emu' && g.launch.emu === 'dolphin' && S.lib.settings.saveStates !== false) {
+    if (g.launch && g.launch.type === 'emu' && ['dolphin', 'retroarch', 'duckstation', 'pcsx2'].includes(g.launch.emu) && S.lib.settings.saveStates !== false) {
       let info = null;
       try { info = await api.savedState(id); } catch (_) { info = null; }
       if (info) opts.resume = await confirmBox('Pick up where you left off?', 'There’s a save from when you closed ' + g.title + (info.at ? ' (' + fmtWhen(info.at).replace(/^Played /, '').toLowerCase() + ')' : '') + '. Start over loads your normal in-game save instead.', 'Resume', false, { cancelLabel: 'Start over', focusOk: true });
@@ -1700,7 +1730,7 @@
         item('s-settings', 'gear', 'Settings', 'data-act="settings"') +
         item('s-themes', 'palette', 'Themes', 'data-act="themes"') +
         item('s-platforms', 'refresh', 'Platforms & rescan', 'data-act="platforms"') +
-        '<div class="gsep"></div>' + item('s-power', 'power', 'Power', 'data-act="power"');
+        '<div class="gsep"></div>' + item('s-sleep', 'moon', 'Sleep timer', 'data-act="sleep"') + item('s-power', 'power', 'Power', 'data-act="power"');
     }
     function html() {
       const t = TABS_G.find((x) => x[0] === tab);
@@ -1987,6 +2017,7 @@
         if (act === 'themes') { closeLayer(layer); S.setTab = 'themes'; return go('settings', 't-themes'); }
         if (act === 'platforms') { closeLayer(layer); S.setTab = 'platforms'; return go('settings', 'p-all'); }
         if (act === 'power') { closeLayer(layer); return powerMenu(); }
+        if (act === 'sleep') return sleepMenu();
       },
       onButton: (b) => {
         const order = TABS_G.map((x) => x[0]);
@@ -2678,6 +2709,26 @@
     }
   }
 
+  // Sleep timer: closes the game the normal way (so it saves), then sleeps or turns off the PC.
+  async function sleepMenu() {
+    let cur = null;
+    try { cur = await api.sleepGet(); } catch (_) { cur = null; }
+    const left = cur ? Math.max(1, Math.round((cur.at - Date.now()) / 60000)) : 0;
+    const act = S.lib.settings.sleepAction === 'sleep' ? 'sleep' : 'shutdown';
+    const len = (m) => (m < 60 ? m + ' minutes' : m / 60 + (m === 60 ? ' hour' : ' hours'));
+    const items = [15, 30, 45, 60, 90, 120].map((m) => ({ id: 'm' + m, label: len(m), icon: 'moon' }));
+    items.push({ id: 'action', label: 'When it ends: ' + (act === 'sleep' ? 'put the PC to sleep' : 'turn off the PC'), icon: 'power' });
+    if (cur) items.unshift({ id: 'off', label: 'Turn the timer off (' + left + ' min left)', icon: 'x' });
+    const c = await openMenu(cur ? 'Sleep timer · ' + left + ' min left' : 'Sleep timer', items);
+    if (!c) return;
+    try {
+      if (c === 'off') { await api.sleepSet(0); toast('Sleep timer off'); return; }
+      if (c === 'action') { S.lib.settings.sleepAction = act === 'sleep' ? 'shutdown' : 'sleep'; save(); return sleepMenu(); }
+      const m = Number(c.slice(1));
+      await api.sleepSet(m, act);
+      toast((act === 'sleep' ? 'The PC sleeps' : 'The PC turns off') + ' in ' + len(m) + '. Your game closes first so it can save.');
+    } catch (e) { toast(e.message, true); }
+  }
   async function powerMenu() {
     const pick = await openMenu('Power', [
       { id: 'settings', label: 'Settings', icon: 'gear' },
@@ -2749,6 +2800,67 @@
           { id: 'combo', label: 'Hold View + RB (clip) / LB (screenshot)', icon: s.medalXbox === 'combo' ? 'check' : 'pad' }]);
         if (m) { s.medalXbox = m; save(); refreshContent(); }
         return;
+      }
+      case 'bk-to': {
+        let b = S.backupInfo;
+        if (!b) { try { b = S.backupInfo = await api.backupStatus(); } catch (_) { b = {}; } }
+        const has = (id) => (b.dests || []).find((d) => d.id === id);
+        const c = await openMenu('Back up saves to', [
+          { id: 'gdrive', label: has('gdrive') ? 'Google Drive (' + has('gdrive').path + ')' : 'Google Drive (needs Google Drive for desktop)', icon: s.backupTo === 'gdrive' ? 'check' : 'folder' },
+          { id: 'onedrive', label: has('onedrive') ? 'OneDrive (' + has('onedrive').path + ')' : 'OneDrive (not set up on this PC)', icon: s.backupTo === 'onedrive' ? 'check' : 'folder' },
+          { id: 'folder', label: 'A folder…' + (s.backupFolder ? ' (' + s.backupFolder + ')' : ''), icon: s.backupTo === 'folder' ? 'check' : 'folder' },
+          { id: 'off', label: 'Don’t back up', icon: (s.backupTo || 'off') === 'off' ? 'check' : 'x' }]);
+        if (!c) return;
+        if (c === 'gdrive' && !has('gdrive')) { toast('Install Google Drive for desktop and sign in, then choose this again. Backups go to My Drive › Couch Launcher.', true); return; }
+        if (c === 'onedrive' && !has('onedrive')) { toast('Sign in to OneDrive on this PC first, then choose this again.', true); return; }
+        if (c === 'folder') { const p = await browse({ title: 'Where should save backups go?', folder: true, hint: 'A drive or folder (a USB drive works too)' }); if (!p) return; s.backupFolder = p; }
+        s.backupTo = c; save(); S.backupInfo = undefined; refreshContent();
+        if (c !== 'off') toast('Backups on. Your saves are copied before and after each game.');
+        return;
+      }
+      case 'bk-keep': { const k = await openMenu('Copies to keep (per emulator)', [5, 10, 20, 30].map((n) => ({ id: String(n), label: n + ' copies', icon: (Number(s.backupKeep) || 10) === n ? 'check' : 'refresh' }))); if (k) { s.backupKeep = Number(k); save(); refreshContent(); } return; }
+      case 'bk-now': {
+        const id = el.dataset.src || null;
+        toast('Backing up…');
+        try { const r = await api.backupNow(id); toast(r.done ? 'Backed up ' + r.done + (id ? '' : ' of ' + r.of) : 'Nothing new to back up'); } catch (e) { toast(e.message, true); }
+        S.backupInfo = undefined; return refreshContent();
+      }
+      case 'bk-restore': {
+        const id = el.dataset.src;
+        let list = [];
+        try { list = await api.backupList(id); } catch (e) { toast(e.message, true); return; }
+        const WHY = { before: 'before playing', after: 'after playing', manual: 'backed up by hand', 'before-restore': 'before a restore' };
+        const pick = await openMenu('Restore which copy?', list.map((x) => ({ id: x.id, label: new Date(x.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) + ' · ' + (WHY[x.why] || x.why), icon: 'refresh' })));
+        if (!pick) return;
+        if (!(await confirmBox('Put this copy back?', 'Your current saves are copied first, so you can undo this from the same list.', 'Restore', true))) return;
+        try { await api.backupRestore(id, pick); toast('Saves restored'); } catch (e) { toast(e.message, true); }
+        S.backupInfo = undefined; return refreshContent();
+      }
+      case 'ra-on': {
+        const user = await osk('RetroAchievements username', S.raUser || '', 'Your username');
+        if (!user) return;
+        const key = await osk('Web API key (retroachievements.org › Settings › Keys)', '', '', { secret: true });
+        if (!key) return;
+        try { await api.raConnect(user, key); await refreshRa(); toast('RetroAchievements connected'); } catch (e) { toast(e.message, true); }
+        return refreshContent();
+      }
+      case 'ra-off': { try { await api.raDisconnect(); await refreshRa(); toast('RetroAchievements disconnected'); } catch (e) { toast(e.message, true); } return refreshContent(); }
+      case 'emu-updates': {
+        toast('Checking for emulator updates…');
+        try { S.emuUpdates = await api.checkEmuUpdates(); } catch (e) { toast(e.message, true); return; }
+        const n = Object.values(S.emuUpdates).filter((u) => u.status === 'update').length;
+        toast(n ? n + ' update' + (n === 1 ? '' : 's') + ' available' : 'Your emulators are up to date');
+        return refreshContent();
+      }
+      case 'emu-update': {
+        const id = el.dataset.src;
+        try {
+          const r = await api.updateEmu(id);
+          if (r && r.lib) S.lib.platforms = r.lib.platforms;
+          if (S.emuUpdates) S.emuUpdates[id] = { status: 'current' };
+          toast(S.info.emulators[id].name + ' updated' + (r.tag ? ' to ' + r.tag : ''));
+        } catch (e) { toast(e.message, true); }
+        return refreshContent();
       }
       case 'emu-page': S.setTab = 'emulators'; S.emuFound = undefined; refreshContent(); $('#content').scrollTop = 0; { const f = $('#content [data-nav]'); if (f) setFocus(f); } return;
       case 'emu-back': S.setTab = 'platforms'; refreshContent(); { const f = $('[data-key="p-emus"]'); if (f) setFocus(f); } return;
@@ -3133,6 +3245,7 @@
     document.documentElement.classList.add('overlay-mode');
     try { S.info = await api.info(); } catch (_) { /* defaults */ }
     addEmuSources();
+    refreshRa();
     S.lib = await api.load();
     S.theme = window.applyTheme(S.lib.settings, false);
     requestAnimationFrame(pollPads);
@@ -3156,11 +3269,13 @@
       SOURCES[id] = { name: NAMES[id] || e.system, badge: String(NAMES[id] ? e.name : e.system).toUpperCase().slice(0, 12), color: e.color || '#444A52', letter: e.name.charAt(0).toUpperCase() };
     }
   }
+  function refreshRa() { return Promise.resolve().then(() => api.raStatus()).then((r) => { S.raOn = !!(r && r.connected); S.raUser = (r && r.user) || null; }).catch(() => {}); }
   async function init() {
     if (OVERLAY) return initOverlay();
     try { S.info = await api.info(); } catch (_) { /* defaults */ }
     addEmuSources();
     S.lib = await api.load();
+    refreshRa();
     if (typeof S.info.autostart === 'boolean') S.lib.settings.autostart = S.info.autostart;
     S.theme = window.applyTheme(S.lib.settings, false);
     renderView(false);
