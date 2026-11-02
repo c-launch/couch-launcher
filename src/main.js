@@ -46,6 +46,8 @@ if (!app.requestSingleInstanceLock()) {
     onGuide: () => guidePressed(),
     onCombo: () => guidePressed(),
     usePs: () => !(lib && lib.settings && lib.settings.psPads === false),
+    // Where Share is in Windows' Xbox Bluetooth report (found once in Settings › Controllers).
+    shareMap: () => (lib && lib.settings && lib.settings.xboxShareMap) || null,
     // While a movie or episode plays, the controller drives the player.
     // Share button -> Medal (tap: screenshot, hold: clip). Not inside the launcher itself.
     onCapture: (st) => {
@@ -718,12 +720,22 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(check, 20000);
   }
   handle('pads:get', () => pads);
-  handle('capture:status', () => ({ xboxShareReadable: controller.xboxShareReadable }));
+  handle('capture:status', () => {
+    const d = controller.shareDebug();
+    return { xboxShareReadable: controller.xboxShareReadable, xboxNeedsFind: (d.xbox || []).some((x) => x.windowsReport && !x.learned) };
+  });
   // Settings › Controllers › Test the Share button: what the launcher sees, live.
-  handle('capture:debug', () => Object.assign(controller.shareDebug(), {
+  handle('capture:learn', () => controller.learnShare(15000));
+  handle('capture:debug', () => Object.assign(saveLearnedShare(controller.shareDebug()), {
     clipKey: lib.settings.medalClipKey || 'F8', shotKey: lib.settings.medalShotKey || '', mode: lib.settings.medalXbox || 'auto',
     on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32
   }));
+  function saveLearnedShare(d) {
+    const f = d && d.learn && d.learn.found;
+    const cur = lib.settings.xboxShareMap;
+    if (f && !(cur && cur.pid === f.pid && cur.size === f.size && cur.byte === f.byte && cur.mask === f.mask)) { lib.settings.xboxShareMap = f; persist(); }
+    return d;
+  }
   // …and a test clip, to check Medal hears the launcher's key press.
   handle('capture:test', (kind) => pressMedal(kind === 'shot' ? 'shot' : 'clip'));
 
@@ -984,7 +996,7 @@ if (!app.requestSingleInstanceLock()) {
   // Settings the app core keeps itself (the screens' copy of them can be out of date): kept as
   // they are when the screens save. (Saving used to put an old empty mpv path back, so mpv had to
   // be chosen again after a restart.)
-  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone'];
+  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone', 'xboxShareMap'];
   handle('lib:save', (data) => {
     const next = library.normalize(data);
     for (const k of CORE_SETTINGS) if (lib && lib.settings && lib.settings[k] !== undefined) next.settings[k] = lib.settings[k];
@@ -1706,20 +1718,28 @@ if (!app.requestSingleInstanceLock()) {
     if (!exe) return [];
     return bkup.saveDirs(id, exe, process.env, { dolphinUser: id === 'dolphin' ? players.dolphinUserDir(exe) : null });
   }
-  function backupNow(id, why) { return backups.backup(id, saveSources(id), why); }
+  // What happened last time, per emulator (shown in Settings › Saves).
+  const backupLast = {};
+  async function backupNow(id, why) {
+    let r;
+    try { r = await backups.backup(id, saveSources(id), why); } catch (e) { r = { error: String(e && e.message || e) }; }
+    backupLast[id] = Object.assign({ at: Date.now(), why }, r);
+    return r;
+  }
   function afterGameBackup(id) { backupNow(id, 'after').catch(() => null); }
   const emuIds = () => Object.keys(scanners.EMULATORS).filter((id) => lib.platforms[id] && lib.platforms[id].exe);
   handle('backup:status', () => ({
     to: lib.settings.backupTo || 'off', folder: lib.settings.backupFolder || '', keep: Number(lib.settings.backupKeep) || 10,
     root: backupRoot(), dests: bkup.destinations(process.env, allDrives()),
-    emus: emuIds().map((id) => { const snaps = backups.snapshots(id); return { id, name: scanners.EMULATORS[id].name, sources: saveSources(id), last: snaps[0] ? snaps[0].at : 0, count: snaps.length }; })
+    emus: emuIds().map((id) => { const snaps = backups.snapshots(id); return { id, name: scanners.EMULATORS[id].name, sources: saveSources(id), last: snaps[0] ? snaps[0].at : 0, count: snaps.length, result: backupLast[id] || null }; })
   }));
   handle('backup:now', async (id) => {
     if (!backupRoot()) throw new Error('Choose where backups go first');
     const ids = id ? [String(id)] : emuIds();
     let done = 0;
-    for (const x of ids) { const r = await backupNow(x, 'manual').catch(() => null); if (r && r.done) done++; }
-    return { done, of: ids.length };
+    const results = [];
+    for (const x of ids) { const r = await backupNow(x, 'manual').catch((e) => ({ error: String(e && e.message || e) })); if (r && r.done) done++; results.push({ id: x, name: scanners.EMULATORS[x] ? scanners.EMULATORS[x].name : x, result: r }); }
+    return { done, of: ids.length, results };
   });
   handle('backup:list', (id) => backups.snapshots(String(id || '')).map((s) => ({ id: s.id, at: s.at, why: s.why })));
   handle('backup:restore', async (id, snapId) => {

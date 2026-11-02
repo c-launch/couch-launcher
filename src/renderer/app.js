@@ -841,7 +841,7 @@
         toggleHTML('m-share', 'Share button saves Medal clips', S.lib.settings.medalShare !== false, 'Tap Share for a screenshot, hold it for a clip. Works in games and apps (not inside the launcher). Medal needs to be running.', 'set-toggle', 'data-k="medalShare"') +
         '<button class="toggle-row" data-nav data-key="m-clip" data-zone="body" data-action="medal-key" data-which="clip"><span><div>Medal’s clip key</div><div class="d">Match Medal › Settings › Capture Hotkeys.</div></span><span class="status ok">' + esc(S.lib.settings.medalClipKey || 'F8') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-shot" data-zone="body" data-action="medal-key" data-which="shot"><span><div>Medal’s screenshot key</div><div class="d">Set a screenshot key in Medal, then pick the same one here.</div></span><span class="status ' + (S.lib.settings.medalShotKey ? 'ok' : 'warn') + '">' + esc(S.lib.settings.medalShotKey || 'Not set') + '</span></button>' +
-        '<button class="toggle-row" data-nav data-key="m-xbox" data-zone="body" data-action="medal-xbox"><span><div>Xbox controllers</div><div class="d">' + esc(S.captureInfo == null ? 'Checking your controller…' : S.captureInfo.xboxShareReadable ? 'Your Xbox controller’s Share button can be read (Bluetooth).' : 'No Xbox Share button readable right now: it only works over Bluetooth. Hold View + RB for a clip, View + LB for a screenshot.') + '</div></span><span class="status ok">' +
+        '<button class="toggle-row" data-nav data-key="m-xbox" data-zone="body" data-action="medal-xbox"><span><div>Xbox controllers</div><div class="d">' + esc(S.captureInfo == null ? 'Checking your controller…' : S.captureInfo.xboxShareReadable ? 'Your Xbox controller’s Share button can be read (Bluetooth).' : S.captureInfo.xboxNeedsFind ? 'Your Xbox controller is connected over Bluetooth: open Test the Share button below and choose Find Share once. Until then, View + RB clips.' : 'No Xbox Share button readable right now: it only works over Bluetooth. Hold View + RB for a clip, View + LB for a screenshot.') + '</div></span><span class="status ok">' +
           ({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-test" data-zone="body" data-action="share-test"><span><div>Test the Share button</div><div class="d">See what the launcher reads from your controller, and send Medal a test clip.</div></span><span class="status ok">Test</span></button></div>' +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
@@ -903,7 +903,8 @@
         '</div>';
       if (b && b.emus && b.emus.length) {
         h += '<div class="sub-h">Emulators</div><div class="plist">' + b.emus.map((e) => '<div class="prow"><div class="picon" style="background:' + ((SOURCES[e.id] && SOURCES[e.id].color) || '#444A52') + '">' + esc(e.name.charAt(0)) + '</div><div class="pinfo"><div class="t">' + esc(e.name) + '</div><div class="p">' +
-          esc(e.sources.length ? e.sources.map((x) => x.path).join(' + ') : 'Its saves are next to the games (backed up with EmuDeck’s saves folder)') + '</div></div>' +
+          esc(e.sources.length ? e.sources.map((x) => x.path).join(' + ') : 'Its saves are next to the games (backed up with EmuDeck’s saves folder)') + '</div>' +
+          (e.result && !e.result.done ? '<div class="p bk-why">' + esc('Last try (' + ago(e.result.at) + '): ' + backupWhy(e.result)) + '</div>' : '') + '</div>' +
           '<span class="status ' + (e.last ? 'ok' : 'off') + '">' + (e.last ? esc(fmtWhen(e.last).replace(/^Played /, 'Backed up ')) + ' · ' + e.count : 'No backups yet') + '</span>' +
           (e.count ? '<button class="btn" data-nav data-key="bk-r-' + e.id + '" data-zone="body" data-action="bk-restore" data-src="' + e.id + '">Restore</button>' : '') +
           (to !== 'off' && e.sources.length ? '<button class="btn" data-nav data-key="bk-n-' + e.id + '" data-zone="body" data-action="bk-now" data-src="' + e.id + '">Back up</button>' : '') + '</div>').join('') + '</div>';
@@ -1744,7 +1745,7 @@
 
   // ----- Settings › Controllers › Test the Share button (Medal)
   function shareTest() {
-    let d = null, err = null, timer = null, pressed = false, msg = '';
+    let d = null, err = null, timer = null, pressed = false, msg = '', learning = false;
     const hex = (a) => (a || []).map((x) => (x | 0).toString(16).padStart(2, '0')).join(' ');
     const pidHex = (n) => (n | 0).toString(16).toUpperCase().padStart(4, '0');
     const body = () => {
@@ -1755,7 +1756,15 @@
       h += '<dt>Share button for Medal</dt><dd>' + (d.on ? 'On' : 'Off (Settings › Controllers)') + ' · ' + esc({ auto: 'Share, or View combo', share: 'Share button', combo: 'View + RB / LB' }[d.mode] || d.mode) + '</dd>';
       h += '<dt>Xbox controller over Bluetooth</dt><dd>' + (x ? 'Found (model ' + pidHex(x.pid) + ', ' + x.size + '-byte reports, ' + x.reports + ' read)' : 'Not found' + (d.otherMicrosoft.length ? ' (other Xbox controllers seen: ' + d.otherMicrosoft.map(pidHex).join(', ') + ')' : '') + '. Over USB or the Xbox adapter, Windows doesn’t share the Share button: use View + RB.') + '</dd>';
       if (x) {
-        h += '<dt>Share button</dt><dd class="' + (x.share ? 'st-yes' : '') + '">' + (x.share ? 'Pressed' : x.shareAt != null ? 'Not pressed (found at byte ' + x.shareAt + ')' : 'Press it once, with no other buttons held, so the launcher can find it') + '</dd>';
+        const L = d.learn;
+        const known = x.windowsReport ? x.learned : (x.shareAt != null ? { byte: x.shareAt } : null);
+        let state;
+        if (x.share) state = 'Pressed';
+        else if (L && L.waiting) state = 'Press and hold Share now, and only Share…';
+        else if (known) state = 'Not pressed (found at byte ' + known.byte + ')';
+        else if (x.windowsReport) state = 'Not found yet: choose Find Share below';
+        else state = 'Press it once, with no other buttons held, so the launcher can find it';
+        h += '<dt>Share button</dt><dd class="' + (x.share ? 'st-yes' : '') + '">' + esc(state) + '</dd>';
         const changed = x.first && x.last ? x.last.map((v, i) => (v !== x.first[i] ? i + ': ' + v : null)).filter(Boolean) : [];
         h += '<dt>Report</dt><dd class="mono">' + esc(hex(x.last)) + '</dd><dt>Changed since start</dt><dd class="mono">' + esc(changed.join(' · ') || 'nothing yet') + '</dd>';
       }
@@ -1766,10 +1775,18 @@
     const layer = openLayer({
       html: '<div class="dialog sharetest"><h2>Test the Share button</h2><div class="st-body">' + body() + '</div>' +
         '<div class="dialog-foot"><button class="btn big" data-nav data-key="t-close" data-act="close">Close</button>' +
+        '<button class="btn big" data-nav data-key="t-learn" data-act="learn">' + icon('search') + 'Find Share</button>' +
         '<button class="btn big primary" data-nav data-key="t-clip" data-act="clip">' + icon('film') + 'Send Medal a test clip in 3 s</button></div></div>',
       focus: 't-clip',
       onActivate: async (el) => {
         if (el.dataset.act === 'close') return closeLayer(layer);
+        if (el.dataset.act === 'learn') {
+          learning = true;
+          try { await api.captureLearn(); } catch (e) { msg = e.message; draw(); return; }
+          msg = 'Press and hold Share now, and nothing else (15 seconds).';
+          draw();
+          return;
+        }
         msg = 'Sending in 3 seconds… switch to a game if you like (Alt+Tab). Medal should show its “Clip saved” pop-up.';
         draw();
         setTimeout(async () => { try { const ok = await api.captureTest('clip'); msg = ok ? 'Sent ' + (d ? d.clipKey : 'the clip key') + '. If Medal didn’t save a clip, its clip key isn’t ' + (d ? d.clipKey : 'that') + ' (Medal › Settings › Capture Hotkeys), or Medal isn’t running.' : 'Couldn’t send the key on this PC.'; } catch (e) { msg = e.message; } draw(); }, 3000);
@@ -1783,11 +1800,21 @@
       try { d = await api.captureDebug(); err = null; } catch (e) { err = e.message; }
       if (layers.indexOf(layer) < 0) return;
       const x = d && d.xbox && d.xbox[0];
+      if (learning && d && d.learn) {
+        if (d.learn.found) { learning = false; msg = 'Found Share and saved it. In a game, hold it for a clip (tap for a screenshot).'; }
+        else if (d.learn.timedOut) { learning = false; msg = 'Nothing came through when Share was pressed: on this PC, Windows keeps the Share button for itself over Bluetooth. Use View + RB for a clip and View + LB for a screenshot (they work in Auto).'; }
+      }
       if (x && x.share && !pressed) { pressed = true; msg = 'Share seen. In a game, hold it for a clip (tap for a screenshot).'; }
       draw();
     }
     poll();
     timer = setInterval(poll, 200);
+  }
+  // Why a backup didn't happen, in words.
+  function backupWhy(r) {
+    if (!r) return '';
+    if (r.error) return 'it didn’t work (' + r.error + ')';
+    return { off: 'backups are off', 'no-saves': 'its save folder wasn’t found', empty: 'its save folder is empty', 'too-big': 'its saves are over 3 GB', unchanged: 'nothing changed since the last copy' }[r.skipped] || String(r.skipped || '');
   }
   // ----- Playtime stats
   async function openStats() {
@@ -3381,7 +3408,13 @@
       case 'bk-now': {
         const id = el.dataset.src || null;
         toast('Backing up…');
-        try { const r = await api.backupNow(id); toast(r.done ? 'Backed up ' + r.done + (id ? '' : ' of ' + r.of) : 'Nothing new to back up'); } catch (e) { toast(e.message, true); }
+        try {
+          const r = await api.backupNow(id);
+          const bad = (r.results || []).filter((x) => x.result && !x.result.done);
+          if (r.done && !bad.length) toast('Backed up ' + (id ? (r.results[0] || {}).name || '' : r.done + ' emulator' + (r.done === 1 ? '' : 's')));
+          else if (bad.length) toast((r.done ? 'Backed up ' + r.done + '. ' : '') + bad.slice(0, 2).map((x) => x.name + ': ' + backupWhy(x.result)).join(' · ') + (bad.length > 2 ? ' · +' + (bad.length - 2) + ' more' : ''), !r.done);
+          else toast('Nothing to back up');
+        } catch (e) { toast(e.message, true); }
         S.backupInfo = undefined; return refreshContent();
       }
       case 'bk-restore': {

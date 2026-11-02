@@ -1,6 +1,6 @@
 {
- "version": "1.14.6",
- "notes": "Fix: the highlight in Movies & TV's top bar could get stuck off its section (when the font finished loading after it was placed); it stays exactly on the section now. New: Sound in the guide (Profile & system): switch where sound plays (TV, headset, soundbar, speakers) and change the volume or mute with the controller.",
- "file": "CouchLauncher-update-1.14.6.zip",
- "size": 286663
+ "version": "1.14.7",
+ "notes": "Fix: the Xbox Share button over Bluetooth. Windows sends this controller's buttons in its own format, where Share wasn't being looked for (and the View + RB backup got switched off too). Now: Settings › Controllers › Test the Share button › Find Share, press Share once, and it's remembered; until then View + RB still clips. Fix: save backups skipped EmuDeck emulators (their save folders are links, which looked empty); links are followed now, and Settings › Saves says why a backup didn't happen.",
+ "file": "CouchLauncher-update-1.14.7.zip",
+ "size": 289379
 }

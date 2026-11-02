@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('launcher', {
   audioVolume: (v) => call('audio:volume', Number(v) || 0),
   audioMute: (on) => call('audio:mute', !!on),
   captureDebug: () => call('capture:debug'),
+  captureLearn: () => call('capture:learn'),
   captureTest: (kind) => call('capture:test', kind === 'shot' ? 'shot' : 'clip'),
   friendJoin: (id) => call('friend:join', String(id || '')),
   friendStore: (id, what) => call('friend:store', String(id || ''), what && typeof what === 'object' ? { appid: what.appid != null ? String(what.appid) : undefined, title: what.title ? String(what.title) : undefined } : null),
