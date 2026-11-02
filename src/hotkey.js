@@ -66,7 +66,7 @@ function loadXInput() {
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
-function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons }) {
+function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onCapture }) {
   const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false };
   if (process.platform !== 'win32') return off;
   let x;
@@ -93,11 +93,14 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
   function poll() {
     let combo = false, guide = false, back = false;
     let all = 0, lx = 0, ly = 0; // every pad together, for the Movies & TV player
+    let xmask = 0; // Xbox (XInput) pads only, for the Medal combo
+    const cap = { psShare: false, psOptions: false, xShare: false, xShareReadable: false };
     for (let i = 0; i < 4; i++) {
       const g = read(i);
       if (!g) { prevSlot[i] = 0; continue; }
       const b = g.wButtons;
       all |= b;
+      xmask |= b;
       if (Math.abs(g.sThumbLX || 0) > Math.abs(lx)) lx = g.sThumbLX || 0;
       if (Math.abs(g.sThumbLY || 0) > Math.abs(ly)) ly = g.sThumbLY || 0;
       if (joining && onPress && (b & 0x1000) && !(prevSlot[i] & 0x1000)) onPress(i);
@@ -111,6 +114,9 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
       let states = [];
       try { states = sony.read(); } catch (_) { states = []; }
       for (const st of states) {
+        if (st.kind === 'xbox') { if (st.xshare) cap.xShare = true; continue; } // only its Share button
+        if (st.share) cap.psShare = true;
+        if (st.options) cap.psOptions = true;
         if (st.ps) guide = true;
         if (st.circle) back = true;
         if (st.share && st.options) combo = true;
@@ -120,6 +126,11 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
       }
     }
     if (onButtons) { try { onButtons(all & ~0x0400, lx, ly); } catch (_) { /* never stop the watcher */ } }
+    if (onCapture) {
+      cap.xShareReadable = !!(sony && sony.xboxCount);
+      cap.xView = !!(xmask & 0x20); cap.xLB = !!(xmask & 0x100); cap.xRB = !!(xmask & 0x200);
+      try { onCapture(cap); } catch (_) { /* never stop the watcher */ }
+    }
     if (guide && !guideWasDown) onGuide();
     guideWasDown = guide;
     if (back && !backWasDown && gameRunning && onBack) onBack();
@@ -138,7 +149,8 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
     start() { if (!timer) timer = setInterval(poll, POLL_MS); },
     stop() { if (timer) { clearInterval(timer); timer = null; } if (sony) sony.close(); },
     setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; },
-    setJoin(on) { joining = !!on; }
+    setJoin(on) { joining = !!on; },
+    get xboxShareReadable() { return !!(sony && sony.xboxCount); }
   };
 }
 

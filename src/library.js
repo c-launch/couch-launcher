@@ -31,6 +31,10 @@ const DEFAULT_SETTINGS = {
   tvAutoPlay: false,     // Movies & TV: play the best match straight away instead of showing the streams
   tvSubLang: 'en',       // Movies & TV: subtitles language ('off' for none)
   mpvPath: '',           // Movies & TV: mpv.exe (found automatically when empty)
+  medalShare: true,      // Share button: tap = Medal screenshot, hold = Medal clip
+  medalClipKey: 'F8',    // Medal's clip hotkey (Medal › Settings › Capture Hotkeys)
+  medalShotKey: '',      // Medal's screenshot hotkey (none until set)
+  medalXbox: 'auto',     // Xbox pads: 'auto' (Share over Bluetooth, else View + RB/LB) | 'share' | 'combo'
   psPads: true,          // read PlayStation pads from the app core (PS button opens the guide)
   autoCloseApps: true,   // close stores the launcher opened when you press the Xbox button to come back
   notifyBattery: true,   // pop-up when a controller battery runs low

@@ -70,6 +70,13 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 - **Clips** (dock, and the guide's Clips tab): your Medal clips and screenshots, read straight from Medal's capture folder (C:\Medal unless you changed it in Medal; *Change folder* if needed). In the player: A play/pause, left/right skip 5 seconds, LB/RB previous/next clip, Y show it in its folder.
 - **Find all art** (Settings › Platforms › Game art) replaces the tile and background of every game; *Find missing art* only fills gaps.
 
+## Clips with Medal
+
+Tap **Share** for a screenshot, hold it for a clip; the launcher presses Medal's own hotkeys (Settings › Controllers › Clips with Medal). Medal needs to be running.
+- **PlayStation:** the Share / Create button. (Share + Options held is still "back to the launcher".) If Steam takes its own screenshot too, turn off Steam's screenshot shortcut for the controller in Steam › Settings › Controller.
+- **Xbox Series:** its Share button works over **Bluetooth** (Windows keeps it to itself on USB or the Xbox wireless adapter). Otherwise hold **View + RB** for a clip, **View + LB** for a screenshot.
+- **Keys:** clips use F8 (Medal's default). Set a screenshot key in Medal › Settings › Capture Hotkeys and pick the same one in the launcher.
+
 ## Players, saves and TV settings
 
 - **Players** (Settings › Controllers › Players, or guide › Profile & system › Set up players): everyone presses A once on their controller, in player order. Every Ryujinx, Dolphin and RPCS3 game then starts with those players, no extra screen. For Xbox-style controllers; Player 1 needs to be set up with a controller in each emulator once (your button layout is copied to the other players). The launcher keeps a backup of each emulator setting it changes (`.couch-original` / `.couch-backup` next to the file). Prefer to pick every time? Settings › Controllers › Players in emulator games › Ask every time.
