@@ -741,3 +741,55 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 /* The launcher's logo (Settings › About) */
 .about-h { align-items: center; justify-content: flex-start; gap: 2.4rem; }
 .about-logo { width: 9.6rem; height: 9.6rem; border-radius: 2.2rem; box-shadow: 0 1rem 3rem rgba(0,0,0,0.35); }
+
+/* ---------- Friends: playing now (Home), join tags, profiles ---------- */
+.home-friends { flex-shrink: 0; }
+.home-friends:empty { display: none; }
+.hf-head { padding-top: 2.4rem; }
+.hf-row { overflow-x: auto; scrollbar-width: none; scroll-padding: 0 5.6rem; }
+.hf-row::-webkit-scrollbar { display: none; }
+.hf-inner { display: flex; gap: 1.6rem; padding: 1.6rem 5.6rem 0.8rem; width: max-content; }
+.hf-card { position: relative; display: flex; align-items: center; gap: 1.4rem; width: 34rem; height: 9.6rem; padding: 0 1.8rem; border-radius: var(--r-card);
+  background: var(--panel-solid); border: 1px solid var(--border); color: var(--text); text-align: left; flex-shrink: 0; }
+.hf-card.focused { background: var(--panel-hover); transform: scale(1.03); }
+.hf-card .fdot { background: #3CC48A; }
+.hf-t { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; flex: 1; }
+.hf-name { font-size: 1.7rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hf-game { font-size: 1.4rem; color: #6FCB8B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.light .hf-game { color: #1F7A3E; }
+.hf-tag { flex-shrink: 0; margin-left: auto; padding: 0.3rem 0.9rem; border-radius: 99rem; font-size: 1.2rem; font-weight: 800; letter-spacing: 0.02em; background: var(--chip); color: var(--sub); }
+.hf-tag.join { background: #3CC48A; color: #04170C; }
+.friend .hf-tag { margin-left: auto; }
+.fpic.small { width: 3.2rem; height: 3.2rem; font-size: 1.4rem; }
+.gjoin span small { display: block; }
+.friend.pw .fpic { opacity: 0.9; }
+
+.layer.fp-layer { display: block; background: var(--bg); overflow: hidden; }
+.fprof { position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none; padding: 6rem 7.2rem 8rem; animation: viewIn var(--t-med) var(--ease) both; }
+.fprof::-webkit-scrollbar { display: none; }
+.fp-head { display: flex; align-items: center; gap: 3.2rem; }
+.fp-av { position: relative; width: 16rem; height: 16rem; border-radius: 50%; background: var(--chip); display: flex; align-items: center; justify-content: center; font-size: 6rem; font-weight: 800; overflow: hidden; flex-shrink: 0; }
+.fp-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.fp-who h1 { margin: 0.2rem 0 0.6rem; font-size: 4.8rem; font-weight: 800; line-height: 1.1; }
+.fp-svc { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sub); }
+.fp-status { font-size: 1.8rem; color: var(--sub); }
+.fp-status.on { color: #6FCB8B; }
+.light .fp-status.on { color: #1F7A3E; }
+.fp-stats { display: flex; gap: 3.2rem; margin-top: 1.8rem; }
+.fp-stats span { display: flex; flex-direction: column; font-size: 1.3rem; color: var(--sub); font-weight: 600; }
+.fp-stats b { font-size: 2.4rem; color: var(--text); font-weight: 800; }
+.fp-acts { display: flex; gap: 1.2rem; margin: 3.2rem 0 1rem; flex-wrap: wrap; }
+.fp-acts:empty { display: none; }
+.fp-note { font-size: 1.6rem; margin: 2rem 0; }
+.fp-h { font-size: 2.4rem; font-weight: 800; margin: 3.6rem 0 1.4rem; }
+.fp-games { display: flex; gap: 1.8rem; overflow-x: auto; scrollbar-width: none; padding: 1rem 0.4rem 1.4rem; margin: -1rem -0.4rem 0; scroll-padding: 0 2rem; }
+.fp-games::-webkit-scrollbar { display: none; }
+.fp-game { display: flex; flex-direction: column; gap: 0.5rem; width: 30rem; flex-shrink: 0; text-align: left; color: var(--text); padding: 0.8rem; border-radius: var(--r-card); }
+.fp-game.focused { background: var(--panel-hover); transform: scale(1.03); }
+.fp-img { display: flex; align-items: center; justify-content: center; aspect-ratio: 460 / 215; border-radius: calc(var(--r-card) * 0.8); background: var(--chip) center / cover no-repeat; color: var(--sub); }
+.fp-img svg { width: 4rem; height: 4rem; }
+.fp-gt { font-size: 1.6rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-gs { font-size: 1.3rem; color: var(--sub); }
+.fp-have { font-size: 1.2rem; font-weight: 800; color: var(--accent); }
+.fp-together { display: grid; grid-template-columns: repeat(auto-fill, minmax(40rem, 1fr)); gap: 0.6rem; }
+.fp-together .mitem span small { display: block; }

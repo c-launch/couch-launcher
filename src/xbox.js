@@ -67,20 +67,60 @@ function createXbox(userDataDir, safeStorage) {
   }
   function parseFriends(j) {
     const people = j.people || (j.content && j.content.people) || [];
-    return people.map((p) => ({
-      xuid: String(p.xuid || ''),
-      gamertag: p.modernGamertag || p.gamertag || p.displayName || 'Friend',
-      name: p.realName || '',
-      pic: p.displayPicRaw || null,
-      online: String(p.presenceState || '').toLowerCase() === 'online',
-      status: p.presenceText || p.presenceState || '',
-      gamerscore: Number(p.gamerScore) || 0,
-      favorite: !!p.isFavorite
-    })).sort((a, b) => (b.online - a.online) || (b.favorite - a.favorite) || a.gamertag.localeCompare(b.gamertag));
+    return people.map((p) => {
+      const online = String(p.presenceState || '').toLowerCase() === 'online';
+      return {
+        xuid: String(p.xuid || ''),
+        gamertag: p.modernGamertag || p.gamertag || p.displayName || 'Friend',
+        name: p.realName || '',
+        pic: p.displayPicRaw || null,
+        online,
+        status: p.presenceText || p.presenceState || '',
+        gamerscore: Number(p.gamerScore) || 0,
+        favorite: !!p.isFavorite,
+        service: 'xbox',
+        game: online ? gameOf(p) : null
+      };
+    }).sort((a, b) => (b.online - a.online) || (b.favorite - a.favorite) || a.gamertag.localeCompare(b.gamertag));
+  }
+
+  // Not games: what the Xbox shows when someone is on the dashboard or in an app.
+  const NOT_GAMES = /^(online|offline|away|busy|home|xbox|xbox app|xbox home|xbox console companion|microsoft store|store|settings|guide|last seen.*|looking for group|netflix|youtube|spotify.*|twitch|disney\+?|hulu|prime video|amazon prime video|max|hbo max|plex|edge|microsoft edge|apple tv|apple music|xbox game bar|game bar)$/i;
+  function gameOf(p) {
+    const d = (Array.isArray(p.presenceDetails) ? p.presenceDetails : []).find((x) => x && x.IsGame && String(x.State || '').toLowerCase() === 'active' && x.PresenceText);
+    let t = d ? String(d.PresenceText) : String(p.presenceText || '');
+    // Rich presence like "Halo Infinite - In a match": the game is the first part.
+    if (!d) t = t.split(/\s[-–|:]\s/)[0];
+    t = t.trim();
+    return t && !NOT_GAMES.test(t) && t.length <= 80 ? t : null;
+  }
+  function parseTitles(j) {
+    const titles = j.titles || (j.content && j.content.titles) || [];
+    return titles.filter((t) => t && t.name && (t.type === 'Game' || !t.type || (Array.isArray(t.devices) && t.devices.length))).map((t) => {
+      const a = t.achievement || {};
+      return {
+        title: String(t.name), titleId: t.titleId ? String(t.titleId) : null, img: t.displayImage || null,
+        gamerscore: Number(a.currentGamerscore) || 0, total: Number(a.totalGamerscore) || 0, pct: Number(a.progressPercentage) || 0,
+        last: Date.parse((t.titleHistory && t.titleHistory.lastTimePlayed) || '') || 0
+      };
+    }).sort((a, b) => b.last - a.last);
+  }
+  // A friend's Xbox profile: gamerpic, gamerscore and what they've played lately.
+  async function friendProfile(xuid) {
+    xuid = String(xuid || '');
+    if (!/^\d{1,20}$/.test(xuid)) throw new Error('Unknown Xbox friend');
+    const acc = parseAccount(await call('/account/' + xuid));
+    let recent = [];
+    for (const ep of ['/player/titleHistory/' + xuid, '/achievements/player/' + xuid]) {
+      try { recent = parseTitles(await call(ep)).slice(0, 8); if (recent.length) break; } catch (_) { /* try the other */ }
+    }
+    return { id: xuid, xuid, service: 'xbox', name: acc.gamertag, gamertag: acc.gamertag, pic: acc.pic, gamerscore: acc.gamerscore, recent };
   }
 
   return {
     connected: () => !!readKey(),
+    friendProfile,
+    _parse: { friends: (j) => parseFriends(j), titles: (j) => parseTitles(j) },
     async connect(key) {
       const k = String(key || '').trim();
       if (k.length < 10) throw new Error('That doesn’t look like an API key.');
@@ -95,3 +135,4 @@ function createXbox(userDataDir, safeStorage) {
 }
 
 module.exports = { createXbox };
+

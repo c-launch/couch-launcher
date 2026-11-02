@@ -61,9 +61,26 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
       online: state > 0 || !!game,
       status: game ? 'Playing ' + game : STATES[state] || 'Online',
       favorite: false,
-      service: 'steam'
+      service: 'steam',
+      steamid: p.steamid,
+      game: game || null,
+      gameid: p.gameid ? String(p.gameid) : null,
+      // Set when they're in a lobby or on a server you can join (and their profile is public).
+      lobby: p.lobbysteamid && p.lobbysteamid !== '0' ? String(p.lobbysteamid) : null,
+      server: p.gameserverip && !/^0\.0\.0\.0/.test(p.gameserverip) ? String(p.gameserverip) : null,
+      picBig: p.avatarfull || null
     };
   };
+  const appImg = (appid) => 'https://cdn.cloudflare.steamstatic.com/steam/apps/' + appid + '/header.jpg';
+  async function achOf(key, steamid, appid) {
+    let j;
+    try { j = await get(API + '/ISteamUserStats/GetPlayerAchievements/v1/?key=' + encodeURIComponent(key) + '&steamid=' + steamid + '&appid=' + appid + '&l=english'); }
+    catch (_) { return null; } // no achievements, or game details are private
+    const list = (j.playerstats && j.playerstats.achievements) || [];
+    if (!list.length) return null;
+    const got = list.filter((a) => a.achieved === 1);
+    return { got: got.length, total: list.length, recent: got.sort((a, b) => (b.unlocktime || 0) - (a.unlocktime || 0)).slice(0, 3).map((a) => a.name || a.apiname) };
+  }
 
   async function summaries(key, ids) {
     const out = [];
@@ -104,13 +121,41 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
       const c = read();
       if (!c) throw new Error('Steam not connected');
       if (!/^\d{1,10}$/.test(String(appid))) return null;
-      let j;
-      try { j = await get(API + '/ISteamUserStats/GetPlayerAchievements/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + c.steamid + '&appid=' + appid + '&l=english'); }
-      catch (_) { return null; } // game has no achievements, or your game details are private
-      const list = (j.playerstats && j.playerstats.achievements) || [];
-      if (!list.length) return null;
-      const got = list.filter((a) => a.achieved === 1);
-      return { got: got.length, total: list.length, recent: got.sort((a, b) => (b.unlocktime || 0) - (a.unlocktime || 0)).slice(0, 3).map((a) => a.name || a.apiname) };
+      return achOf(c.key, c.steamid, appid);
+    },
+    // A friend's profile: name, picture, level, games, what they've played lately.
+    async profile(steamid) {
+      const c = read();
+      if (!c) throw new Error('Steam not connected');
+      steamid = String(steamid || '');
+      if (!/^7656\d{13}$/.test(steamid)) throw new Error('Unknown Steam friend');
+      const [p] = await summaries(c.key, [steamid]);
+      if (!p) throw new Error('Couldn’t load that Steam profile');
+      const f = person(p);
+      let level = null, games = null, recent = [];
+      const open = Number(p.communityvisibilitystate) === 3; // 3 = public
+      if (open) {
+        await Promise.all([
+          get(API + '/IPlayerService/GetSteamLevel/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid).then((j) => { level = j.response && typeof j.response.player_level === 'number' ? j.response.player_level : null; }, () => {}),
+          get(API + '/IPlayerService/GetOwnedGames/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid + '&include_played_free_games=1').then((j) => { games = j.response && typeof j.response.game_count === 'number' ? j.response.game_count : null; }, () => {}),
+          get(API + '/IPlayerService/GetRecentlyPlayedGames/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + steamid + '&count=8').then((j) => {
+            recent = ((j.response && j.response.games) || []).filter((g) => g && g.appid).map((g) => ({
+              appid: String(g.appid), title: g.name || 'Steam game', img: appImg(g.appid),
+              hours: Math.round((g.playtime_forever || 0) / 6) / 10, hours2w: Math.round((g.playtime_2weeks || 0) / 6) / 10
+            }));
+          }, () => {})
+        ]);
+      }
+      return Object.assign(f, { id: f.xuid, name: f.gamertag, pic: f.picBig || f.pic, level, games, recent, private: !open,
+        since: p.timecreated ? p.timecreated * 1000 : null, lastOnline: p.lastlogoff ? p.lastlogoff * 1000 : null });
+    },
+    // Your achievements next to a friend's for one game.
+    async compare(steamid, appid) {
+      const c = read();
+      if (!c) throw new Error('Steam not connected');
+      if (!/^7656\d{13}$/.test(String(steamid)) || !/^\d{1,10}$/.test(String(appid))) return null;
+      const [mine, theirs] = await Promise.all([achOf(c.key, c.steamid, appid), achOf(c.key, String(steamid), appid)]);
+      return mine || theirs ? { mine, theirs } : null;
     },
     // Your own Steam name, picture, level and game count (for the launcher's profile).
     async me() {
