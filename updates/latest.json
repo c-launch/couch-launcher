@@ -1,6 +1,6 @@
 {
- "version": "1.14.11",
- "notes": "Medal: Share now works during games. Windows only gives the Xbox controller's Bluetooth data to the app in front, so a small background reader keeps reading Share while a game is in front (the Share test shows it). Friend profiles: with no buttons in the header, Up shows the header again instead of getting stuck. Xbox profiles that xbl.io sends in a different format now load.",
- "file": "CouchLauncher-update-1.14.11.zip",
- "size": 302619
+ "version": "1.14.12",
+ "notes": "Home: the game's name no longer gets its bottom (and its shadow) cut off; long names get smaller to fit.",
+ "file": "CouchLauncher-update-1.14.12.zip",
+ "size": 302748
 }
