@@ -156,6 +156,12 @@ img { -webkit-user-drag: none; }
 .gitem { display: flex; flex-direction: column; gap: 0.9rem; min-width: 0; }
 .gitem .tile { width: 100%; height: auto; aspect-ratio: 1 / 1; transform-origin: center; }
 .gitem .name { font-size: 1.4rem; font-weight: 600; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--t-fast); }
+.gitem .sub { font-size: 1.2rem; color: var(--sub); opacity: 0.75; margin-top: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.ni .badge { display: flex; align-items: center; padding: 0.4rem; }
+.tile.ni .badge svg { width: 1.6rem; height: 1.6rem; }
+.tile.ni img.loaded { opacity: 0.82; }
+.tile.ni.focused img.loaded { opacity: 1; }
+.ni-note { margin: 0 0 1.8rem; }
 .gitem .tile.focused + .name { color: var(--text); }
 .gitem .tile.focused .label { opacity: 0; }
 .empty { padding: 8rem 0; text-align: center; color: var(--sub); font-size: 1.8rem; display: flex; flex-direction: column; align-items: center; gap: 2rem; }
@@ -782,6 +788,29 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .hf-tag { flex-shrink: 0; margin-left: auto; padding: 0.3rem 0.9rem; border-radius: 99rem; font-size: 1.2rem; font-weight: 800; letter-spacing: 0.02em; background: var(--chip); color: var(--sub); }
 .hf-tag.join { background: #3CC48A; color: #04170C; }
 .friend .hf-tag { margin-left: auto; }
+/* ---------- Free games & deals (Home) ---------- */
+.home-deals { flex-shrink: 0; }
+.home-deals:empty { display: none; }
+.dl-card { position: relative; display: flex; flex-direction: column; width: 30rem; flex-shrink: 0; border-radius: var(--r-card); overflow: hidden; text-align: left;
+  background: var(--panel-solid); border: 1px solid var(--border); color: var(--text); }
+.dl-card.focused { background: var(--panel-hover); transform: scale(1.04); box-shadow: 0 1.4rem 3.2rem rgba(0,0,0,0.45); z-index: 2; }
+.dl-img { position: relative; display: block; width: 100%; height: 14rem; background: var(--chip); color: var(--sub); flex-shrink: 0; }
+.dl-img > svg { position: absolute; left: 50%; top: 50%; width: 4rem; height: 4rem; transform: translate(-50%, -50%); opacity: 0.6; }
+.dl-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--t-med) ease; }
+.dl-img img.loaded { opacity: 1; }
+.dl-card.soon .dl-img img.loaded { opacity: 0.75; }
+.dl-tags { position: absolute; left: 1rem; top: 1rem; display: flex; gap: 0.6rem; }
+.dl-tag { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.9rem; border-radius: 99rem; font-size: 1.25rem; font-weight: 800; letter-spacing: 0.02em;
+  background: rgba(10,13,18,0.78); color: #E7ECF1; }
+.dl-tag svg { width: 1.4rem; height: 1.4rem; }
+.dl-tag.free { background: #3CC48A; color: #04170C; }
+.dl-tag.off { background: #A4D007; color: #1B2600; }
+.dl-tag.have { background: rgba(10,13,18,0.78); color: #9FE0B8; }
+.dl-t { display: flex; flex-direction: column; gap: 0.4rem; padding: 1.2rem 1.4rem 1.4rem; min-width: 0; }
+.dl-name { font-size: 1.7rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-sub, .dl-price { font-size: 1.4rem; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-price b { color: var(--text); font-size: 1.6rem; margin-right: 0.6rem; }
+.dl-price s { opacity: 0.7; }
 .fpic.small { width: 3.2rem; height: 3.2rem; font-size: 1.4rem; }
 .gjoin span small { display: block; }
 .friend.pw .fpic { opacity: 0.9; }

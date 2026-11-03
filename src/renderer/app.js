@@ -142,7 +142,9 @@
     minus: '<path d="M5 12h14"/>',
     volume: '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/>',
     shuffle: '<path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/>',
-    monitor: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>'
+    monitor: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
+    gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
+    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'
   };
   const icon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (I[n] || '') + '</svg>';
   const starIcon = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' + I.star + '</svg>';
@@ -280,6 +282,83 @@
     });
   }
   (async () => { if (OVERLAY) return; try { S.news = await api.news(false); S.newsErr = null; } catch (e) { S.newsErr = e.message; } paintNews(); })();
+
+  // ----- Free games and deals (Home)
+  const money = (n) => '$' + Number(n).toFixed(2);
+  const shortDay = (t) => new Date(t).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  // Free now, free soon, the games you watch, then the best deals.
+  function dealItems() {
+    const v = S.deals;
+    if (!v) return [];
+    const rank = (x) => (x.owned ? 2 : x.upcoming ? 1 : 0); // free now, free soon, ones you have
+    const free = (v.free || []).slice().sort((a, b) => rank(a) - rank(b));
+    const watching = (v.watch || []).map((w) => ({ id: 'w:' + w.gameID, kind: 'watch', gameID: w.gameID, title: w.title, image: w.image, store: (w.now && w.now.store) || w.store, price: w.now ? w.now.price : w.price, normal: w.now ? w.now.normal : null, best: w.best, was: w.price }));
+    const watched = new Set(watching.map((w) => w.gameID));
+    return [].concat(free, watching, (v.deals || []).filter((d) => !watched.has(d.gameID))).slice(0, 24);
+  }
+  function dealCardHTML(x, i) {
+    let tag, sub;
+    if (x.kind === 'free') {
+      tag = x.owned ? '<span class="dl-tag have">In your library</span>' : x.upcoming ? '<span class="dl-tag soon">Free ' + esc(shortDay(x.from)) + '</span>' : '<span class="dl-tag free">Free</span>';
+      sub = x.upcoming || x.owned || !x.until ? x.store : x.store + ' · until ' + shortDay(x.until);
+    } else if (x.kind === 'watch') {
+      tag = '<span class="dl-tag watch">' + icon('eye') + 'Watching</span>';
+      sub = money(x.price) + ' at ' + x.store + (x.normal && x.normal > x.price ? ' · was ' + money(x.normal) : '');
+    } else {
+      tag = '<span class="dl-tag off">−' + x.savings + '%</span>' + (x.watched ? '<span class="dl-tag watch">' + icon('eye') + '</span>' : '');
+      sub = '';
+    }
+    const price = x.kind === 'deal' ? '<span class="dl-price"><b>' + money(x.price) + '</b><s>' + money(x.normal) + '</s> · ' + esc(x.store) + '</span>' : '<span class="dl-sub">' + esc(sub) + '</span>';
+    return '<button class="dl-card' + (x.upcoming ? ' soon' : '') + '" data-nav data-key="dl-' + esc(x.id) + '" data-zone="deals" data-action="deal" data-i="' + i + '">' +
+      '<span class="dl-img">' + icon(x.kind === 'free' ? 'gift' : 'store') + (x.image ? '<img src="' + esc(x.image) + '" alt="" decoding="async">' : '') + '<span class="dl-tags">' + tag + '</span></span>' +
+      '<span class="dl-t"><span class="dl-name">' + esc(x.title) + '</span>' + price + '</span></button>';
+  }
+  function dealsHTML() {
+    if (S.lib && S.lib.settings.showDeals === false) return '';
+    const items = dealItems();
+    if (!items.length) return '';
+    const free = items.filter((x) => x.kind === 'free' && !x.upcoming && !x.owned).length;
+    return '<div class="news-head hf-head">' + icon('gift') + '<h2>Free games &amp; deals</h2><span class="news-sub">' + (free ? free + ' free to keep right now · ' : '') + 'Prices in US$ from CheapShark</span></div>' +
+      '<div class="hf-row"><div class="hf-inner">' + items.map(dealCardHTML).join('') + '</div></div>';
+  }
+  function paintDeals() {
+    const hosts = $$('#home-deals'), host = hosts[hosts.length - 1];
+    if (!host || S.view !== 'home') return;
+    const html = dealsHTML();
+    if (host.dataset.sig === html) return;
+    host.dataset.sig = html;
+    const f = currentFocus(), key = dealFocus || (f && f.closest('.home-deals') ? f.dataset.key : null);
+    dealFocus = null;
+    host.innerHTML = html;
+    if (key) { const el = $('[data-key="' + cssEsc(key) + '"]', host) || $('[data-nav]', host) || $('[data-key="c-lib"]'); if (el) setFocus(el, { instant: true }); }
+  }
+  let dealsAt = 0, dealFocus = null;
+  async function loadDeals(force) {
+    if (OVERLAY || (S.lib && S.lib.settings.showDeals === false)) return;
+    if (!force && S.deals && Date.now() - dealsAt < 10 * 60e3) { paintDeals(); return; }
+    dealsAt = Date.now();
+    try { S.deals = await api.deals(!!force); } catch (_) { /* offline: Home just doesn't show it */ }
+    paintDeals();
+  }
+  async function dealMenu(x) {
+    if (!x) return;
+    const items = [];
+    if (x.kind === 'free') items.push({ id: 'open', label: x.owned ? 'Open in ' + x.store : x.upcoming ? 'See it in ' + x.store : 'Get it free in ' + x.store, icon: 'gift' });
+    else items.push({ id: 'open', label: 'Open at ' + x.store + ' · ' + money(x.price), icon: 'store' });
+    if (x.kind === 'deal') items.push(x.watched ? { id: 'unwatch', label: 'Stop watching the price', icon: 'x' } : { id: 'watch', label: 'Watch the price (tells you when it drops)', icon: 'eye' });
+    if (x.kind === 'watch') items.push({ id: 'unwatch', label: 'Stop watching the price', icon: 'x' });
+    items.push({ id: 'hide', label: 'Hide free games & deals on Home', icon: 'x' });
+    const head = x.kind === 'watch' ? x.title + ' · lowest so far ' + money(x.best) : x.kind === 'deal' ? x.title + ' · ' + money(x.price) + ' (−' + x.savings + '%)'
+      : x.title + (x.upcoming ? ' · free ' + shortDay(x.from) + (x.until ? ' to ' + shortDay(x.until) : '') : x.until ? ' · free until ' + shortDay(x.until) : '') + (x.was ? ' · normally ' + x.was : '');
+    const pick = await openMenu(head, items);
+    try {
+      if (pick === 'open') { await api.dealOpen(x.id); return; }
+      if (pick === 'watch') { S.deals = await api.dealWatch(x.id); dealFocus = 'dl-w:' + x.gameID; toast('Watching ' + x.title + ': you’ll hear when it gets cheaper'); }
+      if (pick === 'unwatch') { S.deals = await api.dealUnwatch(x.gameID); toast('Stopped watching ' + x.title); }
+      if (pick === 'hide') { S.lib.settings.showDeals = false; save(); toast('Hidden. Turn it back on in Settings › Controllers'); const c = $('[data-key="c-lib"]'); if (c) setFocus(c); }
+    } catch (e) { toast(e.message, true); }
+    paintDeals();
+  }
 
   // ---- Medal clips: the Clips page (dock), the guide's Clips tab, and the player.
   let clipsCache = null;
@@ -457,6 +536,20 @@
     return gs;
   }
 
+  function notInstalledHTML() {
+    const list = notInstalledList();
+    const sorts = [['recent', 'Recently played'], ['az', 'A–Z'], ['most', 'Most played']];
+    let h = '<div class="toolbar"><div class="pills">' + sorts.map(([k, l]) => '<button class="pill' + (S.libSort === k ? ' sel' : '') + '" data-nav data-key="s-' + k + '" data-zone="tools" data-action="sort" data-s="' + k + '">' + l + '</button>').join('') +
+      (S.libSearch ? '<button class="pill" data-nav data-key="s-clear" data-zone="tools" data-action="clear-search">' + icon('x') + 'Clear search</button>' : '') +
+      '</div><button class="search' + (S.libSearch ? ' has' : '') + '" data-nav data-key="s-search" data-zone="tools" data-action="search">' + icon('search') + '<span>' + esc(S.libSearch || 'Search your games') + '</span></button></div>';
+    h += '<p class="field-note ni-note">Games in your Steam library that aren’t on this PC. Choose one to install it with Steam; it shows up here with its download progress.</p>';
+    if (!list.length) return h + '<div class="empty"><b>' + (S.libSearch ? 'No games match “' + esc(S.libSearch) + '”' : 'Everything you own is installed') + '</b></div>';
+    return h + '<div class="grid">' + list.map((g) => '<div class="gitem"><button class="tile ni" data-nav data-key="ni-' + esc(g.appid) + '" data-zone="grid" data-action="steam-install" data-app="' + esc(g.appid) + '" aria-label="' + esc(g.title) + '">' +
+      '<div class="ph">' + esc(g.title) + '</div>' + (g.img ? '<img src="' + esc(g.img) + '"' + (g.alt ? ' data-alt="' + esc(g.alt) + '"' : '') + ' alt="" decoding="async">' : '') +
+      '<span class="badge">' + icon('download') + '</span><div class="label">' + esc(g.title) + '</div></button>' +
+      '<div class="name">' + esc(g.title) + '</div><div class="sub">' + esc(g.hours ? fmtHours(g.hours) + ' played' : 'Never played') + '</div></div>').join('') + '</div>';
+  }
+
   // ---------------------------------------------------------------- tiles
   function tileHTML(g, o) {
     o = o || {};
@@ -472,7 +565,12 @@
   // Fade images in when they load; drop broken ones so the placeholder shows.
   document.addEventListener('load', (e) => { if (e.target && e.target.tagName === 'IMG') e.target.classList.add('loaded'); }, true);
   // (Movies & TV handles its own: it tries the poster first, then shows the title.)
-  document.addEventListener('error', (e) => { if (e.target && e.target.tagName === 'IMG' && !e.target.closest('.tv-layer')) e.target.remove(); }, true);
+  document.addEventListener('error', (e) => {
+    const im = e.target;
+    if (!im || im.tagName !== 'IMG' || im.closest('.tv-layer')) return;
+    if (im.dataset.alt) { const a = im.dataset.alt; delete im.dataset.alt; im.src = a; return; } // a second picture to try
+    im.remove();
+  }, true);
 
   // ---------------------------------------------------------------- top bar & prompts
   // Controllers with their battery (from the app core); falls back to a simple count.
@@ -588,7 +686,7 @@
       const target = S.baseFocus && $('[data-key="' + cssEsc(S.baseFocus) + '"]', next);
       setFocus(target || $('[data-nav]', next) || $('[data-nav]', $('#topbar')), { instant: true });
     }
-    if (S.view === 'home') { updateHero(true); paintFriendsNow(); }
+    if (S.view === 'home') { updateHero(true); paintFriendsNow(); loadDeals(false); }
     if (S.downloads && S.downloads.length) paintDownloads();
     updatePrompts();
   }
@@ -628,7 +726,7 @@
       '<div class="row home-tiles"><div class="row-inner">' + tiles + '</div></div>' +
       '<div class="row home-cards"><div class="row-inner">' + cards.map(([k, ic, t, s, attrs]) =>
         '<button class="card" data-nav data-key="' + k + '" data-zone="cards" data-lock="cards" ' + attrs + '>' + icon(ic) + '<div><div class="t">' + t + '</div><div class="s">' + esc(s) + '</div></div></button>').join('') + '</div></div>' +
-      '<section class="home-news" aria-label="Gaming news"><div class="home-friends" id="home-friends"></div><div class="news-head">' + icon('news') + '<h2>Gaming news</h2><span class="news-sub" id="news-sub">' + esc(newsSub()) + '</span></div>' +
+      '<section class="home-news" aria-label="Gaming news"><div class="home-friends" id="home-friends"></div><div class="home-deals" id="home-deals">' + dealsHTML() + '</div><div class="news-head">' + icon('news') + '<h2>Gaming news</h2><span class="news-sub" id="news-sub">' + esc(newsSub()) + '</span></div>' +
       '<div class="news-list" id="news-list">' + newsCardsHTML() + '</div></section>';
   }
 
@@ -707,13 +805,37 @@
     for (const k of Object.keys(SOURCES)) { const c = count((g) => g.source === k); if (c) filters.push([k, SOURCES[k].name, c]); }
     const hiddenCount = allGames().filter((g) => g.hidden).length;
     if (hiddenCount) filters.push(['hidden', 'Hidden', hiddenCount]);
+    // Steam games you own that aren't installed (loaded when the library opens).
+    if (S.notInst && S.notInst.list.length) filters.push(['steam-get', 'Steam · not installed', S.notInst.list.length]);
     if (!filters.some((f) => f[0] === S.libFilter)) S.libFilter = 'all';
+    loadNotInstalled(false);
     return '<div class="shell"><aside class="side"><h1>My library</h1>' +
       filters.map(([k, label, c]) => '<button class="sideitem' + (S.libFilter === k ? ' sel' : '') + '" data-nav data-key="f-' + k + '" data-zone="side" data-action="filter" data-f="' + k + '"><span>' + esc(label) + '</span><span class="n">' + c + '</span></button>').join('') +
       '<div class="spacer"></div><button class="dashed" data-nav data-key="l-add" data-zone="side" data-action="add">' + icon('plus') + 'Add a game</button></aside>' +
       '<section class="content" id="content">' + libraryContentHTML() + '</section></div>';
   }
+  function notInstalledList() {
+    let gs = ((S.notInst && S.notInst.list) || []).slice();
+    if (S.libSearch) { const q = S.libSearch.toLowerCase(); gs = gs.filter((g) => g.title.toLowerCase().includes(q)); }
+    if (S.libSort === 'az') gs.sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }));
+    else if (S.libSort === 'most') gs.sort((a, b) => (b.hours - a.hours) || a.title.localeCompare(b.title));
+    else gs.sort((a, b) => (b.last - a.last) || a.title.localeCompare(b.title));
+    return gs;
+  }
+  let notInstAt = 0, notInstBusy = false;
+  async function loadNotInstalled(force) {
+    if (OVERLAY || notInstBusy || (!force && Date.now() - notInstAt < 5 * 60e3)) return;
+    notInstBusy = true; notInstAt = Date.now();
+    let r = null;
+    try { r = await api.steamNotInstalled(!!force); } catch (e) { r = S.notInst ? Object.assign({}, S.notInst, { err: e.message }) : null; }
+    notInstBusy = false;
+    if (!r || !Array.isArray(r.list)) return;
+    const before = JSON.stringify(((S.notInst && S.notInst.list) || []).map((g) => g.appid));
+    S.notInst = r;
+    if (S.view === 'library' && !layers.length && before !== JSON.stringify(r.list.map((g) => g.appid))) rerenderKeepFocus();
+  }
   function libraryContentHTML() {
+    if (S.libFilter === 'steam-get') return notInstalledHTML();
     const list = libList();
     const sorts = [['recent', 'Recently played'], ['az', 'A–Z'], ['most', 'Most played']];
     let h = '<div class="toolbar"><div class="pills">' + sorts.map(([k, l]) => '<button class="pill' + (S.libSort === k ? ' sel' : '') + '" data-nav data-key="s-' + k + '" data-zone="tools" data-action="sort" data-s="' + k + '">' + l + '</button>').join('') +
@@ -843,6 +965,9 @@
         toggleHTML('c-njoin', 'Tell me when a friend starts a game I can join', S.lib.settings.notifyJoin !== false, 'Steam friends in a lobby or on a server (their Steam profile has to be public). Join from the alert or the guide.', 'set-toggle', 'data-k="notifyJoin"') +
         toggleHTML('c-ncall', 'Tell me when someone joins or leaves my Discord call', S.lib.settings.notifyCalls !== false, 'Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="notifyCalls"') +
         toggleHTML('c-ndl', 'Tell me when a Steam download finishes', S.lib.settings.notifyDownloads !== false, 'Installs and updates.', 'set-toggle', 'data-k="notifyDownloads"') +
+        toggleHTML('c-deals', 'Show free games and deals on Home', S.lib.settings.showDeals !== false, 'Epic’s weekly free games, giveaways and the best deals at Steam, GOG, Humble and other official stores.', 'set-toggle', 'data-k="showDeals"') +
+        toggleHTML('c-nfree', 'Tell me when there’s a new free game', S.lib.settings.notifyFree !== false, 'Free to keep, on Epic and other stores (not games you have).', 'set-toggle', 'data-k="notifyFree"') +
+        toggleHTML('c-nprice', 'Tell me when a game I watch gets cheaper', S.lib.settings.notifyPrice !== false, 'Watch a deal from Home (A › Watch the price).', 'set-toggle', 'data-k="notifyPrice"') +
         toggleHTML('c-pspads', 'Read PlayStation controllers in the background', S.lib.settings.psPads !== false, 'The PS button opens the guide, also during games (DualShock 4, DualSense). Turn off if a PlayStation controller acts up.', 'set-toggle', 'data-k="psPads"') +
         toggleHTML('c-autoclose', 'Close stores when you press the Xbox button to come back', S.lib.settings.autoCloseApps !== false, 'Steam Big Picture, Epic Games, the Xbox app and Microsoft Store close when you return to the launcher. Music apps and Discord keep running.', 'set-toggle', 'data-k="autoCloseApps"') + '</div>' +
         '<div class="sub-h">Clips with Medal</div><div class="toggles" style="grid-template-columns:1fr">' +
@@ -3420,6 +3545,17 @@
       case 'profile': return openProfile();
       case 'stores': return storesMenu();
       case 'news': { const it = S.news && S.news.items[Number(el.dataset.i)]; if (it) openNews(it); return; }
+      case 'deal': return dealMenu(dealItems()[Number(el.dataset.i)]);
+      case 'steam-install': {
+        const g = ((S.notInst && S.notInst.list) || []).find((x) => x.appid === el.dataset.app);
+        if (!g) return;
+        const pick = await openMenu(g.title + (g.hours ? ' · ' + fmtHours(g.hours) + ' played' : ''), [{ id: 'install', label: 'Install with Steam', icon: 'download' }, { id: 'store', label: 'Open its Steam store page', icon: 'store' }]);
+        try {
+          if (pick === 'install') { await api.steamInstall(g.appid); toast('Steam is opening the install screen for ' + g.title); }
+          if (pick === 'store') await api.friendStore(null, { appid: g.appid });
+        } catch (e) { toast(e.message, true); }
+        return;
+      }
       case 'friend': return friendMenu(el.dataset.friend);
       case 'pick-mode': {
         const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
@@ -3903,11 +4039,12 @@
     const known = new Set(allGames().map(steamAppId).filter(Boolean));
     const fresh = S.downloads.filter((d) => !known.has(d.appid) && !dlSeen.has(d.appid));
     for (const d of fresh) dlSeen.add(d.appid);
-    if (fresh.length && !OVERLAY) rescan('steam', true);
+    if (fresh.length && !OVERLAY) { rescan('steam', true); notInstAt = 0; } // a new install leaves Not installed
     paintDownloads();
   });
   (async () => { try { S.downloads = await api.downloads(); paintDownloads(); } catch (_) { /* not available */ } })();
   api.on('news', (n) => { if (n && Array.isArray(n.items)) { S.news = n; S.newsErr = null; paintNews(); } });
+  api.on('deals', (v) => { if (v && Array.isArray(v.free)) { S.deals = v; dealsAt = Date.now(); paintDeals(); } });
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
   api.on('pads', (list) => { S.pads = Array.isArray(list) ? list : null; const p = $('#padcount'); if (p) p.innerHTML = padsHTML(); if (S.onPads) S.onPads(); });
   api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.join ? n.title + ' · open Friends to join' : n.title); });

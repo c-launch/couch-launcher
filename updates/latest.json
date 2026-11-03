@@ -1,6 +1,6 @@
 {
- "version": "1.14.12",
- "notes": "Home: the game's name no longer gets its bottom (and its shadow) cut off; long names get smaller to fit.",
- "file": "CouchLauncher-update-1.14.12.zip",
- "size": 302748
+ "version": "1.15.0",
+ "notes": "New: Free games & deals on Home (Epic's weekly free games, giveaways and the best deals at official stores; watch a price and get told when it drops). New: My library › Steam · not installed lists Steam games you own that aren't on this PC; choose one to install it with Steam (Big Picture).",
+ "file": "CouchLauncher-update-1.15.0.zip",
+ "size": 307952
 }
