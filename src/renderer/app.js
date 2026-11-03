@@ -2204,12 +2204,8 @@
             item('g-tvresume', 'resume', tvn.yt ? 'Back to YouTube' : 'Resume watching', 'data-act="tv-resume"') +
             item('g-tvstop', 'x', tvn.yt ? 'Close YouTube' : 'Stop watching', 'data-act="tv-stop"', 'danger') + '<div class="gsep"></div>';
         }
-        h += musicHTML();
-        // Friends who started a game you can join (Steam lobbies / servers).
-        if (joinables.length) h += '<div class="glabel">Join a friend</div>' + joinables.slice(0, 3).map((f) =>
-          '<button class="mitem gjoin" data-nav data-key="gj-' + esc(f.id) + '" data-zone="gbody" data-act="friend" data-friend="' + esc(f.id) + '">' +
-          '<span class="fpic small">' + esc(f.gamertag.charAt(0).toUpperCase()) + (f.pic ? '<img src="' + esc(f.pic) + '" alt="">' : '') + '</span>' +
-          '<span>Join ' + esc(f.gamertag) + '<small>' + esc(f.game || 'Steam game') + '</small></span></button>').join('') + '<div class="gsep"></div>';
+        // The game you're in comes first, right under Home: opening the guide shows it and
+        // Resume without scrolling (Home used to be scrolled out of view).
         const cur = S.playing && byId(S.playing.id);
         if (cur) {
           h += '<div class="glabel">Now playing</div><div class="gnow">' + thumb(cur) + '<div class="gnow-t">' + esc(cur.title) +
@@ -2217,6 +2213,12 @@
             item('g-resume', 'resume', 'Resume game', 'data-act="resume"') +
             (status && status.canClose ? item('g-close', 'x', 'Close game', 'data-act="close"', 'danger') : '') + '<div class="gsep"></div>';
         }
+        // Friends who started a game you can join (Steam lobbies / servers).
+        if (joinables.length) h += '<div class="glabel">Join a friend</div>' + joinables.slice(0, 3).map((f) =>
+          '<button class="mitem gjoin" data-nav data-key="gj-' + esc(f.id) + '" data-zone="gbody" data-act="friend" data-friend="' + esc(f.id) + '">' +
+          '<span class="fpic small">' + esc(f.gamertag.charAt(0).toUpperCase()) + (f.pic ? '<img src="' + esc(f.pic) + '" alt="">' : '') + '</span>' +
+          '<span>Join ' + esc(f.gamertag) + '<small>' + esc(f.game || 'Steam game') + '</small></span></button>').join('') + '<div class="gsep"></div>';
+        h += musicHTML();
         const recentGames = games().filter((g) => !cur || g.id !== cur.id).sort((a, b) => (b.lastPlayed - a.lastPlayed) || (b.addedAt - a.addedAt)).slice(0, 6);
         // Movies & TV and YouTube sit in Recent too, by when you last used them.
         const lastApps = S.lib.settings.lastApps || {};
@@ -2398,8 +2400,9 @@
             '<span class="mvpct">' + icon('volume') + music.volume + '%</span>' +
             '<button class="mvbtn" data-nav data-key="m-vup" data-zone="gbody" data-lock="mvol" data-act="m-volup" aria-label="' + esc(music.app) + ' volume up">' + icon('plus') + '</button></div>'
           : '') +
-        '<div class="gmrow">' + pill('m-open-cur', 'link', 'Open app', 'data-act="m-open" data-app="' + esc(music.app === 'Spotify' ? 'Spotify' : 'Apple Music') + '"') +
-        pill('m-open-other', 'music', other === 'Apple Music' ? 'Apple' : 'Spotify', 'data-act="m-open" data-app="' + other + '" aria-label="Open ' + other + '"') +
+        // Which app each button opens, by name ("Open app" didn't say which).
+        '<div class="gmrow">' + pill('m-open-cur', 'link', 'Open ' + (music.app === 'Spotify' ? 'Spotify' : 'Apple Music'), 'data-act="m-open" data-app="' + esc(music.app === 'Spotify' ? 'Spotify' : 'Apple Music') + '"') +
+        pill('m-open-other', 'music', other, 'data-act="m-open" data-app="' + other + '" aria-label="Open ' + other + '"') +
         pill('m-pref', 'refresh', 'Control: ' + prefLabel, 'data-act="m-pref"') + '</div></div><div class="gsep"></div>';
     }
     let musicSig = '';
