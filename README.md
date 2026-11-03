@@ -1,6 +1,6 @@
 # Couch Launcher
 
-A controller-first, console-style game launcher for Windows. It starts full screen when you sign in, finds your Steam and Epic games, runs Dolphin, RPCS3 and Ryujinx games, and lets you add anything else with your own artwork.
+A controller-first, console-style game launcher for Windows and Mac. It starts full screen when you sign in, finds your Steam and Epic games, runs Dolphin, RPCS3 and Ryujinx games, and lets you add anything else with your own artwork.
 
 ## Install
 
@@ -11,6 +11,21 @@ A controller-first, console-style game launcher for Windows. It starts full scre
 After that it updates itself. Uninstall it from Windows' **Settings › Apps** like any program; your library and settings stay unless you delete `%APPDATA%\Couch Launcher`.
 
 Building it yourself instead: install **Node.js LTS**, then double-click **Build.bat**; the setup file appears in `dist`. **Try it (windowed).bat** runs it in a window.
+
+## Install on a Mac
+
+1. From **Releases**, download **CouchLauncher-<version>-mac-apple-silicon.dmg** (M1 and newer) or **…-mac-intel.dmg** (older Macs).
+2. Open it and drag **Couch Launcher** into **Applications**.
+3. Open it. macOS says it can't check the app (it isn't from an Apple-registered developer): go to **System Settings › Privacy & Security**, scroll down, and choose **Open Anyway**. You only do this once.
+4. If macOS asks to let Couch Launcher **receive keystrokes from any app** (Input Monitoring), allow it: that's how it hears the Xbox / PS button while a game is in front.
+5. If the Xbox button opens Launchpad, turn that off in **System Settings › Game Controllers ›** your controller **› Home button**.
+
+On a Mac it looks like macOS: San Francisco type, frosted-glass panels, system blue, notifications in the top-right corner, and the game frosted behind the guide. **macOS Dark** and **macOS Light** are in **Settings › Themes** (the other themes are there too).
+
+The guide works the same as on Windows: press the Xbox (or PS) button in a game and it opens over the game, which pauses; B or the button again goes back. On the keyboard it's **Control + Option + G**.
+
+What's the same: Steam and Epic games, emulators (pick each one's app in Applications), the guide, friends, Discord pins (connect Discord to see who's in a call), Apple Music and Spotify, Movies & TV (needs mpv, from Homebrew or mpv.io), YouTube, free games and deals, updates.
+What's left out on a Mac, because macOS doesn't allow it or the app is Windows-only: clips with Medal, Xbox and Microsoft Store games, Roblox, "Who's playing?" (set players in each emulator), the controller as a mouse, emulator updates, display modes, and typing Discord messages. Switching sound outputs from the guide needs SwitchAudioSource (`brew install switchaudio-osx`); volume works without it.
 
 ## First run
 

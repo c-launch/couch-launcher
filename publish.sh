@@ -6,7 +6,7 @@ set -e
 V="$1"; NOTES="$2"; REPO="${REPO:-/home/claude/gh-couch-launcher}"
 [ -n "$V" ] && [ -n "$NOTES" ] || { echo "usage: ./publish.sh VERSION NOTES"; exit 1; }
 # Never publish a version that can't start (1.6.0/1.6.1 couldn't: an ordering mistake).
-node tools/smoke-test.js || { echo "Not published: the startup check failed."; exit 1; }
+node tools/smoke-test.js && node tools/smoke-test.js --mac || { echo "Not published: the startup check failed."; exit 1; }
 python3 -c "import json,sys; p='package.json'; d=json.load(open(p)); d['version']=sys.argv[1]; open(p,'w').write(json.dumps(d, indent=2)+'\\n')" "$V"
 ./make-update.sh "$V" "$NOTES" >/dev/null
 Z="CouchLauncher-update-$V.zip"

@@ -121,7 +121,26 @@ function searchRoots(env, drives, known) {
 }
 const SKIP = /^(windows|\$recycle\.bin|system volume information|programdata|node_modules|steamapps|common redist|roms|saves|bios|cache|shaders|logs|storage|downloaded_media)$/i;
 // One walk over all places, collecting every known emulator program at once.
+// Mac: emulators are apps (Name.app) in Applications.
+const MAC_APPS = {
+  'dolphin.app': 'dolphin', 'rpcs3.app': 'rpcs3', 'ryujinx.app': 'ryujinx', 'pcsx2.app': 'pcsx2', 'pcsx2-qt.app': 'pcsx2', 'duckstation.app': 'duckstation',
+  'ppsspp.app': 'ppsspp', 'ppssppsdl.app': 'ppsspp', 'ppssppgold.app': 'ppsspp', 'vita3k.app': 'vita3k', 'shadps4.app': 'shadps4', 'cemu.app': 'cemu',
+  'azahar.app': 'azahar', 'citra.app': 'azahar', 'lime3ds.app': 'azahar', 'melonds.app': 'melonds', 'mgba.app': 'mgba', 'xemu.app': 'xemu', 'flycast.app': 'flycast',
+  'retroarch.app': 'retroarch', 'mame.app': 'mame', 'ares.app': 'ares', 'scummvm.app': 'scummvm'
+};
+function detectMac(env) {
+  const home = (env && env.HOME) || process.env.HOME || '';
+  const found = {};
+  for (const dir of ['/Applications', path.join(home, 'Applications'), '/Applications/Emulators', path.join(home, 'Applications', 'Emulators')]) {
+    for (const ent of listDir(dir)) {
+      const id = MAC_APPS[ent.name.toLowerCase()];
+      if (id && !found[id]) found[id] = path.join(dir, ent.name);
+    }
+  }
+  return found;
+}
 function detect(env, drives, known, extraExes) {
+  if (process.platform === 'darwin') return detectMac(env);
   const want = new Map();
   for (const [id, e] of Object.entries(CATALOG)) for (const x of e.exes) if (!want.has(x)) want.set(x, id);
   for (const [id, xs] of Object.entries(extraExes || {})) for (const x of xs) if (!want.has(x)) want.set(x, id);
@@ -151,4 +170,4 @@ function romDirs(id, drives) {
   return out;
 }
 
-module.exports = { CATALOG, RETRO_SYSTEMS, detect, romDirs, searchRoots };
+module.exports = { CATALOG, RETRO_SYSTEMS, detect, detectMac, romDirs, searchRoots, MAC_APPS };

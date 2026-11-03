@@ -111,7 +111,7 @@ function steamRoot() {
     return null;
   }
   const home = process.env.HOME || '';
-  for (const p of [path.join(home, '.steam', 'steam'), path.join(home, '.local', 'share', 'Steam')]) if (exists(p)) return p;
+  for (const p of [path.join(home, 'Library', 'Application Support', 'Steam'), path.join(home, '.steam', 'steam'), path.join(home, '.local', 'share', 'Steam')]) if (exists(p)) return p;
   return null;
 }
 
@@ -390,6 +390,7 @@ function scanRoblox(env) {
 function scanEpic(manifestDirOverride) {
   const dir = manifestDirOverride || (process.platform === 'win32'
     ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests')
+    : process.platform === 'darwin' ? path.join(process.env.HOME || '', 'Library', 'Application Support', 'Epic', 'EpicGamesLauncher', 'Data', 'Manifests')
     : null);
   if (!dir || !exists(dir)) return { found: false, games: [] };
   const games = [];
@@ -448,7 +449,8 @@ function scanFileEmulator(emuId, gamesDir) {
 function rpcs3Records(emuExe) {
   const out = { hdd: [], games: [] };
   if (!emuExe) return out;
-  const exeDir = path.dirname(emuExe);
+  // Mac: RPCS3 keeps its settings and installed games in Application Support, not next to the app.
+  const exeDir = process.platform === 'darwin' && /\.app\/?$/i.test(emuExe) ? path.join(process.env.HOME || '', 'Library', 'Application Support', 'rpcs3') : path.dirname(emuExe);
   const unq = (v) => String(v || '').trim().replace(/^["']|["']$/g, '').trim();
   const fix = (p) => path.normalize(p.replace(/[\\/]/g, path.sep));
   out.hdd.push(path.join(exeDir, 'dev_hdd0', 'game'));

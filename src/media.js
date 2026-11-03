@@ -284,6 +284,7 @@ function createMedia(userDataDir) {
   }
 
   async function send(cmd, prefer) {
+    if (process.platform === 'darwin') return macSend(cmd, prefer);
     await start();
     return new Promise((resolve, reject) => {
       const t = setTimeout(() => { stop(); reject(new Error('Music app didn’t answer')); }, 8000);
@@ -381,6 +382,9 @@ function createMedia(userDataDir) {
   }
 
   function launch(app) {
+    if (process.platform === 'darwin') {
+      return new Promise((resolve, reject) => execFile('open', ['-a', app === 'Spotify' ? 'Spotify' : 'Music'], (err) => (err ? reject(new Error((app === 'Spotify' ? 'Spotify' : 'Apple Music') + ' isn’t installed')) : resolve(true))));
+    }
     return new Promise((resolve, reject) => {
       if (app === 'Spotify') { require('electron').shell.openExternal('spotify:').then(resolve, () => reject(new Error('Spotify isn’t installed'))); return; }
       // Apple Music is a Store app: open it by its app ID (looked up in the Start menu, with the
@@ -397,4 +401,47 @@ function createMedia(userDataDir) {
   return { run, launch, stop, shape, gameVolume, _covers: coverCache };
 }
 
-module.exports = { createMedia };
+// ---------- Mac: Apple Music (the Music app) and Spotify, through AppleScript ----------
+// macOS asks once whether Couch Launcher may control Music / Spotify.
+const MAC_APPS = { 'Apple Music': 'Music', Spotify: 'Spotify' };
+function macScript(appName, cmd) {
+  const music = appName === 'Music';
+  const shuf = music ? 'shuffle enabled' : 'shuffling';
+  const act = {
+    toggle: 'playpause', next: 'next track', prev: 'previous track',
+    shuffle: 'set ' + shuf + ' to not ' + shuf,
+    volup: 'set sound volume to (sound volume + 10)', voldown: 'set sound volume to (sound volume - 10)'
+  }[cmd] || (/^volset:\d+$/.test(cmd) ? 'set sound volume to ' + Number(cmd.slice(7)) : '');
+  return [
+    'if application "' + appName + '" is not running then return "none"',
+    'tell application "' + appName + '"',
+    act ? '  ' + act : '',
+    act && !/volume/.test(act) ? '  delay 0.3' : '',
+    '  set st to player state as string',
+    '  if st is "stopped" then return "none"',
+    '  set t to current track',
+    '  return (name of t) & linefeed & (artist of t) & linefeed & (album of t) & linefeed & st & linefeed & (' + shuf + ' as string) & linefeed & (sound volume as string)',
+    'end tell'
+  ].filter(Boolean).join('\n');
+}
+function osa(script) {
+  return new Promise((resolve) => execFile('osascript', ['-e', script], { timeout: 8000 }, (err, out) => resolve(err ? null : String(out || '').replace(/\n$/, ''))));
+}
+async function macSend(cmd, prefer) {
+  if (cmd === 'gamevol' || cmd === 'gameget') return { game: -1 }; // no per-app volume on a Mac
+  const parse = (name, out) => {
+    if (!out || out === 'none') return null;
+    const [title, artist, album, st, shuffle, vol] = out.split('\n');
+    return { app: name === 'Music' ? 'Apple Music' : 'Spotify', key: name + '|' + title + '|' + artist, title, artist, album, playing: st === 'playing', shuffle: shuffle === 'true', volume: Number(vol) };
+  };
+  // Which app the button is for: the one you picked, else the one playing, else a paused one.
+  const states = {};
+  for (const name of ['Music', 'Spotify']) states[name] = parse(name, await osa(macScript(name, 'state')));
+  const want = prefer === 'Spotify' ? 'Spotify' : prefer === 'AppleMusic' ? 'Music' : null;
+  const target = (want && states[want] && want) || ['Music', 'Spotify'].find((n) => states[n] && states[n].playing) || ['Music', 'Spotify'].find((n) => states[n]);
+  if (!target) return { none: true };
+  if (cmd === 'state') return states[target];
+  return parse(target, await osa(macScript(target, cmd))) || states[target];
+}
+
+module.exports = { createMedia, macScript, macSend, MAC_APPS };

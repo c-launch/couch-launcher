@@ -700,9 +700,10 @@ window.CouchTV = function (k) {
 
   // mpv isn't there yet: install it (one press) or point at it.
   async function mpvSetup() {
+    const mac = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
     const c = await openMenu('Movies play in mpv', [
-      { id: 'install', label: 'Install mpv now (free, about a minute)', icon: 'plus' },
-      { id: 'choose', label: 'I have it: choose mpv.exe', icon: 'folder' }
+      { id: 'install', label: mac ? 'Install mpv now (with Homebrew, free)' : 'Install mpv now (free, about a minute)', icon: 'plus' },
+      { id: 'choose', label: mac ? 'I have it: choose mpv in Applications' : 'I have it: choose mpv.exe', icon: 'folder' }
     ]);
     try {
       if (c === 'install') {
@@ -713,7 +714,7 @@ window.CouchTV = function (k) {
         return true;
       }
       if (c === 'choose') {
-        const p = await browse({ title: 'Find mpv.exe', exts: ['.exe'], hint: 'Pick mpv.exe' });
+        const p = await browse(mac ? { title: 'Find mpv', exts: ['.app'], hint: 'Pick mpv in Applications' } : { title: 'Find mpv.exe', exts: ['.exe'], hint: 'Pick mpv.exe' });
         if (!p) return false;
         await api.tvSetMpv(p);
         return true;

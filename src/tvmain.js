@@ -77,7 +77,7 @@ function setupTv(ctx) {
     return exe;
   });
   handle('tv:setMpv', (p) => {
-    if (p && !/mpv(net)?\.exe$/i.test(String(p))) throw new Error('Choose mpv.exe');
+    if (p && !(process.platform === 'darwin' ? /(\/mpv|mpv\.app\/?)$/i : /mpv(net)?\.exe$/i).test(String(p))) throw new Error(process.platform === 'darwin' ? 'Choose mpv (or mpv.app)' : 'Choose mpv.exe');
     settings().mpvPath = p ? String(p) : ''; saveSettings();
     return mpvPath();
   });
