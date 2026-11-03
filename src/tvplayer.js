@@ -21,6 +21,14 @@ const listDir = (d) => { try { return fs.readdirSync(d); } catch (_) { return []
 const ownDir = (userData) => (userData ? path.join(userData, 'mpv') : null);
 function findMpv(env, chosen, userData) {
   env = env || process.env;
+  if (process.platform === 'darwin') {
+    // Mac: Homebrew's mpv, or the mpv app (mpv.io links to its builds).
+    const home = env.HOME || '';
+    const m = [chosen && /\.app\/?$/i.test(chosen) ? path.join(chosen, 'Contents', 'MacOS', 'mpv') : chosen,
+      '/opt/homebrew/bin/mpv', '/usr/local/bin/mpv', '/Applications/mpv.app/Contents/MacOS/mpv', path.join(home, 'Applications', 'mpv.app', 'Contents', 'MacOS', 'mpv'), '/opt/local/bin/mpv'];
+    for (const d of String(env.PATH || '').split(':')) if (d) m.push(path.join(d, 'mpv'));
+    return m.filter(Boolean).find(exists) || null;
+  }
   const la = env.LOCALAPPDATA || '', pf = env.ProgramFiles || 'C:\\Program Files', up = env.USERPROFILE || '';
   const c = [];
   if (chosen) c.push(chosen);
@@ -82,6 +90,15 @@ async function downloadMpv(userData, opts) {
   }
 }
 function installMpv(userData, opts) {
+  if (process.platform === 'darwin') {
+    // Mac: Homebrew installs it when it's there; otherwise you get it from mpv.io.
+    const brew = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew'].find(exists);
+    if (!brew) return Promise.reject(new Error('Get mpv for Mac from mpv.io (or install Homebrew, then choose Install again), then choose it here.'));
+    return new Promise((resolve, reject) => execFile(brew, ['install', 'mpv'], { timeout: 20 * 60e3, env: Object.assign({}, process.env, { HOMEBREW_NO_AUTO_UPDATE: '1' }) }, () => {
+      const found = findMpv(process.env, null, userData);
+      if (found) resolve(found); else reject(new Error('Couldn’t install mpv with Homebrew. Get it from mpv.io, then choose it here.'));
+    }));
+  }
   return downloadMpv(userData, opts).catch((first) => new Promise((resolve, reject) => {
     execFile('winget', ['install', '--id', 'shinchiro.mpv', '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements'],
       { windowsHide: true, timeout: 10 * 60e3 }, (err, stdout) => {
@@ -95,6 +112,17 @@ function installMpv(userData, opts) {
 // ---------------------------------------------------------------- Stremio's streaming engine
 function serverCandidates(env) {
   env = env || process.env;
+  if (process.platform === 'darwin') {
+    // Mac: Stremio Service, or the streaming server inside the Stremio app.
+    const out = [];
+    for (const app of ['/Applications/Stremio Service.app', '/Applications/StremioService.app', path.join(env.HOME || '', 'Applications', 'Stremio Service.app')]) out.push({ exe: path.join(app, 'Contents', 'MacOS', 'stremio-service'), args: [], cwd: path.join(app, 'Contents', 'MacOS') });
+    for (const app of ['/Applications/Stremio.app', path.join(env.HOME || '', 'Applications', 'Stremio.app')]) {
+      for (const dir of [path.join(app, 'Contents', 'MacOS'), path.join(app, 'Contents', 'Resources')]) {
+        if (exists(path.join(dir, 'server.js'))) for (const rt of ['stremio-runtime', 'node']) out.push({ exe: path.join(app, 'Contents', 'MacOS', rt), args: [path.join(dir, 'server.js')], cwd: dir });
+      }
+    }
+    return out.filter((x) => exists(x.exe));
+  }
   const la = env.LOCALAPPDATA || '', pf = env.ProgramFiles || 'C:\\Program Files', pf86 = env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
   const out = [];
   for (const base of [path.join(la, 'Programs', 'StremioService'), path.join(pf, 'StremioService'), path.join(pf86, 'StremioService')]) out.push({ exe: path.join(base, 'stremio-service.exe'), args: [], cwd: base });
@@ -160,7 +188,8 @@ function createEngine(opts) {
 //         'eof', 'exit' {code}.
 function startMpv(exe, o) {
   const ev = new EventEmitter();
-  const pipe = '\\\\.\\pipe\\couch-mpv-' + process.pid + '-' + Date.now().toString(36);
+  // Windows: a named pipe. Mac / Linux: a socket file in the temp folder.
+  const pipe = process.platform === 'win32' ? '\\\\.\\pipe\\couch-mpv-' + process.pid + '-' + Date.now().toString(36) : path.join(require('os').tmpdir(), 'couch-mpv-' + process.pid + '-' + Date.now().toString(36) + '.sock');
   const lang = (o.subLang || '').toLowerCase();
   const args = [
     '--input-ipc-server=' + pipe, '--force-window=immediate', '--keep-open=always', '--idle=no',

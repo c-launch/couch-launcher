@@ -2,7 +2,7 @@
   "name": "couch-launcher",
   "productName": "Couch Launcher",
   "version": "1.15.3",
-  "description": "A controller-first, console-style game launcher for Windows.",
+  "description": "A controller-first, console-style game launcher for Windows and Mac.",
   "main": "src/boot.js",
   "private": true,
   "scripts": {
@@ -52,6 +52,20 @@
     "directories": {
       "buildResources": "build",
       "output": "dist"
+    },
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.games",
+      "identity": null,
+      "hardenedRuntime": false,
+      "darkModeSupport": true,
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Couch Launcher plays and pauses Apple Music or Spotify and can restart or shut down your Mac when you ask.",
+        "LSMinimumSystemVersion": "11.0"
+      }
     }
   },
   "author": "Jahdiel"

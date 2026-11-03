@@ -6,6 +6,7 @@ const { execFile } = require('child_process');
 
 function createPauser() {
   const off = { available: false, async pause() {}, resumeAll() {}, isPaused: () => false };
+  if (process.platform === 'darwin') return createMacPauser();
   if (process.platform !== 'win32') return off;
   let api;
   try {
@@ -69,6 +70,43 @@ function createPauser() {
       paused.clear();
     },
     // Waits for any pause still being set up, then undoes everything.
+    resumeAfterPending() { return busy.then(() => this.resumeAll()); }
+  };
+}
+
+// Mac: the game's processes are stopped (SIGSTOP) and continued (SIGCONT), like Windows' suspend.
+function createMacPauser() {
+  const paused = new Set();
+  const familyOf = (rootPids) => new Promise((resolve) => {
+    execFile('/bin/ps', ['-A', '-o', 'pid=,ppid='], { timeout: 8000 }, (err, out) => {
+      const all = new Set(rootPids);
+      if (!err) {
+        const kids = new Map();
+        for (const line of String(out).split('\n')) {
+          const [p, pp] = line.trim().split(/\s+/).map(Number);
+          if (p && pp) { if (!kids.has(pp)) kids.set(pp, []); kids.get(pp).push(p); }
+        }
+        const stack = [...rootPids];
+        while (stack.length) for (const k of kids.get(stack.pop()) || []) if (!all.has(k) && k !== process.pid) { all.add(k); stack.push(k); }
+      }
+      resolve([...all]);
+    });
+  });
+  const sig = (pid, s) => { try { process.kill(pid, s); return true; } catch (_) { return false; } };
+  let busy = Promise.resolve();
+  return {
+    available: true,
+    isPaused: () => paused.size > 0,
+    pause(rootPids, stillWanted) {
+      busy = busy.then(async () => {
+        if (!rootPids.filter(Boolean).length) return;
+        const pids = (await familyOf(rootPids.filter(Boolean))).filter((p) => p !== process.pid && p > 1 && !paused.has(p));
+        if (stillWanted && !stillWanted()) return;
+        for (const pid of pids) if (sig(pid, 'SIGSTOP')) paused.add(pid);
+      }).catch(() => {});
+      return busy;
+    },
+    resumeAll() { for (const pid of paused) sig(pid, 'SIGCONT'); paused.clear(); },
     resumeAfterPending() { return busy.then(() => this.resumeAll()); }
   };
 }

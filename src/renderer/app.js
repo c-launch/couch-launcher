@@ -73,6 +73,7 @@
     return 'Played ' + new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
+  const IS_MAC = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
   const SOURCES = {
     steam: { name: 'Steam', badge: 'STEAM', color: '#2F4F6B', letter: 'S' },
     epic: { name: 'Epic Games', badge: 'EPIC', color: '#465060', letter: 'E' },
@@ -635,7 +636,8 @@
     try { return Array.from(navigator.getGamepads()).filter((p) => p && p.connected).length; } catch (_) { return 0; }
   }
   // The dock, in order. These three are pages (LB/RB slide to them); the rest open something.
-  const DOCK_NAVS = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['tv', 'tv', 'Movies & TV'], ['youtube', 'playc', 'YouTube'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']];
+  // Clips come from Medal, which is Windows only: no Clips on a Mac.
+  const DOCK_NAVS = [['home', 'home', 'Home'], ['library', 'grid', 'My library'], ['search', 'search', 'Search'], ['clips', 'film', 'Clips'], ['tv', 'tv', 'Movies & TV'], ['youtube', 'playc', 'YouTube'], ['friends', 'users', 'Friends'], ['settings', 'gear', 'Settings']].filter((x) => !(IS_MAC && x[0] === 'clips'));
   const DOCK = DOCK_NAVS.map((x) => x[0]);
   const DOCK_VIEWS = ['home', 'library', 'settings'];
   function renderTop() {
@@ -764,7 +766,7 @@
     }
     const cards = [
       ['c-lib', 'grid', 'My library', n + ' game' + (n === 1 ? '' : 's'), 'data-action="nav" data-to="library"'],
-      ['c-store', 'store', 'Stores', 'Steam, Xbox, Epic', 'data-action="stores"'],
+      ['c-store', 'store', 'Stores', IS_MAC ? 'Steam, Epic' : 'Steam, Xbox, Epic', 'data-action="stores"'],
       ['c-add', 'plus', 'Add a game', 'Any program or game file', 'data-action="add"'],
       ['c-coop', 'users', 'Collections', (coop ? coop + ' co-op' : 'Co-op') + (collections().length ? ' · ' + collections().length + ' more' : ', your groups'), 'data-action="collections"'],
       ['c-set', 'palette', 'Customize', 'Themes, platforms, startup', 'data-action="go-settings" data-tab="themes"']
@@ -917,7 +919,7 @@
       let h = '<div class="sect-h"><div><h2>Platforms</h2><p>Where your games come from. New games in these folders show up automatically.</p></div>' +
         '<div class="btn-row"><button class="btn big" data-nav data-key="p-emudeck" data-zone="body" data-action="emu-find">' + icon('search') + 'Find emulators (EmuDeck too)</button>' +
         '<button class="btn primary big" data-nav data-key="p-all" data-zone="body" data-action="rescan">' + icon('refresh') + (S.scanning ? 'Scanning…' : 'Rescan all') + '</button></div></div><div class="plist">';
-      for (const src of ['steam', 'epic', 'msstore', 'roblox']) {
+      for (const src of IS_MAC ? ['steam', 'epic'] : ['steam', 'epic', 'msstore', 'roblox']) {
         const info = S.scanInfo[src];
         const on = (P[src] || { enabled: true }).enabled !== false;
         const status = !on ? ['off', 'Turned off'] : !info ? ['off', 'Not scanned yet'] : info.found ? ['ok', 'Connected · ' + cnt(src) + ' games'] : ['warn', 'Not found on this PC'];
@@ -985,7 +987,7 @@
           '<div class="picon" style="background:var(--chip);color:var(--text)">' + icon('monitor') + '</div><div class="pinfo"><div class="t">' + esc(d.name) + '</div><div class="p">' +
           esc([d.size, d.hz ? d.hz + ' Hz' : '', d.primary ? 'Main monitor' : ''].filter(Boolean).join(' · ')) + '</div></div>' +
           (d.current ? '<span class="status ok">In use</span>' : '<span class="status off">Use this one</span>') + '</button>').join('') + '</div>' +
-        '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in Windows display settings.</p>';
+        '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in ' + (IS_MAC ? 'System Settings › Displays' : 'Windows display settings') + '.</p>';
     }
     if (tab === 'controllers') {
       if (S.captureInfo === undefined) { S.captureInfo = null; Promise.resolve().then(() => api.captureStatus()).then((c) => { S.captureInfo = c || {}; if (S.view === 'settings' && S.setTab === 'controllers' && !layers.length) refreshContent(); }).catch(() => { S.captureInfo = {}; }); }
@@ -996,6 +998,18 @@
         const kind = padKind(p.id);
         h += '<div class="prow"><div class="picon" style="background:var(--accent);color:var(--on-accent)">P' + (i + 1) + '</div><div class="pinfo"><div class="t">Player ' + (i + 1) + ' · ' + (kind === 'ps' ? 'PlayStation' : kind === 'nin' ? 'Nintendo' : 'Xbox / standard') + ' controller</div><div class="p">' + esc(p.id.replace(/\s*\(.*$/, '')) + '</div></div><span class="status ok">Connected</span></div>';
       });
+      if (IS_MAC) {
+        // Mac: the Xbox / PS button is read straight from the controller (no Windows parts).
+        const ge = S.info.guideError;
+        h += '</div><div class="sub-h">During a game</div><dl class="kv">' +
+          '<dt>Open the guide</dt><dd>Press the Xbox or PS button' + (ge ? '<br><span class="field-note">' + esc(ge) + '</span>' : '') + '</dd>' +
+          '<dt>Keyboard</dt><dd>Control + Option + G</dd>' +
+          '<dt>Xbox button opens Launchpad?</dt><dd>Turn that off in System Settings › Game Controllers › your controller › Home button</dd></dl>' +
+          '<div class="sub-h">Guide</div><div class="toggles" style="grid-template-columns:1fr">' +
+          toggleHTML('c-pause', 'Pause the game while the guide is open', S.lib.settings.pauseGame !== false, 'Stops the controller from also moving you in the game. Turn off for online matches, since a paused game can’t stay connected.', 'set-toggle', 'data-k="pauseGame"') +
+          toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') + '</div>';
+        return h;
+      }
       h += '</div><div class="sub-h">During a game</div><dl class="kv">' +
         '<dt>Back to the launcher</dt><dd>Hold View + Menu for 1 second' + (S.info.hotkey ? '' : ' (not available on this PC)') + '</dd>' +
         '<dt>Keyboard</dt><dd>Ctrl + Alt + Home</dd>' +
@@ -1017,13 +1031,13 @@
         toggleHTML('c-nprice', 'Tell me when a game I watch gets cheaper', S.lib.settings.notifyPrice !== false, 'Watch a deal from Home (A › Watch the price).', 'set-toggle', 'data-k="notifyPrice"') +
         toggleHTML('c-pspads', 'Read PlayStation controllers in the background', S.lib.settings.psPads !== false, 'The PS button opens the guide, also during games (DualShock 4, DualSense). Turn off if a PlayStation controller acts up.', 'set-toggle', 'data-k="psPads"') +
         toggleHTML('c-autoclose', 'Close stores when you press the Xbox button to come back', S.lib.settings.autoCloseApps !== false, 'Steam Big Picture, Epic Games, the Xbox app and Microsoft Store close when you return to the launcher. Music apps and Discord keep running.', 'set-toggle', 'data-k="autoCloseApps"') + '</div>' +
-        '<div class="sub-h">Clips with Medal</div><div class="toggles" style="grid-template-columns:1fr">' +
+        (IS_MAC ? '' : '<div class="sub-h">Clips with Medal</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('m-share', 'Share button saves Medal clips', S.lib.settings.medalShare !== false, 'Tap Share for a screenshot, hold it for a clip. Works in games and apps (not inside the launcher). Medal needs to be running.', 'set-toggle', 'data-k="medalShare"') +
         '<button class="toggle-row" data-nav data-key="m-clip" data-zone="body" data-action="medal-key" data-which="clip"><span><div>Medal’s clip key</div><div class="d">Match Medal › Settings › Capture Hotkeys.</div></span><span class="status ok">' + esc(S.lib.settings.medalClipKey || 'F8') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-shot" data-zone="body" data-action="medal-key" data-which="shot"><span><div>Medal’s screenshot key</div><div class="d">Set a screenshot key in Medal, then pick the same one here.</div></span><span class="status ' + (S.lib.settings.medalShotKey ? 'ok' : 'warn') + '">' + esc(S.lib.settings.medalShotKey || 'Not set') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="m-xbox" data-zone="body" data-action="medal-xbox"><span><div>Xbox controllers</div><div class="d">' + esc(S.captureInfo == null ? 'Checking your controller…' : S.captureInfo.xboxShareReadable ? 'Your Xbox controller’s Share button can be read (Bluetooth).' : S.captureInfo.xboxNeedsFind ? 'Your Xbox controller is connected over Bluetooth: open Test the Share button below and choose Find Share once. Until then, View + RB clips.' : 'No Xbox Share button readable right now: it only works over Bluetooth. Hold View + RB for a clip, View + LB for a screenshot.') + '</div></span><span class="status ok">' +
           ({ auto: 'Share and View combo', share: 'Share button', combo: 'View + RB / LB' }[S.lib.settings.medalXbox || 'auto']) + '</span></button>' +
-        '<button class="toggle-row" data-nav data-key="m-test" data-zone="body" data-action="share-test"><span><div>Test the Share button</div><div class="d">See what the launcher reads from your controller, and send Medal a test clip.</div></span><span class="status ok">Test</span></button></div>' +
+        '<button class="toggle-row" data-nav data-key="m-test" data-zone="body" data-action="share-test"><span><div>Test the Share button</div><div class="d">See what the launcher reads from your controller, and send Medal a test clip.</div></span><span class="status ok">Test</span></button></div>') +
         '<div class="sub-h">Couch co-op</div><p class="field-note" style="font-size:1.5rem">Player 1–4 inside games are set once in each emulator’s own controller settings (Dolphin, RPCS3, Ryujinx). After that every game picks them up.</p>';
       return h;
     }
@@ -1701,12 +1715,14 @@
   }
 
   // ---------------------------------------------------------------- game actions
-  const PICK_EXTS = ['.exe', '.lnk', '.url', '.bat'];
+  // Mac: apps (Name.app) and shell scripts are the programs you pick.
+  const PICK_EXTS = IS_MAC ? ['.app', '.exe', '.command', '.sh'] : ['.exe', '.lnk', '.url', '.bat'];
   function targetFromFile(p) {
     const ext = extOf(p);
     const E = S.info.emulators || {};
     if (baseName(p).toUpperCase() === 'EBOOT.BIN') return { launch: { type: 'emu', emu: 'rpcs3', file: p }, source: 'rpcs3', title: ps3Title(p) };
-    if (ext === '.exe') return { launch: { type: 'exe', exe: p }, source: 'custom', title: cleanTitle(baseName(p)) };
+    if (ext === '.exe' || (IS_MAC && ext === '.app')) return { launch: { type: 'exe', exe: p }, source: 'custom', title: cleanTitle(baseName(p).replace(/\.app$/i, '')) };
+    if (IS_MAC && ['.command', '.sh'].includes(ext)) return { launch: { type: 'open', path: p }, source: 'custom', title: cleanTitle(baseName(p)) };
     if (['.lnk', '.url', '.bat'].includes(ext)) return { launch: { type: 'open', path: p }, source: 'custom', title: cleanTitle(baseName(p)) };
     for (const k of ['dolphin', 'ryujinx']) if (E[k] && E[k].exts.includes(ext)) return { launch: { type: 'emu', emu: k, file: p }, source: 'custom', title: cleanTitle(baseName(p)) };
     return null;
@@ -1731,7 +1747,7 @@
   async function setUpPlayers(g) {
     let mode = S.lib.settings.pickPlayers || 'saved';
     if (mode === 'auto' || mode === 'always') mode = 'ask'; // older names
-    if (mode === 'off') return true;
+    if (mode === 'off' || IS_MAC) return true; // Mac: emulators keep their own controller setup
     const pads = Array.isArray(S.pads) ? S.pads : null;
     const n = pads ? pads.length : padCount();
     if (mode === 'saved') {
@@ -2154,7 +2170,7 @@
     let tab = opts.tab || 'games';
     let status = null;
     let friends = null, friendsErr = null, xboxOn = false, ach = null;
-    const TABS_G = [['games', 'grid', 'Games'], ['clips', 'film', 'Clips'], ['friends', 'users', 'Friends'], ['system', 'user', 'Profile & system']];
+    const TABS_G = [['games', 'grid', 'Games'], ['clips', 'film', 'Clips'], ['friends', 'users', 'Friends'], ['system', 'user', 'Profile & system']].filter((x) => !(IS_MAC && x[0] === 'clips'));
     let gclips = null, gclipsErr = null;
     let music = null, musicErr = null, musicTimer = null;
     let joinables = [];
@@ -2341,9 +2357,10 @@
       const pill = (key, ic, label, attrs, on) => '<button class="pill gpill' + (on ? ' on' : '') + '" data-nav data-key="' + key + '" data-zone="gbody" data-lock="dcrow" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
       const note = live ? (rpc.call ? 'In a call' : 'Connected') : !dc ? '' : !dc.installed && !dc.running ? 'Not installed' : dc.running ? 'Open' : 'Not open';
       let h = '<div class="gdiscord"><div class="gm-head">' + icon('chat') + '<span>Discord</span><span class="gm-note">' + note + '</span></div>' +
-        '<div class="gmrow">' + pill('dc-open', 'link', dc && dc.running ? 'Show' : 'Open', 'data-act="dc-open"') + pill('dc-msg', 'chat', 'Message', 'data-act="dc-msg"') +
-        pill('dc-mute', live && rpc.muted ? 'micoff' : 'mic', live && rpc.muted ? 'Unmute' : 'Mute', 'data-act="dc-mute"', live && rpc.muted) +
-        pill('dc-deaf', live && rpc.deaf ? 'deaf' : 'headset', live && rpc.deaf ? 'Undeafen' : 'Deafen', 'data-act="dc-deaf"', live && rpc.deaf) + '</div>';
+        '<div class="gmrow">' + pill('dc-open', 'link', dc && dc.running ? 'Show' : 'Open', 'data-act="dc-open"') + (IS_MAC ? '' : pill('dc-msg', 'chat', 'Message', 'data-act="dc-msg"')) +
+        // Mac: muting from here goes through Discord's own connection (no key presses).
+        (IS_MAC && !live ? '' : pill('dc-mute', live && rpc.muted ? 'micoff' : 'mic', live && rpc.muted ? 'Unmute' : 'Mute', 'data-act="dc-mute"', live && rpc.muted) +
+        pill('dc-deaf', live && rpc.deaf ? 'deaf' : 'headset', live && rpc.deaf ? 'Undeafen' : 'Deafen', 'data-act="dc-deaf"', live && rpc.deaf)) + '</div>';
       if (live && rpc.call) {
         h += '<div class="glabel">In ' + esc(rpc.call.name) + ' · ' + rpc.call.people.length + '</div><div class="dcpeople">' + rpc.call.people.map(personHTML).join('') + '</div>' +
           '<button class="mitem danger" data-nav data-key="dc-leave" data-zone="gbody" data-act="dc-leave">' + icon('exit') + '<span>Leave call</span></button>';
@@ -3465,7 +3482,7 @@
       { id: 'xbox', label: 'Xbox app (Game Pass)', icon: 'store' },
       { id: 'msstore', label: 'Microsoft Store', icon: 'store' },
       { id: 'epic', label: 'Epic Games Store', icon: 'store' }
-    ]);
+    ].filter((x) => !(IS_MAC && (x.id === 'xbox' || x.id === 'msstore'))));
     if (!pick) return;
     try { await api.openStore(pick); toast('Opening ' + { steam: 'the Steam Store', xbox: 'the Xbox app', msstore: 'the Microsoft Store', epic: 'the Epic Games Store' }[pick]); }
     catch (e) { toast(e.message, true); }
@@ -3776,7 +3793,7 @@
       case 'plat-exe': {
         const src = el.dataset.src;
         const e = S.info.emulators[src];
-        let p = await browse({ title: 'Find the ' + e.name + ' program', exts: ['.exe', '.ps1', '.bat', '.cmd'], hint: 'Pick ' + (src === 'dolphin' ? 'Dolphin.exe' : src === 'rpcs3' ? 'rpcs3.exe' : src === 'ryujinx' ? 'Ryujinx.exe' : (e.exe || 'the emulator .exe')) + ', or an EmuDeck .ps1 launcher' });
+        let p = await browse({ title: 'Find the ' + e.name + ' program', exts: IS_MAC ? ['.app'] : ['.exe', '.ps1', '.bat', '.cmd'], hint: IS_MAC ? 'Pick ' + e.name + ' in Applications' : 'Pick ' + (src === 'dolphin' ? 'Dolphin.exe' : src === 'rpcs3' ? 'rpcs3.exe' : src === 'ryujinx' ? 'Ryujinx.exe' : (e.exe || 'the emulator .exe')) + ', or an EmuDeck .ps1 launcher' });
         if (!p) return;
         if (/\.(ps1|bat|cmd)$/i.test(p)) {
           try { p = await api.exeFromScript(p); toast('Using ' + baseName(p) + ' from that script'); }
@@ -3950,11 +3967,16 @@
     if (changed) updatePrompts();
   }
 
+  let extPads = null, extAt = 0;
+  api.on('pad:ext', (list) => { if (Array.isArray(list)) { extPads = list.map((p) => ({ id: String(p.id || 'Controller'), connected: true, buttons: (p.buttons || []).map((on) => ({ pressed: !!on, value: on ? 1 : 0 })), axes: p.axes || [] })); extAt = performance.now(); } });
   function pollPads(now) {
     requestAnimationFrame(pollPads);
-    if (!document.hasFocus() || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; return; }
+    const ext = OVERLAY && extPads && now - extAt < 400;
+    if ((!document.hasFocus() && !ext) || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; return; }
     let pads;
     try { pads = navigator.getGamepads(); } catch (_) { return; }
+    // Mac guide window: when it can't read the controller itself, use what the app core reads.
+    if (extPads && now - extAt < 400 && !Array.from(pads || []).some((p) => p && p.connected)) pads = extPads;
     const down = new Set();
     let dir = null, dirMag = 0, activePad = null;
     for (const p of pads) {

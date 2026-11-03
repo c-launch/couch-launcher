@@ -7,7 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 
 const SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -184,10 +184,80 @@ function labelsOf(outputs) {
   return list;
 }
 
+// Mac: volume and mute through AppleScript; the outputs from system_profiler. Switching the
+// output needs SwitchAudioSource (brew install switchaudio-osx), which macOS doesn't include.
+function parseProfiler(json) {
+  let d; try { d = JSON.parse(json); } catch (_) { return []; }
+  const out = [];
+  for (const grp of (d && d.SPAudioDataType) || []) {
+    for (const it of (grp && grp._items) || []) {
+      if (!it || !it.coreaudio_device_output) continue;
+      const transport = String(it.coreaudio_device_transport || '');
+      out.push({ id: String(it._name || ''), name: String(it._name || 'Output'), isDefault: it.coreaudio_default_audio_output_device === 'spaudio_yes',
+        form: /hdmi|displayport/i.test(transport) ? 9 : 0 });
+    }
+  }
+  return out.filter((o) => o.id);
+}
+function parseSwitchAudio(text, current) {
+  const out = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    let name = t;
+    if (t.charAt(0) === '{') { try { const o = JSON.parse(t); if (o.type && o.type !== 'output') continue; name = String(o.name || ''); } catch (_) { continue; } }
+    if (name && !out.some((o) => o.id === name)) out.push({ id: name, name, isDefault: name === current });
+  }
+  return out;
+}
+function createMacAudio(opts) {
+  const ex = opts.execFile || execFile;
+  const has = opts.exists || ((f) => { try { return fs.existsSync(f); } catch (_) { return false; } });
+  const run = (cmd, args, ms) => new Promise((resolve, reject) => ex(cmd, args, { timeout: ms || 8000 }, (e, out) => (e ? reject(e) : resolve(String(out || '')))));
+  const osa = (lines) => run('/usr/bin/osascript', [].concat(...lines.map((l) => ['-e', l])));
+  const sas = () => ['/opt/homebrew/bin/SwitchAudioSource', '/usr/local/bin/SwitchAudioSource'].find(has) || null;
+  let cache = null, cacheAt = 0;
+  async function outputs(fresh) {
+    if (!fresh && cache && Date.now() - cacheAt < 15000) return cache;
+    const tool = sas();
+    let list = [];
+    if (tool) {
+      try {
+        const cur = (await run(tool, ['-c', '-t', 'output'])).trim();
+        list = parseSwitchAudio(await run(tool, ['-a', '-t', 'output']), cur);
+      } catch (_) { list = []; }
+    }
+    if (!list.length) { try { list = parseProfiler(await run('/usr/sbin/system_profiler', ['SPAudioDataType', '-json'], 15000)); } catch (_) { list = []; } }
+    cache = labelsOf(list); cacheAt = Date.now();
+    return cache;
+  }
+  async function state(fresh) {
+    const [outs, vol] = await Promise.all([outputs(fresh), osa(['set s to get volume settings', 'return ((output volume of s) as text) & "," & ((output muted of s) as text)']).catch(() => '')]);
+    const [v, m] = String(vol).trim().split(',');
+    const volume = /^\d+$/.test(v || '') ? Number(v) : -1;
+    return { outputs: outs, volume, muted: m === 'true', current: outs.find((o) => o.isDefault) || outs[0] || null };
+  }
+  return {
+    state: () => state(false),
+    async setOutput(id) {
+      const tool = sas();
+      if (!tool) throw new Error('To switch sound from here, install SwitchAudioSource (brew install switchaudio-osx). Or use Control Center › Sound.');
+      const outs = await outputs(true);
+      if (!outs.some((o) => o.id === String(id))) throw new Error('That sound output isn’t there any more');
+      await run(tool, ['-t', 'output', '-s', String(id)]);
+      return state(true);
+    },
+    async setVolume(v) { await osa(['set volume output volume ' + Math.max(0, Math.min(100, Math.round(Number(v) || 0)))]); return state(false); },
+    async setMute(on) { await osa(['set volume output muted ' + (on ? 'true' : 'false')]); return state(false); },
+    stop() {}
+  };
+}
+
 function createAudio(userDataDir, opts) {
   opts = opts || {};
   const spawnFn = opts.spawn || spawn;
   const platform = opts.platform || process.platform;
+  if (platform === 'darwin') return createMacAudio(opts);
   let proc = null, buf = '', waiters = [], starting = null;
 
   function stop() {
@@ -250,4 +320,4 @@ function createAudio(userDataDir, opts) {
   };
 }
 
-module.exports = { createAudio, kindOf, labelsOf, SCRIPT };
+module.exports = { createAudio, kindOf, labelsOf, SCRIPT, parseProfiler, parseSwitchAudio };

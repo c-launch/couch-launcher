@@ -8,6 +8,15 @@ const Module = require('module');
 
 const builtIn = require('../package.json').version;
 
+// Mac: the folders Windows names APPDATA / LOCALAPPDATA / USERPROFILE are ~/Library/Application
+// Support and your home folder, so the places emulators keep their settings and saves are found.
+if (process.platform === 'darwin' && process.env.HOME) {
+  const support = path.join(process.env.HOME, 'Library', 'Application Support');
+  if (!process.env.APPDATA) process.env.APPDATA = support;
+  if (!process.env.LOCALAPPDATA) process.env.LOCALAPPDATA = support;
+  if (!process.env.USERPROFILE) process.env.USERPROFILE = process.env.HOME;
+}
+
 function newer(a, b) {
   const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
   const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);

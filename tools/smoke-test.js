@@ -1,8 +1,9 @@
 // Startup check run before every publish: starts the app core (src/main.js) the way the
 // installed launcher starts an update, under a stand-in for Electron, and fails if it can't
 // start, falls back to the built-in copy, or registers a handler twice.
-// Usage: node tools/smoke-test.js
+// Usage: node tools/smoke-test.js [--mac]   (--mac: starts it as it starts on a Mac)
 'use strict';
+if (process.argv.includes('--mac')) Object.defineProperty(process, 'platform', { value: 'darwin' });
 const path = require('path'), fs = require('fs'), os = require('os'), Module = require('module'), EventEmitter = require('events');
 const ROOT = path.resolve(__dirname, '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'couch-smoke-'));
@@ -15,20 +16,22 @@ const app = new EventEmitter();
 Object.assign(app, {
   getPath: (n) => (n === 'userData' ? UD : path.join(UD, n)), getVersion: () => '1.0.0', isPackaged: true,
   whenReady: () => Promise.resolve(), requestSingleInstanceLock: () => true, setLoginItemSettings() {}, getLoginItemSettings: () => ({}),
-  disableHardwareAcceleration() {}, commandLine: { appendSwitch() {} }, quit() {}, exit() {}, relaunch() {}, setAppUserModelId() {}
+  disableHardwareAcceleration() {}, commandLine: { appendSwitch() {} }, quit() {}, exit() {}, relaunch() {}, setAppUserModelId() {},
+  focus() {}, hide() {}, show() {}, getApplicationNameForProtocol: () => '', dock: { show() {}, hide() {} }
 });
 class BW extends EventEmitter {
   constructor() { super(); windows++; this.webContents = Object.assign(new EventEmitter(), { send() {}, setWindowOpenHandler() {} }); }
   loadFile() { return Promise.resolve(); } loadURL() { return Promise.resolve(); } show() {} hide() {} focus() {} isFocused() { return true; }
   isMinimized() { return false; } isDestroyed() { return false; } setBounds() {} setAlwaysOnTop() {} setFullScreen() {} isFullScreen() { return true; }
   restore() {} minimize() {} getNativeWindowHandle() { return Buffer.alloc(8); } setMenu() {} setIgnoreMouseEvents() {} setSkipTaskbar() {} isVisible() { return true; }
+  setSimpleFullScreen() {} isSimpleFullScreen() { return true; } setVisibleOnAllWorkspaces() {} setFullScreenable() {} setHiddenInMissionControl() {} getBounds() { return display.bounds; }
 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 }, scaleFactor: 1 };
 const electron = {
   app, BrowserWindow: BW,
   ipcMain: { handle(ch) { if (channels.has(ch)) problems.push('handler registered twice: ' + ch); channels.add(ch); }, on() {} },
   shell: { openExternal: async () => {}, openPath: async () => '' }, globalShortcut: { register: () => true, unregisterAll() {} },
-  Menu: { setApplicationMenu() {} }, safeStorage: { isEncryptionAvailable: () => false }, dialog: {},
+  Menu: { setApplicationMenu() {}, buildFromTemplate: (t) => t }, safeStorage: { isEncryptionAvailable: () => false }, dialog: {},
   screen: Object.assign(new EventEmitter(), { getAllDisplays: () => [display], getPrimaryDisplay: () => display, getDisplayMatching: () => display, dipToScreenRect: (w, r) => r, screenToDipRect: (w, r) => r }),
   Notification: class { static isSupported() { return false; } show() {} }, clipboard: { readText: () => '', writeText() {} }, powerSaveBlocker: { start() {} }
 };
@@ -55,6 +58,6 @@ setTimeout(() => {
   if (channels.size < 20) problems.push('only ' + channels.size + ' handlers registered');
   fs.rmSync(TMP, { recursive: true, force: true });
   if (problems.length) { console.error('STARTUP CHECK FAILED\n- ' + problems.join('\n- ')); process.exit(1); }
-  console.log('startup check ok: ' + windows + ' windows, ' + channels.size + ' handlers');
+  console.log((process.platform === 'darwin' ? 'Mac ' : '') + 'startup check ok: ' + windows + ' windows, ' + channels.size + ' handlers');
   process.exit(0);
 }, 2500);

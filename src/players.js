@@ -95,7 +95,7 @@ function dolphinUserDir(exe, env) {
   env = env || process.env;
   const dir = exe ? path.dirname(exe) : '';
   if (dir && exists(path.join(dir, 'portable.txt'))) return path.join(dir, 'User');
-  for (const d of [path.join(env.USERPROFILE || '', 'Documents', 'Dolphin Emulator'), path.join(env.APPDATA || '', 'Dolphin Emulator')]) if (exists(path.join(d, 'Config'))) return d;
+  for (const d of [path.join(env.USERPROFILE || '', 'Documents', 'Dolphin Emulator'), path.join(env.APPDATA || '', 'Dolphin Emulator'), path.join(env.HOME || '', 'Library', 'Application Support', 'Dolphin')]) if (exists(path.join(d, 'Config'))) return d;
   if (dir && exists(path.join(dir, 'User', 'Config'))) return path.join(dir, 'User');
   return null;
 }

@@ -151,7 +151,7 @@ contextBridge.exposeInMainWorld('launcher', {
   tvSetMpv: (p) => call('tv:setMpv', p ? String(p) : ''),
   tvPlay: (req) => call('tv:play', req),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'news', 'deals', 'tv:ended', 'hud'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'news', 'deals', 'tv:ended', 'hud'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

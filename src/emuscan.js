@@ -182,7 +182,7 @@ function scanPs4(cfg, env) {
 }
 function scanScummvm(cfg, env) {
   env = env || process.env;
-  const ini = readText(path.join(env.APPDATA || '', 'ScummVM', 'scummvm.ini')) || (cfg.exe ? readText(path.join(path.dirname(cfg.exe), 'scummvm.ini')) : null) || '';
+  const ini = readText(path.join(env.APPDATA || '', 'ScummVM', 'scummvm.ini')) || (env.HOME ? readText(path.join(env.HOME, 'Library', 'Preferences', 'ScummVM Preferences')) : null) || (cfg.exe ? readText(path.join(path.dirname(cfg.exe), 'scummvm.ini')) : null) || '';
   const out = [];
   let cur = null;
   for (const raw of ini.split(/\r?\n/)) {
