@@ -20,7 +20,7 @@ Object.assign(app, {
   focus() {}, hide() {}, show() {}, getApplicationNameForProtocol: () => '', dock: { show() {}, hide() {} }
 });
 class BW extends EventEmitter {
-  constructor() { super(); windows++; this.webContents = Object.assign(new EventEmitter(), { send() {}, setWindowOpenHandler() {} }); }
+  constructor() { super(); windows++; this.webContents = Object.assign(new EventEmitter(), { send() {}, setWindowOpenHandler() {}, isLoading: () => false, getURL: () => 'file://x/index.html', executeJavaScript: async () => '{}', capturePage: async () => ({ toPNG: () => Buffer.alloc(0) }) }); }
   loadFile() { return Promise.resolve(); } loadURL() { return Promise.resolve(); } show() {} hide() {} focus() {} isFocused() { return true; }
   isMinimized() { return false; } isDestroyed() { return false; } setBounds() {} setAlwaysOnTop() {} setFullScreen() {} isFullScreen() { return true; }
   restore() {} minimize() {} getNativeWindowHandle() { return Buffer.alloc(8); } setMenu() {} setIgnoreMouseEvents() {} setSkipTaskbar() {} isVisible() { return true; }

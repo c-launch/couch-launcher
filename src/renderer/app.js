@@ -4168,10 +4168,13 @@
   // ---------------------------------------------------------------- start
   async function initOverlay() {
     document.documentElement.classList.add('overlay-mode');
+    window.__stage = 'info';
     try { S.info = await api.info(); } catch (_) { /* defaults */ }
     addEmuSources();
     refreshRa();
+    window.__stage = 'load';
     S.lib = await api.load();
+    window.__stage = 'ready';
     S.theme = window.applyTheme(S.lib.settings, false);
     requestAnimationFrame(pollPads);
     api.on('overlay:open', async (p) => {
@@ -4198,14 +4201,18 @@
   function refreshRa() { return Promise.resolve().then(() => api.raStatus()).then((r) => { S.raOn = !!(r && r.connected); S.raUser = (r && r.user) || null; }).catch(() => {}); }
   async function init() {
     if (OVERLAY) return initOverlay();
-    try { S.info = await api.info(); } catch (_) { /* defaults */ }
+    window.__stage = 'info';
+    try { S.info = await api.info(); } catch (e) { window.__stage = 'info failed: ' + e.message; }
     addEmuSources();
+    window.__stage = 'load';
     S.lib = await api.load();
+    window.__stage = 'render';
     refreshRa();
     if (typeof S.info.autostart === 'boolean') S.lib.settings.autostart = S.info.autostart;
     S.theme = window.applyTheme(S.lib.settings, false);
     renderView(false);
     requestAnimationFrame(pollPads);
+    window.__stage = 'running';
     setInterval(tickClock, 10000);
     setTimeout(() => rescan(null, true), 400);
     if (S.info.updateFailed) toast('The last update couldn’t start, so the previous version is running. Details: ' + S.info.updateFailed, true);

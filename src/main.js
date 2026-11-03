@@ -1008,9 +1008,12 @@ if (!app.requestSingleInstanceLock()) {
   // ---------- IPC ----------
   // A function declaration (not a const), so features anywhere in this file can register
   // their handlers no matter where they sit: an ordering mistake here stopped 1.6.x starting.
+  const T0 = Date.now();
+  const trace = (...x) => { if (process.env.COUCH_SELFTEST && selftestLog.length < 200) selftestLog.push(['main', Date.now() - T0].concat(x)); };
   function handle(ch, fn) {
     return ipcMain.handle(ch, async (_e, ...args) => {
-      try { return { ok: true, value: await fn(...args) }; } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+      const t = Date.now();
+      try { const value = await fn(...args); if (Date.now() - t > 500) trace('slow', ch, Date.now() - t); return { ok: true, value }; } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
     });
   }
 
@@ -2035,9 +2038,18 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(() => snap(win, 'launcher.png'), 9000);
       setTimeout(() => showOverlay(), 11000);
       setTimeout(() => snap(overlay, 'guide.png'), 14000);
-      const probe = (w) => (w && !w.isDestroyed() ? w.webContents.executeJavaScript("JSON.stringify({ html: document.documentElement.className, top: (document.getElementById('topbar') || {}).innerHTML ? document.getElementById('topbar').innerHTML.length : 0, view: (document.getElementById('view') || {}).innerHTML ? document.getElementById('view').innerHTML.length : 0, layers: document.querySelectorAll('.layer').length, guide: !!document.querySelector('.guide'), font: getComputedStyle(document.body).fontFamily.slice(0, 60), visible: document.visibilityState })").catch((e) => 'error: ' + e.message) : Promise.resolve(null));
+      const probe = (w) => (w && !w.isDestroyed() ? w.webContents.executeJavaScript("JSON.stringify({ html: document.documentElement.className, top: (document.getElementById('topbar') || {}).innerHTML ? document.getElementById('topbar').innerHTML.length : 0, view: (document.getElementById('view') || {}).innerHTML ? document.getElementById('view').innerHTML.length : 0, layers: document.querySelectorAll('.layer').length, guide: !!document.querySelector('.guide'), font: getComputedStyle(document.body).fontFamily.slice(0, 60), visible: document.visibilityState, stage: window.__stage || null })").catch((e) => 'error: ' + e.message) : Promise.resolve(null));
       let probes = {};
+      trace('selftest start');
+      for (const [n, w] of [['launcher', win], ['guide', overlay]]) {
+        if (!w || w.isDestroyed()) { trace(n, 'no window'); continue; }
+        w.webContents.on('did-finish-load', () => trace(n, 'loaded'));
+        w.webContents.on('render-process-gone', (_e, d) => trace(n, 'renderer gone', d && d.reason));
+        w.webContents.on('unresponsive', () => trace(n, 'unresponsive'));
+        trace(n, 'loading?', w.webContents.isLoading(), 'url', w.webContents.getURL().split('/').slice(-2).join('/'));
+      }
       setTimeout(() => { probe(win).then((v) => { probes.launcher = v; }); }, 8500);
+      setTimeout(() => { probe(win).then((v) => { probes.launcher2 = v; }); }, 13000);
       setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 14500);
       setTimeout(() => {
         let mac = null;
