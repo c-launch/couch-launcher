@@ -2694,7 +2694,8 @@
     return '<span class="fp-ach">' + icon('trophy') + '<span>' + esc(txt) + '</span></span><span class="fp-bar"><span style="width:' + Math.max(pc ? 2 : 0, pc) + '%"></span></span>' +
       (r.ach && r.ach.recent && r.ach.recent[0] ? '<span class="fp-gs">Latest: ' + esc(r.ach.recent[0]) + '</span>' : '');
   }
-  function fmtHours(h) { return h >= 1 ? (h >= 10 ? Math.round(h) : h) + ' h' : h > 0 ? Math.round(h * 60) + ' min' : ''; }
+  // 1 decimal under 10 hours (8.4 h), whole hours above; never the raw number (8.41666 h).
+  function fmtHours(h) { h = Number(h) || 0; return h >= 1 ? (h >= 10 ? Math.round(h) : Math.round(h * 10) / 10) + ' h' : h > 0 ? Math.max(1, Math.round(h * 60)) + ' min' : ''; }
   async function openFriendProfile(id) {
     let p = null, err = null, lastAct = null;
     const known = S.friendMap.get(id) || null;

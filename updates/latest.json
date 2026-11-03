@@ -1,6 +1,6 @@
 {
- "version": "1.15.1",
- "notes": "Clips: delete clips and screenshots from the launcher (X on a clip, or X in the player; they go to the Recycle Bin). Home: Friends playing now, Free games & deals and the news now scroll together, so the rows above don't stay stuck at the top while you read the news.",
- "file": "CouchLauncher-update-1.15.1.zip",
- "size": 309535
+ "version": "1.15.2",
+ "notes": "Friend profiles: play time like 8.4 h shows rounded (it could show 8.4166666 h).",
+ "file": "CouchLauncher-update-1.15.2.zip",
+ "size": 309505
 }
