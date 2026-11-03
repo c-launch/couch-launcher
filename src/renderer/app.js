@@ -656,6 +656,7 @@
         const first = homeList()[0];
         eb.textContent = first && first.id === g.id && g.lastPlayed ? 'Continue playing' : g.pinned ? 'Pinned' : g.favorite ? 'Favorite' : (SOURCES[g.source] || SOURCES.custom).name;
         ti.textContent = g.title;
+        fitHeroTitle(ti);
         me.textContent = [fmtWhen(g.lastPlayed), fmtPlay(g.playtime)].filter(Boolean).join(' · ') || (g.coop ? 'Co-op' : 'Ready to play');
         // Steam achievements, filled in when they arrive.
         steamAch(g).then((a) => { if (a && S.heroId === g.id && $('#hero-meta') === me) me.innerHTML = esc(me.textContent) + ' · <span class="ach">' + icon('trophy') + a.got + '/' + a.total + '</span>'; });
@@ -664,6 +665,13 @@
       setBackground((g && S.lib.settings.useArtBackground && g.art && g.art.hero) || S.lib.settings.customBg || null);
     };
     if (now) run(); else heroTimer = setTimeout(run, 110);
+  }
+  // Long names: smaller until they fit on two lines (then they may take a third at the smallest).
+  function fitHeroTitle(el) {
+    el.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(el).fontSize) || 64;
+    const min = size * 0.6;
+    for (let k = 0; k < 12 && el.scrollHeight > size * 1.1 * 2 + 2 && size > min; k++) { size = Math.max(min, size * 0.92); el.style.fontSize = size + 'px'; }
   }
   let currentBg = null;
   function setBackground(path) {
