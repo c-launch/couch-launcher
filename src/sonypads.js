@@ -80,6 +80,7 @@ function parseReport(pid, b, size) {
 // ID (sticks, both triggers on one axis, buttons, d-pad). Where Share sits in that one isn't the
 // same everywhere, so it's learned once: Settings › Controllers › Test the Share button › Find
 // Share, you press only Share, and the bit that turns on is remembered (shareMap).
+const isBlank = (b, size) => size === 16 && b.length >= 16 && b[0] === 0 && [1, 3, 5, 7, 9].every((i) => b[i] === 0 && b[i + 1] === 0x80) && Array.prototype.slice.call(b, 11, 16).every((v) => v === 0);
 function parseXbox(p, b, size, t, shareMap) {
   if (!b) return null;
   if (b[0] !== 0x01 || size < 17) {
@@ -282,6 +283,9 @@ function createSonyPads(opts) {
         if (bytes && p.kind === 'xbox') {
           const prev = p.last;
           p.last = Array.from(bytes); if (!p.first) p.first = p.last.slice(); p.reports = (p.reports || 0) + 1; p.lastAt = now();
+          // Windows' own 16-byte report with every stick exactly centered and nothing pressed: what
+          // Windows sends when it's hiding the controller from apps that aren't in front.
+          if (isBlank(bytes, p.size)) p.blanks = (p.blanks || 0) + 1;
           // Any change in the button bytes (after sticks and triggers), for the Share test.
           const from = bytes[0] === 0x01 && p.size >= 17 ? 13 : 11;
           if (prev && p.last.some((v, i) => i >= from && v !== prev[i])) p.buttonsAt = { at: now(), bytes: p.last.slice(from), from };
@@ -327,7 +331,7 @@ function createSonyPads(opts) {
       pid: p.pid, size: p.size, reports: p.reports || 0, shareAt: p.x && p.x.lock != null ? p.x.lock : null,
       windowsReport: !!(p.state && p.state.generic), learned: (() => { const m = shareMap(); return m && m.pid === p.pid && m.size === p.size ? m : null; })(),
       bad: p.x ? Object.keys(p.x.bad || {}).map(Number) : [], share: !!(p.state && p.state.xshare),
-      last: p.last || null, first: p.first || null, lastAt: p.lastAt || 0, buttons: p.buttonsAt || null
+      last: p.last || null, first: p.first || null, lastAt: p.lastAt || 0, buttons: p.buttonsAt || null, blanks: p.blanks || 0
     }));
     return { xbox, otherMicrosoft: [...seenMs.keys()], learn: learnResult() };
   }
@@ -344,4 +348,4 @@ function createSonyPads(opts) {
   };
 }
 
-module.exports = { createSonyPads, parseReport, parseXbox, XBOX_SHARE };
+module.exports = { isBlank, createSonyPads, parseReport, parseXbox, XBOX_SHARE };

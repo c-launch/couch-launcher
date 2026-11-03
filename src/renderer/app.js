@@ -1770,6 +1770,7 @@
         h += '<dt>Report</dt><dd class="mono">' + esc(hex(x.last)) + '</dd><dt>Changed since start</dt><dd class="mono">' + esc(changed.join(' · ') || 'nothing yet') + '</dd>';
       }
       h += '<dt>Medal keys</dt><dd>Clip ' + esc(d.clipKey) + ' · Screenshot ' + esc(d.shotKey || 'not set') + (d.lastPress ? ' · last sent: ' + esc(d.lastPress.kind) + ' ' + ago(d.lastPress.at) : '') + '</dd>';
+      if (d.shotKey && d.shotKey === d.clipKey) h += '<dt></dt><dd class="bk-why">' + esc('The clip and screenshot keys are both ' + d.clipKey + ', so a tap saves a clip too. Give Medal’s screenshot a different key, then pick it here.') + '</dd>';
       // The last press outside this screen (in a game), and what happened to it.
       const c = d.lastCapture;
       if (c) {
@@ -1780,6 +1781,15 @@
         if (c.hid) h += '<dt></dt><dd class="mono">' + esc('Bluetooth data at that moment: ' + (c.hid.age == null ? 'none' : 'last report ' + (c.hid.age < 1000 ? c.hid.age + ' ms' : Math.round(c.hid.age / 1000) + ' s') + ' before') + (c.hid.buttons ? ' · last button change ' + ago(c.hid.buttons.at) + ' (from byte ' + c.hid.buttons.from + '): ' + c.hid.buttons.bytes.join(' ') : '')) + '</dd>';
         if (c.front && c.front.elevated && !c.front.selfElevated) h += '<dt></dt><dd class="bk-why">' + esc(c.front.exe + ' runs as administrator, so Windows doesn’t let the launcher press keys in it (Medal never sees them). Start the game normally, or run Couch Launcher as administrator too.') + '</dd>';
       } else h += '<dt>Last press</dt><dd>' + esc('None yet: hold Share in a game, then come back here') + '</dd>';
+      // What the controller sent while a game was in front.
+      const a = d.away;
+      if (a && a.secs >= 3) {
+        let what;
+        if (!a.reports) what = 'nothing at all came from the controller: Windows stopped passing it to the launcher';
+        else if (a.blanks >= a.reports * 0.95) what = 'only blank data (sticks centered, nothing pressed): Windows hid the controller from the launcher';
+        else what = 'normal data (' + a.buttons + ' second' + (a.buttons === 1 ? '' : 's') + ' with button changes)';
+        h += '<dt>While a game was in front</dt><dd>' + esc(a.exe + ', ' + Math.round(a.secs / 60 * 10) / 10 + ' min, last ' + ago(a.at) + ': ' + a.reports + ' reports, ' + what) + '</dd>';
+      }
       h += '</dl>';
       if (msg) h += '<p class="hint">' + esc(msg) + '</p>';
       return h;

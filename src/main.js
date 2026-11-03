@@ -751,8 +751,34 @@ if (!app.requestSingleInstanceLock()) {
   handle('capture:learn', () => controller.learnShare(15000));
   handle('capture:debug', () => Object.assign(saveLearnedShare(controller.shareDebug()), {
     clipKey: lib.settings.medalClipKey || 'F8', shotKey: lib.settings.medalShotKey || '', mode: lib.settings.medalXbox || 'auto',
-    on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32, lastCapture
+    on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32, lastCapture, away: awayStats
   }));
+  // What the Xbox controller's Bluetooth data looked like while another app was in front
+  // (for the Share test): Windows can hide a controller from apps that aren't in front.
+  let awayStats = null;
+  function startAwayWatch() {
+    let lastPid = 0, lastExe = '', prev = null;
+    setInterval(() => {
+      if (!w32 || !lib || lib.settings.medalShare === false) { prev = null; return; }
+      let x = null;
+      try { x = (controller.shareDebug().xbox || [])[0] || null; } catch (_) { x = null; }
+      if (!x) { prev = null; return; }
+      const cur = { reports: x.reports || 0, blanks: x.blanks || 0, moves: x.buttons ? x.buttons.at : 0 };
+      const before = prev; prev = cur;
+      let fg = null;
+      try { fg = w32.foreground(); } catch (_) { fg = null; }
+      if (!before || !fg || fg.pid === process.pid) return;
+      if (fg.pid !== lastPid) { lastPid = fg.pid; try { lastExe = (w32.frontInfo() || {}).exe || ''; } catch (_) { lastExe = ''; } }
+      if (!lastExe) return;
+      if (!awayStats || awayStats.exe !== lastExe) awayStats = { exe: lastExe, since: Date.now(), secs: 0, reports: 0, blanks: 0, buttons: 0 };
+      awayStats.secs += 1;
+      awayStats.reports += Math.max(0, cur.reports - before.reports);
+      awayStats.blanks += Math.max(0, cur.blanks - before.blanks);
+      if (cur.moves && cur.moves !== before.moves) awayStats.buttons += 1;
+      awayStats.at = Date.now();
+    }, 1000);
+  }
+
   function saveLearnedShare(d) {
     const f = d && d.learn && d.learn.found;
     const cur = lib.settings.xboxShareMap;
@@ -1794,6 +1820,7 @@ if (!app.requestSingleInstanceLock()) {
     startPadWatch();
     setTimeout(startAlerts, 15000);
     startDownloadWatch();
+    startAwayWatch();
     startNewsWatch();
     // Look for an update a few seconds after starting, then every 3 hours (never mid-game).
     let offered = null;
