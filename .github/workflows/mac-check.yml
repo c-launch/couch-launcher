@@ -5,7 +5,11 @@ on:
     branches: [mac-check]
 jobs:
   mac:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,7 +22,8 @@ jobs:
         run: |
           mkdir -p st
           ls node_modules/koffi/build/koffi | head -40
-          ( COUCH_SELFTEST="$PWD/st" ELECTRON_ENABLE_LOGGING=1 "dist/mac-arm64/Couch Launcher.app/Contents/MacOS/Couch Launcher" > st/log.txt 2>&1 & echo $! > st/pid )
+          d=dist/mac; [ "$(uname -m)" = arm64 ] && d=dist/mac-arm64
+          ( COUCH_SELFTEST="$PWD/st" ELECTRON_ENABLE_LOGGING=1 "$d/Couch Launcher.app/Contents/MacOS/Couch Launcher" > st/log.txt 2>&1 & echo $! > st/pid )
           for i in $(seq 1 60); do [ -f st/result.json ] && break; sleep 1; done
           sleep 3; kill "$(cat st/pid)" 2>/dev/null || true
           cat st/result.json || echo "NO RESULT"
@@ -26,7 +31,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mac-check
+          name: mac-check-${{ matrix.os }}
           path: |
             st/
             dist/*.dmg

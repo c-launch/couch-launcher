@@ -33,7 +33,7 @@ const electron = {
   shell: { openExternal: async () => {}, openPath: async () => '' }, globalShortcut: { register: () => true, unregisterAll() {} },
   Menu: { setApplicationMenu() {}, buildFromTemplate: (t) => t }, safeStorage: { isEncryptionAvailable: () => false }, dialog: {},
   screen: Object.assign(new EventEmitter(), { getAllDisplays: () => [display], getPrimaryDisplay: () => display, getDisplayMatching: () => display, dipToScreenRect: (w, r) => r, screenToDipRect: (w, r) => r }),
-  Notification: class { static isSupported() { return false; } show() {} }, clipboard: { readText: () => '', writeText() {} }, powerSaveBlocker: { start() {} }
+  nativeTheme: {}, Notification: class { static isSupported() { return false; } show() {} }, clipboard: { readText: () => '', writeText() {} }, powerSaveBlocker: { start() {} }
 };
 const orig = Module._resolveFilename;
 Module._resolveFilename = function (req, ...rest) { return req === 'electron' ? 'electron-stub' : orig.call(this, req, ...rest); };

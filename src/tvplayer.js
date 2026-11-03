@@ -201,6 +201,9 @@ function startMpv(exe, o) {
   ];
   if (lang === 'off') args.push('--sid=no');
   if (o.rect) args.push('--geometry=' + o.rect.width + 'x' + o.rect.height + '+' + o.rect.x + '+' + o.rect.y);
+  // Mac: full screen over the menu bar and Dock, without a separate Space (so the guide and the
+  // controls can sit on top).
+  if (process.platform === 'darwin') args.push('--fs', '--native-fs=no');
   if (o.startAt > 5) args.push('--start=' + Math.floor(o.startAt));
   if (o.headers) {
     const h = Object.entries(o.headers).filter(([k, v]) => /^[\w-]+$/.test(k) && !/[,\r\n]/.test(String(v))).map(([k, v]) => k + ': ' + v);

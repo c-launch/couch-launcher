@@ -54,7 +54,7 @@
   const extOf = (p) => { const m = /\.[^.\\/]+$/.exec(String(p)); return m ? m[0].toLowerCase() : ''; };
 
   function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); }
-  function tileColor(g) { const t = S.theme || window.THEMES[0]; return t.tiles[hash(g.title || g.id) % t.tiles.length]; }
+  function tileColor(g) { const t = S.theme || window.THEMES.find((x) => x.id === (IS_MAC ? 'macos' : 'original')); return t.tiles[hash(g.title || g.id) % t.tiles.length]; }
 
   function fmtPlay(sec) {
     if (!sec) return '';
@@ -74,6 +74,7 @@
   }
 
   const IS_MAC = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
+  const PCW = IS_MAC ? 'Mac' : 'PC'; // for "on this PC" / "on this Mac"
   const SOURCES = {
     steam: { name: 'Steam', badge: 'STEAM', color: '#2F4F6B', letter: 'S' },
     epic: { name: 'Epic Games', badge: 'EPIC', color: '#465060', letter: 'E' },
@@ -590,7 +591,7 @@
     let h = '<div class="toolbar"><div class="pills">' + sorts.map(([k, l]) => '<button class="pill' + (S.libSort === k ? ' sel' : '') + '" data-nav data-key="s-' + k + '" data-zone="tools" data-action="sort" data-s="' + k + '">' + l + '</button>').join('') +
       (S.libSearch ? '<button class="pill" data-nav data-key="s-clear" data-zone="tools" data-action="clear-search">' + icon('x') + 'Clear search</button>' : '') +
       '</div><button class="search' + (S.libSearch ? ' has' : '') + '" data-nav data-key="s-search" data-zone="tools" data-action="search">' + icon('search') + '<span>' + esc(S.libSearch || 'Search your games') + '</span></button></div>';
-    h += '<p class="field-note ni-note">Games in your Steam library that aren’t on this PC. Choose one to install it with Steam; it shows up here with its download progress.</p>';
+    h += '<p class="field-note ni-note">Games in your Steam library that aren’t on this ' + PCW + '. Choose one to install it with Steam; it shows up here with its download progress.</p>';
     if (!list.length) return h + '<div class="empty"><b>' + (S.libSearch ? 'No games match “' + esc(S.libSearch) + '”' : 'Everything you own is installed') + '</b></div>';
     return h + '<div class="grid">' + list.map((g) => '<div class="gitem"><button class="tile ni" data-nav data-key="ni-' + esc(g.appid) + '" data-zone="grid" data-action="steam-install" data-app="' + esc(g.appid) + '" aria-label="' + esc(g.title) + '">' +
       '<div class="ph">' + esc(g.title) + '</div>' + (g.img ? '<img src="' + esc(g.img) + '"' + (g.alt ? ' data-alt="' + esc(g.alt) + '"' : '') + ' alt="" decoding="async">' : '') +
@@ -917,12 +918,12 @@
     if (tab === 'platforms') {
       const cnt = (src) => games().filter((g) => g.source === src).length;
       let h = '<div class="sect-h"><div><h2>Platforms</h2><p>Where your games come from. New games in these folders show up automatically.</p></div>' +
-        '<div class="btn-row"><button class="btn big" data-nav data-key="p-emudeck" data-zone="body" data-action="emu-find">' + icon('search') + 'Find emulators (EmuDeck too)</button>' +
+        '<div class="btn-row"><button class="btn big" data-nav data-key="p-emudeck" data-zone="body" data-action="emu-find">' + icon('search') + (IS_MAC ? 'Find emulators' : 'Find emulators (EmuDeck too)') + '</button>' +
         '<button class="btn primary big" data-nav data-key="p-all" data-zone="body" data-action="rescan">' + icon('refresh') + (S.scanning ? 'Scanning…' : 'Rescan all') + '</button></div></div><div class="plist">';
       for (const src of IS_MAC ? ['steam', 'epic'] : ['steam', 'epic', 'msstore', 'roblox']) {
         const info = S.scanInfo[src];
         const on = (P[src] || { enabled: true }).enabled !== false;
-        const status = !on ? ['off', 'Turned off'] : !info ? ['off', 'Not scanned yet'] : info.found ? ['ok', 'Connected · ' + cnt(src) + ' games'] : ['warn', 'Not found on this PC'];
+        const status = !on ? ['off', 'Turned off'] : !info ? ['off', 'Not scanned yet'] : info.found ? ['ok', 'Connected · ' + cnt(src) + ' games'] : ['warn', 'Not found on this ' + PCW + ''];
         h += '<div class="prow"><div class="picon" style="background:' + SOURCES[src].color + '">' + SOURCES[src].letter + '</div><div class="pinfo"><div class="t">' + SOURCES[src].name + '</div><div class="p">Found automatically</div></div>' +
           '<span class="status ' + status[0] + '">' + status[1] + '</span>' +
           '<button class="btn" data-nav data-key="p-' + src + '-toggle" data-zone="body" data-action="plat-toggle" data-src="' + src + '">' + (on ? 'Turn off' : 'Turn on') + '</button>' +
@@ -956,10 +957,11 @@
     if (tab === 'themes') {
       let h = '<div class="sect-h"><div><h2>Themes</h2><p>Changes apply right away, everywhere.</p></div></div><div class="theme-grid">';
       for (const t of window.THEMES) {
+        if (t.mac && !IS_MAC) continue; // the macOS looks are for Macs
         const sel = s.theme === t.id;
         h += '<button class="tcard' + (sel ? ' sel' : '') + '" data-nav data-key="th-' + t.id + '" data-zone="body" data-action="theme" data-id="' + t.id + '">' +
           '<div class="sw" style="background:' + t.bg + '">' + [t.accent, t.tiles[0], t.tiles[1], t.tiles[2]].map((c) => '<span style="background:' + c + '"></span>').join('') + '</div>' +
-          '<div class="n">' + esc(t.name) + (sel ? '<span class="check">' + icon('check') + '</span>' : '') + '</div><div class="d">' + esc(t.desc) + '</div></button>';
+          '<div class="n">' + esc(t.name) + (sel ? '<span class="check">' + icon('check') + '</span>' : '') + '</div><div class="d">' + esc(IS_MAC ? t.desc.replace(' · the default', '') : t.desc) + '</div></button>';
       }
       h += '</div><div class="sub-h">Corner style</div><div class="pills">' + window.CORNERS.map((c) =>
         '<button class="pill' + (s.corners === c.id ? ' sel' : '') + '" data-nav data-key="co-' + c.id + '" data-zone="body" data-action="corners" data-id="' + c.id + '">' + c.name + '</button>').join('') + '</div>';
@@ -1011,7 +1013,7 @@
         return h;
       }
       h += '</div><div class="sub-h">During a game</div><dl class="kv">' +
-        '<dt>Back to the launcher</dt><dd>Hold View + Menu for 1 second' + (S.info.hotkey ? '' : ' (not available on this PC)') + '</dd>' +
+        '<dt>Back to the launcher</dt><dd>Hold View + Menu for 1 second' + (S.info.hotkey ? '' : ' (not available on this ' + PCW + ')') + '</dd>' +
         '<dt>Keyboard</dt><dd>Ctrl + Alt + Home</dd>' +
         '<dt>PlayStation / Switch pads</dt><dd>The hold works when Steam Input or DS4Windows is running</dd></dl>' +
         '<div class="sub-h">Guide</div><div class="toggles" style="grid-template-columns:1fr">' +
@@ -1054,7 +1056,7 @@
       const row = (id, kind) => {
         const e = E[id], c = P[id] || {};
         const off = c.enabled === false;
-        const status = kind === 'found' ? ['ok', 'Found on this PC'] : kind === 'none' ? ['off', 'Not found'] : off ? ['off', 'Turned off'] : !e.noFolder && !c.dir ? ['warn', 'Needs games folder'] : ['ok', cnt(id) + ' game' + (cnt(id) === 1 ? '' : 's')];
+        const status = kind === 'found' ? ['ok', 'Found on this ' + PCW + ''] : kind === 'none' ? ['off', 'Not found'] : off ? ['off', 'Turned off'] : !e.noFolder && !c.dir ? ['warn', 'Needs games folder'] : ['ok', cnt(id) + ' game' + (cnt(id) === 1 ? '' : 's')];
         const u = kind === 'set' && S.emuUpdates && S.emuUpdates[id];
         const upNote = u ? (u.status === 'managed' ? (u.managedBy === 'installer' ? '  ·  updates with its own installer' : '  ·  kept up to date by ' + u.managedBy) : u.status === 'current' ? '  ·  up to date' : u.status === 'update' ? '  ·  update available' : '') : '';
         const where = (kind === 'found' ? found[id].exe + (found[id].dirs.length ? '  →  ' + found[id].dirs.join(' + ') : '') : c.exe ? c.exe + (c.dir ? '  →  ' + c.dir.split(';').join(' + ') : e.noFolder ? '  →  its own game list' : '') : e.system) + upNote;
@@ -1070,13 +1072,13 @@
         return '<div class="prow"><div class="picon" style="background:' + color(id) + '">' + esc(e.name.charAt(0)) + '</div><div class="pinfo"><div class="t">' + esc(e.name + ' · ' + e.system) + '</div><div class="p">' + esc(where) + '</div></div>' +
           '<span class="status ' + status[0] + '">' + status[1] + '</span>' + btns + '</div>';
       };
-      let h = '<div class="sect-h"><div><h2>Emulators</h2><p>' + (found === null ? 'Looking for emulators on this PC…' : setUp.length + ' set up' + (foundOnly.length ? ' · ' + foundOnly.length + ' more found on this PC' : '')) + '. EmuDeck folders (Emulation\\roms) are found by themselves.</p></div>' +
+      let h = '<div class="sect-h"><div><h2>Emulators</h2><p>' + (found === null ? 'Looking for emulators on this ' + PCW + '…' : setUp.length + ' set up' + (foundOnly.length ? ' · ' + foundOnly.length + ' more found on this ' + PCW + '' : '')) + '. EmuDeck folders (Emulation\\roms) are found by themselves.</p></div>' +
         '<div class="btn-row"><button class="btn big" data-nav data-key="e-back" data-zone="body" data-action="emu-back">' + icon('prev') + 'Platforms</button>' +
         (foundOnly.length ? '<button class="btn primary big" data-nav data-key="e-all" data-zone="body" data-action="emu-setup">' + icon('check') + 'Set up all ' + foundOnly.length + '</button>' : '') +
         '<button class="btn big" data-nav data-key="e-find" data-zone="body" data-action="emu-find">' + icon('search') + 'Find again</button>' +
         (setUp.length ? '<button class="btn big" data-nav data-key="e-upd" data-zone="body" data-action="emu-updates">' + icon('up') + 'Check for updates</button>' : '') + '</div></div>';
       if (setUp.length) h += '<div class="sub-h">Set up</div><div class="plist">' + setUp.map((id) => row(id, 'set')).join('') + '</div>';
-      if (foundOnly.length) h += '<div class="sub-h">Found on this PC</div><div class="plist">' + foundOnly.map((id) => row(id, 'found')).join('') + '</div>';
+      if (foundOnly.length) h += '<div class="sub-h">Found on this ' + PCW + '</div><div class="plist">' + foundOnly.map((id) => row(id, 'found')).join('') + '</div>';
       if (rest.length) h += S.emuShowAll ? '<div class="sub-h">More emulators</div><div class="plist">' + rest.map((id) => row(id, 'none')).join('') + '</div>'
         : '<div class="btn-row" style="margin-top:2rem"><button class="dashed" data-nav data-key="e-more" data-zone="body" data-action="emu-more">' + icon('plus') + 'Show ' + rest.length + ' more emulators</button></div>';
       h += '<p class="field-note" style="margin-top:2rem">You need your own BIOS / firmware files and game dumps for each emulator. Multi-disc games show once (an .m3u playlist is used when there is one); a game in several regions shows once too — pick the version in its menu (☰).</p>';
@@ -1091,7 +1093,7 @@
       let h = '<div class="sect-h"><div><h2>Saves &amp; backups</h2><p>Your emulator saves, copied before a game starts and after it closes (only when something changed).</p></div>' +
         '<div class="btn-row">' + (to !== 'off' ? '<button class="btn primary big" data-nav data-key="bk-now" data-zone="body" data-action="bk-now">' + icon('refresh') + 'Back up now</button>' : '') + '</div></div>' +
         '<div class="toggles" style="grid-template-columns:1fr">' +
-        '<button class="toggle-row" data-nav data-key="bk-to" data-zone="body" data-action="bk-to"><span><div>Back up to</div><div class="d">' + esc(warn ? (to === 'gdrive' ? 'Google Drive for desktop isn’t running or signed in on this PC.' : to === 'onedrive' ? 'OneDrive isn’t set up on this PC.' : 'That folder isn’t there right now.') : to === 'off' ? 'Google Drive, OneDrive or any folder.' : (b && b.root ? b.root + '\\Couch Launcher\\Save backups' : '')) + '</div></span><span class="status ' + (warn ? 'warn' : to === 'off' ? 'off' : 'ok') + '">' + esc(where) + '</span></button>' +
+        '<button class="toggle-row" data-nav data-key="bk-to" data-zone="body" data-action="bk-to"><span><div>Back up to</div><div class="d">' + esc(warn ? (to === 'gdrive' ? 'Google Drive for desktop isn’t running or signed in on this ' + PCW + '.' : to === 'onedrive' ? 'OneDrive isn’t set up on this ' + PCW + '.' : 'That folder isn’t there right now.') : to === 'off' ? 'Google Drive, OneDrive or any folder.' : (b && b.root ? b.root + '\\Couch Launcher\\Save backups' : '')) + '</div></span><span class="status ' + (warn ? 'warn' : to === 'off' ? 'off' : 'ok') + '">' + esc(where) + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="bk-keep" data-zone="body" data-action="bk-keep"><span><div>Copies to keep</div><div class="d">Per emulator. The oldest go first.</div></span><span class="status ok">' + (Number(s.backupKeep) || 10) + '</span></button>' +
         toggleHTML('c-states', 'Save and resume', s.saveStates !== false, 'Closing or switching a game saves where you are; next time you’re asked whether to pick up from there. Dolphin, PCSX2, DuckStation and RetroArch.', 'set-toggle', 'data-k="saveStates"') +
         '</div>';
@@ -1128,8 +1130,8 @@
         (t ? row('tv-mpv', 'tv-mpv', 'Video player', t.mpv ? 'mpv · ' + (t.mpvPath || '') : 'Movies play in mpv, a free player that handles every format (4K, HDR, all audio).', t.mpv ? 'Change' : 'Install mpv') : '') +
         '</div><div class="sub-h">YouTube</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('yt-ads', 'Block ads in YouTube', s.ytAdblock !== false, 'Uses the ad blocker from VacuumTube by shy (MIT License). Takes effect the next time YouTube opens. Turn off if videos stop loading.', 'set-toggle', 'data-k="ytAdblock"') +
-                row('yt-reset', 'yt-reset', 'Sign out of YouTube', 'Forgets the YouTube account and settings on this PC. Open YouTube from the dock to sign in again.', 'Sign out') +
-        '</div>' + (t ? '<p class="field-note">' + (t.engine ? 'Torrent streams use Stremio’s streaming engine from your Stremio app.' : 'Torrent streams need the Stremio app (or Stremio Service) installed on this PC. Debrid and direct links work without it.') + ' Controls while watching: A pause · ←/→ scrub · LB/RB skip · Y subtitles · X audio · B back.</p>' : '');
+                row('yt-reset', 'yt-reset', 'Sign out of YouTube', 'Forgets the YouTube account and settings on this ' + PCW + '. Open YouTube from the dock to sign in again.', 'Sign out') +
+        '</div>' + (t ? '<p class="field-note">' + (t.engine ? 'Torrent streams use Stremio’s streaming engine from your Stremio app.' : 'Torrent streams need the Stremio app (or Stremio Service) installed on this ' + PCW + '. Debrid and direct links work without it.') + ' Controls while watching: A pause · ←/→ scrub · LB/RB skip · Y subtitles · X audio · B back.</p>' : '');
     }
     if (tab === 'startup') {
       return '<div class="sect-h"><div><h2>Startup &amp; power</h2><p>Turn on the PC, grab a controller.</p></div></div><div class="toggles" style="grid-template-columns:1fr">' +
@@ -1139,7 +1141,7 @@
         '<button class="btn big" data-nav data-key="pw-exit" data-zone="body" data-action="power" data-p="exit">' + icon('exit') + 'Exit to desktop</button>' +
         '<button class="btn big" data-nav data-key="pw-sleep" data-zone="body" data-action="power" data-p="sleep">' + icon('moon') + 'Sleep</button>' +
         '<button class="btn big" data-nav data-key="pw-restart" data-zone="body" data-action="power" data-p="restart">' + icon('restart') + 'Restart</button>' +
-        '<button class="btn big" data-nav data-key="pw-off" data-zone="body" data-action="power" data-p="shutdown">' + icon('power') + 'Shut down</button></div>';
+        '<button class="btn big" data-nav data-key="pw-off" data-zone="body" data-action="power" data-p="shutdown">' + icon('power') + (IS_MAC ? 'Shut Down' : 'Shut down') + '</button></div>';
     }
     return '<div class="sect-h about-h"><img class="about-logo" src="logo.png" alt=""><div><h2>Couch Launcher</h2><p>Version ' + esc(S.info.version || '') + '</p></div></div><dl class="kv">' +
       '<dt>Games</dt><dd>' + games().length + '</dd><dt>Controllers</dt><dd>' + padCount() + ' connected</dd>' +
@@ -2042,7 +2044,7 @@
         }
         msg = 'Sending in 3 seconds… switch to a game if you like (Alt+Tab). Medal should show its “Clip saved” pop-up.';
         draw();
-        setTimeout(async () => { try { const ok = await api.captureTest('clip'); msg = ok ? 'Sent ' + (d ? d.clipKey : 'the clip key') + '. If Medal didn’t save a clip, its clip key isn’t ' + (d ? d.clipKey : 'that') + ' (Medal › Settings › Capture Hotkeys), or Medal isn’t running.' : 'Couldn’t send the key on this PC.'; } catch (e) { msg = e.message; } draw(); }, 3000);
+        setTimeout(async () => { try { const ok = await api.captureTest('clip'); msg = ok ? 'Sent ' + (d ? d.clipKey : 'the clip key') + '. If Medal didn’t save a clip, its clip key isn’t ' + (d ? d.clipKey : 'that') + ' (Medal › Settings › Capture Hotkeys), or Medal isn’t running.' : 'Couldn’t send the key on this ' + PCW + '.'; } catch (e) { msg = e.message; } draw(); }, 3000);
       },
       onBack: () => closeLayer(layer),
       onClose: () => clearInterval(timer),
@@ -2055,7 +2057,7 @@
       const x = d && d.xbox && d.xbox[0];
       if (learning && d && d.learn) {
         if (d.learn.found) { learning = false; msg = 'Found Share and saved it. In a game, hold it for a clip (tap for a screenshot).'; }
-        else if (d.learn.timedOut) { learning = false; msg = 'Nothing came through when Share was pressed: on this PC, Windows keeps the Share button for itself over Bluetooth. Use View + RB for a clip and View + LB for a screenshot (they always work in Auto).'; }
+        else if (d.learn.timedOut) { learning = false; msg = 'Nothing came through when Share was pressed: on this ' + PCW + ', Windows keeps the Share button for itself over Bluetooth. Use View + RB for a clip and View + LB for a screenshot (they always work in Auto).'; }
       }
       if (x && x.share && !pressed) { pressed = true; msg = 'Share seen. In a game, hold it for a clip (tap for a screenshot).'; }
       draw();
@@ -3228,7 +3230,7 @@
           '<ol class="steps"><li>Choose <b>Open xbl.io</b> and sign in with your Microsoft (Xbox) account.</li>' +
           '<li>Copy the <b>API key</b> shown on your xbl.io profile.</li>' +
           '<li>Come back, choose <b>Paste API key</b> and press Ctrl+V.</li></ol>' +
-          '<p class="hint">xbl.io (OpenXBL) is a free service that reads your Xbox profile and friends for apps like this one. Your key stays on this PC, encrypted.</p>' +
+          '<p class="hint">xbl.io (OpenXBL) is a free service that reads your Xbox profile and friends for apps like this one. Your key stays on this ' + PCW + ', encrypted.</p>' +
           '<div class="dialog-foot"><button class="btn big" data-nav data-key="x-cancel" data-act="cancel">Cancel</button>' +
           '<button class="btn big" data-nav data-key="x-site" data-act="site">' + icon('link') + 'Open xbl.io</button>' +
           '<button class="btn big primary" data-nav data-key="x-key" data-act="key">' + icon('key') + 'Paste API key</button></div></div>',
@@ -3268,7 +3270,7 @@
           '<ol class="steps"><li>Choose <b>Get a Steam key</b> and sign in. If it asks for a domain name, type <b>localhost</b>.</li>' +
           '<li>Copy the <b>Key</b> it shows (32 letters and numbers).</li>' +
           '<li>Come back, choose <b>Paste key</b> and press Ctrl+V.</li></ol>' +
-          '<p class="hint">Your friends list on Steam must be public (Profile › Edit Profile › Privacy Settings). The key stays on this PC, encrypted.</p>' +
+          '<p class="hint">Your friends list on Steam must be public (Profile › Edit Profile › Privacy Settings). The key stays on this ' + PCW + ', encrypted.</p>' +
           '<div class="dialog-foot"><button class="btn big" data-nav data-key="s-cancel" data-act="cancel">Cancel</button>' +
           '<button class="btn big" data-nav data-key="s-site" data-act="site">' + icon('link') + 'Get a Steam key</button>' +
           '<button class="btn big primary" data-nav data-key="s-key" data-act="key">' + icon('key') + 'Paste key</button></div></div>',
@@ -3498,7 +3500,7 @@
           '<li>Copy the <b>Application ID</b>, come back and choose <b>Paste App ID</b>.</li>' +
           '<li>Open <b>OAuth2</b>: under Redirects add <b>http://127.0.0.1</b> and save. Then <b>Reset Secret</b>, copy it, come back and choose <b>Paste secret</b>.</li>' +
           '<li>Discord pops up <b>Authorize</b>: approve it.</li></ol>' +
-          '<p class="hint dc-status">Your app’s ID and secret stay on this PC, encrypted. If Discord says the app isn’t allowed, add yourself under <b>App Testers</b> on the developer page.</p>' +
+          '<p class="hint dc-status">Your app’s ID and secret stay on this ' + PCW + ', encrypted. If Discord says the app isn’t allowed, add yourself under <b>App Testers</b> on the developer page.</p>' +
           '<div class="dialog-foot"><button class="btn big" data-nav data-key="dk-cancel" data-act="cancel">Cancel</button>' +
           '<button class="btn big" data-nav data-key="dk-site" data-act="site">' + icon('link') + 'Open developer page</button>' +
           '<button class="btn big" data-nav data-key="dk-id" data-act="id">' + icon('key') + 'Paste App ID</button>' +
@@ -3599,8 +3601,8 @@
       { id: 'rescan', label: 'Rescan games', icon: 'refresh' },
       { id: 'exit', label: 'Exit to desktop', icon: 'exit' },
       { id: 'sleep', label: 'Sleep', icon: 'moon' },
-      { id: 'restart', label: 'Restart PC', icon: 'restart' },
-      { id: 'shutdown', label: 'Shut down PC', icon: 'power', danger: true }
+      { id: 'restart', label: IS_MAC ? 'Restart…' : 'Restart PC', icon: 'restart' },
+      { id: 'shutdown', label: IS_MAC ? 'Shut Down…' : 'Shut down PC', icon: 'power', danger: true }
     ]);
     if (!pick) return;
     if (pick === 'settings') return go('settings');
@@ -3608,8 +3610,8 @@
     return power(pick);
   }
   async function power(action) {
-    if (action === 'restart' && !(await confirmBox('Restart the PC?', 'Anything unsaved in other programs will be lost.', 'Restart', true))) return;
-    if (action === 'shutdown' && !(await confirmBox('Shut down the PC?', 'Anything unsaved in other programs will be lost.', 'Shut down', true))) return;
+    if (action === 'restart' && !(await confirmBox(IS_MAC ? 'Are you sure you want to restart your Mac now?' : 'Restart the PC?', IS_MAC ? 'Apps will be asked to quit; anything unsaved may be lost.' : 'Anything unsaved in other programs will be lost.', 'Restart', true))) return;
+    if (action === 'shutdown' && !(await confirmBox(IS_MAC ? 'Are you sure you want to shut down your Mac now?' : 'Shut down the PC?', IS_MAC ? 'Apps will be asked to quit; anything unsaved may be lost.' : 'Anything unsaved in other programs will be lost.', IS_MAC ? 'Shut Down' : 'Shut down', true))) return;
     try {
       clearTimeout(saveTimer);
       await enqueue(() => api.save(S.lib));
@@ -3683,12 +3685,12 @@
         const has = (id) => (b.dests || []).find((d) => d.id === id);
         const c = await openMenu('Back up saves to', [
           { id: 'gdrive', label: has('gdrive') ? 'Google Drive (' + has('gdrive').path + ')' : 'Google Drive (needs Google Drive for desktop)', icon: s.backupTo === 'gdrive' ? 'check' : 'folder' },
-          { id: 'onedrive', label: has('onedrive') ? 'OneDrive (' + has('onedrive').path + ')' : 'OneDrive (not set up on this PC)', icon: s.backupTo === 'onedrive' ? 'check' : 'folder' },
+          { id: 'onedrive', label: has('onedrive') ? 'OneDrive (' + has('onedrive').path + ')' : 'OneDrive (not set up on this ' + PCW + ')', icon: s.backupTo === 'onedrive' ? 'check' : 'folder' },
           { id: 'folder', label: 'A folder…' + (s.backupFolder ? ' (' + s.backupFolder + ')' : ''), icon: s.backupTo === 'folder' ? 'check' : 'folder' },
           { id: 'off', label: 'Don’t back up', icon: (s.backupTo || 'off') === 'off' ? 'check' : 'x' }]);
         if (!c) return;
         if (c === 'gdrive' && !has('gdrive')) { toast('Install Google Drive for desktop and sign in, then choose this again. Backups go to My Drive › Couch Launcher.', true); return; }
-        if (c === 'onedrive' && !has('onedrive')) { toast('Sign in to OneDrive on this PC first, then choose this again.', true); return; }
+        if (c === 'onedrive' && !has('onedrive')) { toast('Sign in to OneDrive on this ' + PCW + ' first, then choose this again.', true); return; }
         if (c === 'folder') { const p = await browse({ title: 'Where should save backups go?', folder: true, hint: 'A drive or folder (a USB drive works too)' }); if (!p) return; s.backupFolder = p; }
         s.backupTo = c; save(); S.backupInfo = undefined; refreshContent();
         if (c !== 'off') toast('Backups on. Your saves are copied before and after each game.');
@@ -3762,7 +3764,7 @@
       }
       case 'tv-open': return openApp('tv');
       case 'yt-reset': {
-        if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this PC.', 'Sign out', true))) return;
+        if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this ' + PCW + '.', 'Sign out', true))) return;
         try { await api.youtubeReset(); toast('Signed out of YouTube'); } catch (e) { toast(e.message, true); }
         return;
       }

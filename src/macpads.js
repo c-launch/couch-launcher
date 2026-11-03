@@ -88,7 +88,7 @@ function createMacPads(opts) {
     const CFGetTypeID = F(cf, 'unsigned long', 'CFGetTypeID', 'void *cf');
     const CFNumberGetTypeID = F(cf, 'unsigned long', 'CFNumberGetTypeID', '');
     const CFStringGetTypeID = F(cf, 'unsigned long', 'CFStringGetTypeID', '');
-    const CFStringGetCString = F(cf, 'uint8_t', 'CFStringGetCString', 'void *s, _Out_ uint8_t *buf, long size, uint32_t enc');
+    const CFStringGetCString = F(cf, 'uint8_t', 'CFStringGetCString', 'void *s, void *buf, long size, uint32_t enc');
     const CFRunLoopGetMain = F(cf, 'void *', 'CFRunLoopGetMain', '');
     const IOHIDManagerCreate = F(io, 'void *', 'IOHIDManagerCreate', 'void *alloc, uint32_t opts');
     const IOHIDManagerSetDeviceMatchingMultiple = F(io, 'void', 'IOHIDManagerSetDeviceMatchingMultiple', 'void *mgr, void *arr');

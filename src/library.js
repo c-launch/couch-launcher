@@ -6,8 +6,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_SETTINGS = {
-  theme: 'original',
-  corners: 'rounded',
+  theme: process.platform === 'darwin' ? 'macos' : 'original',   // Macs start with the macOS look
+  corners: process.platform === 'darwin' ? 'squircle' : 'rounded',
   accent: null,          // null = the theme's own accent
   useArtBackground: true,
   reduceMotion: false,

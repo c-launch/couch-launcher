@@ -166,7 +166,8 @@ if (!app.requestSingleInstanceLock()) {
       transparent: true, frame: false, show: false, skipTaskbar: true, resizable: false, movable: false,
       minimizable: false, maximizable: false, fullscreenable: false, hasShadow: false, backgroundColor: '#00000000',
       // Mac: a panel is what can float over another app's full-screen space.
-      ...(MAC ? { type: 'panel' } : {}),
+      // Its vibrancy frosts the game behind the guide, the way macOS frosts what's under its panels.
+      ...(MAC ? { type: 'panel', vibrancy: 'fullscreen-ui', visualEffectState: 'active' } : {}),
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
     });
     overlay.setAlwaysOnTop(true, 'screen-saver');
@@ -175,6 +176,11 @@ if (!app.requestSingleInstanceLock()) {
     overlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     overlay.webContents.on('will-navigate', (e) => e.preventDefault());
     overlay.on('closed', () => { overlay = null; });
+  }
+  // Mac: light or dark glass (menus, the frosted guide) to match the launcher's theme.
+  function syncAppearance() {
+    if (!MAC || !lib) return;
+    try { require('electron').nativeTheme.themeSource = ['macoslight', 'cleanslate'].includes(lib.settings.theme) ? 'light' : 'dark'; } catch (_) { /* older Electron */ }
   }
   const overlayShown = () => !!(overlay && !overlay.isDestroyed() && overlay.isVisible());
   function showOverlay() {
@@ -427,6 +433,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     // Mac keeps a minimal menu, so Cmd+Q and Cmd+H still work.
     Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]) : null);
+    if (MAC) { try { app.setAboutPanelOptions({ applicationName: 'Couch Launcher', applicationVersion: VERSION, copyright: 'Made by Jahdiel', credits: 'Your games, on the couch, with a controller.' }); } catch (_) { /* fine */ } }
     win.once('ready-to-show', () => { win.show(); if (MAC && !WINDOWED) win.setSimpleFullScreen(true); win.focus(); });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
@@ -1117,6 +1124,7 @@ if (!app.requestSingleInstanceLock()) {
     if (next.settings.customBg) used.add(path.resolve(next.settings.customBg));
     lib = next;
     persist();
+    syncAppearance();
     try {
       for (const f of fs.readdirSync(artDir())) {
         const full = path.resolve(path.join(artDir(), f));
@@ -1803,6 +1811,7 @@ if (!app.requestSingleInstanceLock()) {
         try { places.push({ name: label, path: app.getPath(key), isDir: true, place: true }); } catch (_) { /* skip */ }
       }
       places.push({ name: 'Home folder', path: home, isDir: true, place: true });
+      if (MAC) places.unshift({ name: 'Applications', path: '/Applications', isDir: true, place: true });
       if (process.platform === 'win32') {
         for (let c = 67; c <= 90; c++) { // C: to Z:
           const d = String.fromCharCode(c) + ':\\';
@@ -1973,6 +1982,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     lib = library.load(libFile());
+    syncAppearance();
     // First run: turn on start-with-Windows (only for the installed app).
     if (!fs.existsSync(libFile())) {
       if (app.isPackaged && lib.settings.autostart) {
