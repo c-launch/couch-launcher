@@ -1,6 +1,6 @@
 {
- "version": "1.15.2",
- "notes": "Friend profiles: play time like 8.4 h shows rounded (it could show 8.4166666 h).",
- "file": "CouchLauncher-update-1.15.2.zip",
- "size": 309505
+ "version": "1.15.3",
+ "notes": "Guide: in a game, the game you're playing (Resume, Close) now sits right under Home, so opening the guide shows Home without scrolling. Music buttons name the app they open (Open Spotify / Open Apple Music instead of Open app).",
+ "file": "CouchLauncher-update-1.15.3.zip",
+ "size": 309762
 }
