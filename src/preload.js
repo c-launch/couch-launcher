@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('launcher', {
   newsOpen: (link) => call('news:open', String(link || '')),
   clips: () => call('clips:list'),
   clipsShow: (file) => call('clips:show', String(file || '')),
+  clipsDelete: (file) => call('clips:delete', String(file || '')),
   playersListen: (on) => call('players:listen', !!on),
   playersSet: (gameId, slots) => call('players:set', String(gameId || ''), Array.isArray(slots) ? slots.map(Number) : []),
   playersSolo: (gameId) => call('players:solo', String(gameId || '')),

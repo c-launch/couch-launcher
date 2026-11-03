@@ -1258,10 +1258,21 @@ if (!app.requestSingleInstanceLock()) {
     const folder = clipsFolder();
     return { folder, clips: folder ? clipsMod.listClips(folder, 400) : [] };
   });
-  handle('clips:show', (file) => {
+  // A clip or screenshot inside Medal's folder (nothing else is ever shown or deleted).
+  function clipFile(file) {
     const folder = clipsFolder();
     const f = path.resolve(String(file || ''));
-    if (!folder || !f.toLowerCase().startsWith(path.resolve(folder).toLowerCase() + path.sep) || !fs.existsSync(f)) throw new Error('Clip not found');
+    if (!folder || !f.toLowerCase().startsWith(path.resolve(folder).toLowerCase() + path.sep) || !/\.(mp4|mkv|webm|mov|png|jpe?g)$/i.test(f) || !fs.existsSync(f)) throw new Error('Clip not found');
+    return f;
+  }
+  // Deleted clips go to the Recycle Bin, so they can still be brought back.
+  handle('clips:delete', async (file) => {
+    const f = clipFile(file);
+    try { await shell.trashItem(f); } catch (e) { throw new Error('Windows couldn’t delete that clip' + (/busy|use|EBUSY|EPERM/i.test(String(e && e.message)) ? ' (Medal or another app has it open)' : '')); }
+    return true;
+  });
+  handle('clips:show', (file) => {
+    const f = clipFile(file);
     hideOverlay();
     shell.showItemInFolder(f);
     placeNextWindow(8000);

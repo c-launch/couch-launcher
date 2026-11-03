@@ -394,7 +394,7 @@
       onActivate: async (el) => {
         const act = el.dataset.act;
         if (act === 'filter') { filter = el.dataset.f; draw('cf-' + filter); return; }
-        if (act === 'play') return openClipPlayer(shown(), Number(el.dataset.i));
+        if (act === 'play') return openClipPlayer(shown(), Number(el.dataset.i), gone);
         if (act === 'folder') {
           const p = await browse({ title: 'Choose your Medal folder', folder: true });
           if (!p) return;
@@ -402,11 +402,27 @@
           setTimeout(load, 400); // after the setting reaches the app core
         }
       },
+      onButton: (b) => {
+        const el = currentFocus();
+        if (b !== 'X' || !el || el.dataset.act !== 'play') return false;
+        const i = Number(el.dataset.i), c = shown()[i];
+        const v = $('video', el);
+        if (c) deleteClip(c, () => { if (v && v.src) { v.removeAttribute('src'); v.load(); } }).then((ok) => { if (ok) { gone(c); const left = shown(); draw(left.length ? 'cl-' + Math.min(i, left.length - 1) : null); } });
+        return true;
+      },
       onBack: () => closeLayer(layer),
-      prompts: (el) => (el && el.dataset.act === 'play' ? [['A', 'Play'], ['B', 'Close']] : [['A', 'Select'], ['B', 'Close']])
+      prompts: (el) => (el && el.dataset.act === 'play' ? [['A', 'Play'], ['X', 'Delete'], ['B', 'Close']] : [['A', 'Select'], ['B', 'Close']])
     });
     const shown = () => ((data && data.clips) || []).filter((c) => filter === 'all' || (filter === 'shots' ? c.kind === 'shot' : c.game === filter));
-    function draw(focusKey) {
+    // A clip deleted here or in the player leaves the list (and the filter, when it was its last).
+    function gone(c) {
+      if (data) data.clips = data.clips.filter((x) => x.file !== c.file);
+      if (filter !== 'all' && !shown().length) filter = 'all';
+      if (layers.indexOf(layer) < 0) return;
+      const onTop = layers[layers.length - 1] === layer;
+      draw(layer.focusKey, !onTop); // under the player: redrawn without taking its focus
+    }
+    function draw(focusKey, noFocus) {
       const main = $('.clips-main', layer.el), sub = $('.clips-sub', layer.el);
       if (err || !data) { sub.textContent = err || 'Looking for your Medal clips…'; main.innerHTML = ''; return; }
       const all = data.clips;
@@ -427,6 +443,7 @@
           '<span class="cname">' + esc(c.kind === 'shot' ? 'Screenshot' : c.game) + '</span><span class="cwhen">' + esc(ago(c.at)) + '</span></button>').join('') + '</div></section>';
       lazyThumbs(main, $('.content', main));
       const el = (focusKey && $('[data-key="' + cssEsc(focusKey) + '"]', main)) || $('.clip', main) || $('[data-nav]', main);
+      if (noFocus) { layer.focusKey = el ? el.dataset.key : null; return; }
       if (el) setFocus(el, { instant: true });
     }
     async function load() {
@@ -435,8 +452,21 @@
     }
     load();
   }
-  // Full-screen player: A play/pause, left/right 5 s, LB/RB previous/next, Y show in folder.
-  function openClipPlayer(list, index) {
+  // Asks first, then moves the clip to the Recycle Bin. True when it's gone.
+  // `release` lets go of the file first (a video that's showing it keeps it open).
+  async function deleteClip(c, release, restore) {
+    const what = c.kind === 'shot' ? 'screenshot' : 'clip';
+    if (!(await confirmBox('Delete this ' + what + '?', clipName(c) + '. It goes to the Recycle Bin, so you can still get it back there.', 'Delete', true))) { if (restore) restore(); return false; }
+    if (release) release();
+    try { await api.clipsDelete(c.file); } catch (e) { toast(e.message, true); if (restore) restore(); return false; }
+    clipsCache = null;
+    toast(what === 'clip' ? 'Clip deleted' : 'Screenshot deleted');
+    return true;
+  }
+  // Full-screen player: A play/pause, left/right 5 s, LB/RB previous/next, Y show in folder,
+  // X delete.
+  function openClipPlayer(list, index, onGone, onDone) {
+    list = list.slice();
     let i = index;
     const layer = openLayer({
       className: 'player-layer',
@@ -448,12 +478,29 @@
       onButton: (b) => {
         if (b === 'LB' || b === 'RB') { const n = i + (b === 'RB' ? 1 : -1); if (n >= 0 && n < list.length) { i = n; show(); } return true; }
         if (b === 'Y') { api.clipsShow(list[i].file).catch((e) => toast(e.message, true)); return true; }
-        if (b === 'X' || b === 'A') { toggle(); return true; }
+        if (b === 'X') {
+          const c = list[i];
+          const v = $('video', layer.el); if (v) v.pause();
+          const at = v ? v.currentTime : 0;
+          const release = () => { stage.innerHTML = ''; };
+          const restore = () => { if (!$('video, img', stage)) { show(); const nv = $('video', stage); if (nv) { nv.autoplay = false; nv.addEventListener('loadedmetadata', () => { nv.currentTime = at; }, { once: true }); } } };
+          deleteClip(c, release, restore).then((ok) => {
+            if (!ok) return;
+            // Let go of the file first (the video was playing it).
+            list.splice(i, 1);
+            if (onGone) onGone(c);
+            if (!list.length) return closeLayer(layer);
+            i = Math.min(i, list.length - 1);
+            show();
+          });
+          return true;
+        }
+        if (b === 'A') { toggle(); return true; }
         return false;
       },
       onBack: () => closeLayer(layer),
-      onClose: () => { const v = $('video', layer.el); if (v) { v.pause(); v.removeAttribute('src'); v.load(); } clearInterval(tick); },
-      prompts: () => [['A', 'Play/Pause'], ['LB', 'RB'], ['Y', 'Show in folder'], ['B', 'Close']]
+      onClose: () => { const v = $('video', layer.el); if (v) { v.pause(); v.removeAttribute('src'); v.load(); } clearInterval(tick); if (onDone) onDone(); },
+      prompts: () => [['A', 'Play/Pause'], ['LB', 'RB'], ['X', 'Delete'], ['Y', 'Show in folder'], ['B', 'Close']]
     });
     const stage = $('.pl-stage', layer.el);
     function toggle() { const v = $('video', layer.el); if (v) { if (v.paused) v.play().catch(() => {}); else v.pause(); } }
@@ -1142,7 +1189,7 @@
     onFocusChanged(el);
   }
   function ensureVisible(el, instant) {
-    const sc = el.closest('.row, .hf-row, .fp-games, .content, .fb-list, .side, .flist, .gbody, .news-list, .fprof');
+    const sc = el.closest('.row, .hf-row, .fp-games, .content, .fb-list, .side, .flist, .gbody, .home-news, .fprof');
     if (!sc) return;
     const r = el.getBoundingClientRect(), c = sc.getBoundingClientRect();
     const rem = remPx();
@@ -1153,12 +1200,25 @@
       if (r.left < c.left + pad) dx = r.left - (c.left + pad);
       else if (r.right > c.right - pad) dx = r.right - (c.right - pad);
       if (Math.abs(dx) > 1) sc.scrollBy({ left: dx, behavior });
+      // Home's lower part (friends, deals, news) scrolls as one: show the whole row, heading too.
+      const hn = sc.closest('.home-news'), block = el.closest('.home-friends, .home-deals');
+      if (hn && block) {
+        const b = block.getBoundingClientRect(), h = hn.getBoundingClientRect();
+        let dy = 0;
+        if (b.top < h.top) dy = b.top - h.top;
+        else if (r.bottom > h.bottom - 3.5 * rem) dy = Math.min(r.bottom - (h.bottom - 3.5 * rem), b.top - h.top);
+        if (dy < 0 && hn.scrollTop + dy < 6 * rem) dy = -hn.scrollTop;
+        if (Math.abs(dy) > 1) hn.scrollBy({ top: dy, behavior });
+      }
     } else {
       const tight = sc.classList.contains('fb-list') || sc.classList.contains('flist') || sc.classList.contains('gbody');
       const top = (tight ? 1 : 4) * rem, bottom = (tight ? 1 : 3.5) * rem;
       // Music controls: keep the whole card (cover and song) in view, not just the buttons.
       const card = el.closest('.gmusic');
-      const rTop = card ? card.getBoundingClientRect().top : r.top;
+      let rTop = card ? card.getBoundingClientRect().top : r.top;
+      // The first row of news: its heading comes into view with it.
+      const nl = !card && el.closest('.news-list');
+      if (nl && nl.previousElementSibling && r.top - nl.getBoundingClientRect().top < 4 * rem) rTop = nl.previousElementSibling.getBoundingClientRect().top + rem;
       let dy = 0;
       if (rTop < c.top + top) dy = rTop - (c.top + top);
       else if (r.bottom > c.bottom - bottom) dy = r.bottom - (c.bottom - bottom);
@@ -1172,7 +1232,9 @@
 
   let tabTimer = null;
   function onFocusChanged(el) {
-    $('#app').classList.toggle('news-mode', !layers.length && S.view === 'home' && !!(el && el.closest && el.closest('.home-news')));
+    const newsMode = !layers.length && S.view === 'home' && !!(el && el.closest && el.closest('.home-news'));
+    if (!newsMode && $('#app').classList.contains('news-mode') && !layers.length) { const hn = $$('.home-news').pop(); if (hn) hn.scrollTop = 0; } // back up: start at the top next time
+    $('#app').classList.toggle('news-mode', newsMode);
     if (!layers.length) {
       if (S.view === 'home') updateHero(false);
       // Settings tabs follow focus, like a console.
@@ -1246,6 +1308,12 @@
     if (!els.length) return false;
     const cur = currentFocus();
     if (!cur) { setFocus(els[0]); return true; }
+    // Home's lower part scrolls, so rows above can be out of sight: up stays inside it while
+    // there's somewhere to go (instead of jumping to the dock).
+    if (dir === 'up' && cur.closest('.home-news')) {
+      const inner = findNext(cur, dir, els.filter((e) => e.closest('.home-news')));
+      if (inner) { setFocus(inner); return true; }
+    }
     const next = findNext(cur, dir, els);
     if (next) { setFocus(next); return true; }
     return false;
@@ -2490,7 +2558,12 @@
         if (act === 'dc-add') { closeLayer(layer); return discordPins(); }
         if (act === 'dc-setup') { closeLayer(layer); return discordConnect(); }
         if (act === 'players-setup') { leaveApps(); closeLayer(layer); return setUpPlayersNow(); }
-        if (act === 'clip') { const list = gclips.clips.filter((c) => c.kind === 'clip').slice(0, 8); return openClipPlayer(list, Number(el.dataset.i)); }
+        if (act === 'clip') {
+          const list = gclips.clips.filter((c) => c.kind === 'clip').slice(0, 8);
+          let dirty = false;
+          return openClipPlayer(list, Number(el.dataset.i), (c) => { gclips.clips = gclips.clips.filter((x) => x.file !== c.file); dirty = true; },
+            () => { if (dirty) setTimeout(() => { if (layers[layers.length - 1] === layer && tab === 'clips') redraw(); }, 0); });
+        }
         if (act === 'clips-all') { leaveApps(); closeLayer(layer); return openClips(); }
         if (act === 'profile') { openProfile(); return; }
         if (act === 'settings') { leaveApps(); closeLayer(layer); S.setTab = 'platforms'; return go('settings', 't-platforms'); }
