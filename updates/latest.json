@@ -1,6 +1,6 @@
 {
- "version": "1.14.9",
- "notes": "Medal: View + RB (clip) and View + LB (screenshot) now always work in Auto, even after the Share button has been found (they were switched off then, so neither worked in games where Share doesn't come through). The Share test also shows what the controller sent at the moment of your last in-game press.",
- "file": "CouchLauncher-update-1.14.9.zip",
- "size": 290870
+ "version": "1.14.10",
+ "notes": "Share test: shows what the Xbox controller sent while a game was in front (so it's clear whether Windows hides the controller from the launcher during games), and warns when Medal's clip and screenshot keys are the same.",
+ "file": "CouchLauncher-update-1.14.10.zip",
+ "size": 296985
 }
