@@ -52,8 +52,9 @@ function createXbox(userDataDir, safeStorage) {
   }
 
   const settingsOf = (j) => {
-    const users = j.profileUsers || (j.content && j.content.profileUsers) || [];
-    return users[0] || null;
+    if (!j || typeof j !== 'object') return null;
+    const users = j.profileUsers || (j.content && j.content.profileUsers) || (j.profile && j.profile.profileUsers) || [];
+    return (Array.isArray(users) && users[0]) || null;
   };
   function parseAccount(j) {
     const u = settingsOf(j);
@@ -71,7 +72,7 @@ function createXbox(userDataDir, safeStorage) {
     };
   }
   function parseFriends(j) {
-    const people = j.people || (j.content && j.content.people) || [];
+    const people = (j && (j.people || (j.content && j.content.people))) || [];
     return people.map((p) => {
       const online = String(p.presenceState || '').toLowerCase() === 'online';
       return {
@@ -112,12 +113,20 @@ function createXbox(userDataDir, safeStorage) {
     }).sort((a, b) => b.last - a.last);
   }
   // A friend's Xbox profile: gamerpic, gamerscore and what they've played lately.
-  async function friendProfile(xuid) {
+  async function friendProfile(xuid, known) {
     xuid = String(xuid || '');
     if (!/^\d{1,20}$/.test(xuid)) throw new Error('Unknown Xbox friend');
-    const raw = await call('/account/' + xuid);
-    const acc = parseAccount(raw);
-    const u = settingsOf(raw) || {};
+    // Their account settings. xbl.io doesn't send these for every friend (some come back in
+    // another shape, or not at all), so the profile falls back to their summary, then to what
+    // the friends list already said, and still shows their games.
+    let raw = null, acc = null;
+    try { raw = await call('/account/' + xuid); acc = parseAccount(raw); } catch (e) { acc = null; if (/API key|not connected/.test(e.message)) throw e; }
+    if (!acc) {
+      try { const x = parseFriends(await call('/player/summary/' + xuid))[0]; if (x && x.gamertag && x.gamertag !== 'Friend') acc = { xuid, gamertag: x.gamertag, gamerscore: x.gamerscore, pic: x.pic }; } catch (_) { /* next */ }
+    }
+    if (!acc && known && known.gamertag) acc = { xuid, gamertag: known.gamertag, gamerscore: Number(known.gamerscore) || 0, pic: known.pic || null };
+    if (!acc) throw new Error('Xbox didn’t send that profile. Try again in a minute.');
+    const u = (raw && settingsOf(raw)) || {};
     const set = (k) => { const x = (Array.isArray(u.settings) ? u.settings : []).find((y) => y.id === k); return x && x.value ? String(x.value) : null; };
     let titles = [];
     for (const ep of ['/player/titleHistory/' + xuid, '/achievements/player/' + xuid]) {
