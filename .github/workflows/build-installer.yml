@@ -1,5 +1,6 @@
 # Builds the Windows setup wizard (CouchLauncher-Setup-<version>.exe) on GitHub's own Windows
-# machines whenever a new version is published, and attaches it to a release.
+# machines whenever a new version is published, and attaches it to a release. Then the Mac
+# apps (.dmg, Apple silicon and Intel) on GitHub's Macs, attached to the same release.
 name: Build installer
 
 on:
@@ -46,8 +47,56 @@ jobs:
           files: dist/CouchLauncher-Setup-*.exe
           make_latest: true
           body: |
-            Download **CouchLauncher-Setup-${{ steps.v.outputs.version }}.exe** below and run it.
+            **Windows:** download **CouchLauncher-Setup-${{ steps.v.outputs.version }}.exe** below and run it. Windows may say "Windows protected your PC" because the installer isn't signed by a known publisher: choose **More info › Run anyway**.
 
-            Windows may say "Windows protected your PC" because the installer isn't signed by a known publisher: choose **More info › Run anyway**.
+            **Mac:** download **CouchLauncher-${{ steps.v.outputs.version }}-mac-apple-silicon.dmg** (M1 and newer) or **…-mac-intel.dmg**, open it and drag Couch Launcher into Applications. The first time, open it, then choose **Open Anyway** in System Settings › Privacy & Security (the app isn't from an Apple-registered developer). The Mac files appear a few minutes after the Windows one.
+
+            Already installed? You don't need this: the launcher updates itself.
+
+  mac:
+    needs: build
+    # GitHub's Intel Macs build both versions (Apple silicon and Intel) and are easier to get.
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read the version
+        id: v
+        run: |
+          v=$(node -p "require('./updates/latest.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          npm version "$v" --no-git-tag-version --allow-same-version
+
+      - name: Install
+        run: npm install
+
+      - name: Build the Mac apps
+        run: tools/mac-build.sh "${{ steps.v.outputs.version }}"
+
+      - name: Make sure it starts
+        # Starts the app for this Mac with a build check that opens the guide, then quits.
+        run: |
+          mkdir -p st
+          d=dist/mac; [ "$(uname -m)" = arm64 ] && d=dist/mac-arm64
+          ( COUCH_SELFTEST="$PWD/st" "$d/Couch Launcher.app/Contents/MacOS/Couch Launcher" > st/log.txt 2>&1 & echo $! > st/pid )
+          for i in $(seq 1 60); do [ -f st/result.json ] && break; sleep 1; done
+          sleep 3; kill "$(cat st/pid)" 2>/dev/null || true
+          cat st/result.json
+          node -e "const r=require('./st/result.json'); if (!r.mac || !r.mac.available || !r.overlay) { console.error('The Mac app started without its controller reader or guide'); process.exit(1); }"
+
+      - name: Add them to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Couch Launcher ${{ steps.v.outputs.version }}
+          files: dist/CouchLauncher-*-mac-*.dmg
+          body: |
+            **Windows:** download **CouchLauncher-Setup-${{ steps.v.outputs.version }}.exe** below and run it. Windows may say "Windows protected your PC" because the installer isn't signed by a known publisher: choose **More info › Run anyway**.
+
+            **Mac:** download **CouchLauncher-${{ steps.v.outputs.version }}-mac-apple-silicon.dmg** (M1 and newer) or **…-mac-intel.dmg**, open it and drag Couch Launcher into Applications. The first time, open it, then choose **Open Anyway** in System Settings › Privacy & Security (the app isn't from an Apple-registered developer). The Mac files appear a few minutes after the Windows one.
 
             Already installed? You don't need this: the launcher updates itself.

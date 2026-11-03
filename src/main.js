@@ -26,6 +26,14 @@ const VERSION = global.couchVersion || require('../package.json').version;
 const newerThan = global.couchNewer || ((a, b) => String(a) > String(b));
 
 const WINDOWED = process.argv.includes('--windowed');
+const MAC = process.platform === 'darwin';
+// Build check (see COUCH_SELFTEST below): what the screens printed, to spot a screen that broke.
+const selftestLog = [];
+if (process.env.COUCH_SELFTEST) {
+  app.on('web-contents-created', (_e, wc) => wc.on('console-message', (_ev, level, message, line, source) => {
+    if (selftestLog.length < 200) selftestLog.push([level, String(message).slice(0, 500), line, String(source || '').split('/').pop()]);
+  }));
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -50,6 +58,9 @@ if (!app.requestSingleInstanceLock()) {
     // Where Share is in Windows' Xbox Bluetooth report (found once in Settings › Controllers).
     shareMap: () => (lib && lib.settings && lib.settings.xboxShareMap) || null,
     extraShare: () => !!(rawPads && rawPads.share),
+    // Mac: the guide window gets the controller from here (macOS may not give it to a window
+    // that just came in front of a game).
+    onState: (gp) => { if (MAC && overlayShown()) sendOverlay('pad:ext', gp); },
     // While a movie or episode plays, the controller drives the player.
     // Share button -> Medal (tap: screenshot, hold: clip). Not inside the launcher itself.
     onCapture: (st) => {
@@ -161,13 +172,22 @@ if (!app.requestSingleInstanceLock()) {
       x: b.x, y: b.y, width: b.width, height: b.height,
       transparent: true, frame: false, show: false, skipTaskbar: true, resizable: false, movable: false,
       minimizable: false, maximizable: false, fullscreenable: false, hasShadow: false, backgroundColor: '#00000000',
+      // Mac: a panel is what can float over another app's full-screen space.
+      // Its vibrancy frosts the game behind the guide, the way macOS frosts what's under its panels.
+      ...(MAC ? { type: 'panel', vibrancy: 'fullscreen-ui', visualEffectState: 'active' } : {}),
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
     });
     overlay.setAlwaysOnTop(true, 'screen-saver');
+    if (MAC) { try { overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }); } catch (_) { /* older macOS */ } }
     overlay.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { overlay: '1' } });
     overlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     overlay.webContents.on('will-navigate', (e) => e.preventDefault());
     overlay.on('closed', () => { overlay = null; });
+  }
+  // Mac: light or dark glass (menus, the frosted guide) to match the launcher's theme.
+  function syncAppearance() {
+    if (!MAC || !lib) return;
+    try { require('electron').nativeTheme.themeSource = ['macoslight', 'cleanslate'].includes(lib.settings.theme) ? 'light' : 'dark'; } catch (_) { /* older Electron */ }
   }
   const overlayShown = () => !!(overlay && !overlay.isDestroyed() && overlay.isVisible());
   function showOverlay() {
@@ -181,9 +201,14 @@ if (!app.requestSingleInstanceLock()) {
     }
     overlay.setBounds(targetDisplay().bounds);
     overlay.webContents.send('overlay:open', { gameId: running ? running.gameId : null, canClose: canClose(), tv: tvPart && tvPart.playing ? tvPart.now() : null, yt: ytGuide });
+    // Mac: the launcher steps aside (app.hide) when you go back to a game, and a hidden app's
+    // windows don't show, so un-hide it first. macOS may not let it take focus from the game;
+    // the guide still floats on top and reads the controller itself (pad:ext), so it works either way.
+    if (MAC) { try { if (app.isHidden()) app.show(); } catch (_) { /* older Electron */ } }
     overlay.show();
     overlay.setAlwaysOnTop(true, 'screen-saver');
     if (w32) w32.forceForeground(w32.hwndOf(overlay));
+    if (MAC) { try { overlay.moveTop(); } catch (_) { /* fine */ } app.focus({ steal: true }); }
     overlay.focus();
     setTimeout(updatePause, 150); // after the game has seen it lost focus
   }
@@ -197,6 +222,8 @@ if (!app.requestSingleInstanceLock()) {
     pauser.resumeAfterPending().then(() => {
       if (overlay && !overlay.isDestroyed()) overlay.hide();
       if (refocus && r && running === r) focusGame(r);
+      // Mac: stepping the launcher aside hands the screen back to the game (or the player).
+      if (MAC && refocus && !ytGuide && ((r && running === r) || (tvPart && tvPart.inGuide))) app.hide();
       // Back to what you were watching.
       if (ytGuide) { ytGuide = false; if (refocus) yt.resumeFromGuide(); }
       if (tvPart && tvPart.inGuide) {
@@ -313,10 +340,12 @@ if (!app.requestSingleInstanceLock()) {
   function bringBack(showGuide) {
     if (!win || win.isDestroyed()) return;
     if (win.isMinimized()) win.restore();
+    if (MAC) { try { if (app.isHidden()) app.show(); } catch (_) { /* older Electron */ } }
     win.show();
     // Windows blocks background programs from taking focus; take it the way overlay tools do.
     win.setAlwaysOnTop(true);
     if (w32) w32.forceForeground(w32.hwndOf(win));
+    if (MAC) app.focus({ steal: true });
     win.focus();
     setTimeout(() => { if (win && !win.isDestroyed()) win.setAlwaysOnTop(false); }, 300);
     if (showGuide && running) send('overlay', { gameId: running.gameId, canClose: canClose() });
@@ -381,10 +410,12 @@ if (!app.requestSingleInstanceLock()) {
   function placeWindows() {
     const d = targetDisplay();
     if (win && !win.isDestroyed()) {
-      const wasFull = win.isFullScreen();
-      if (wasFull) win.setFullScreen(false);
+      const isFull = () => (MAC ? win.isSimpleFullScreen() : win.isFullScreen());
+      const setFull = (on) => (MAC ? win.setSimpleFullScreen(on) : win.setFullScreen(on));
+      const wasFull = isFull();
+      if (wasFull) setFull(false);
       if (WINDOWED) win.setBounds({ x: d.workArea.x + 60, y: d.workArea.y + 60, width: Math.min(1600, d.workArea.width - 120), height: Math.min(900, d.workArea.height - 120) });
-      else { win.setBounds(d.bounds); setTimeout(() => { if (win && !win.isDestroyed()) win.setFullScreen(true); }, wasFull ? 250 : 0); }
+      else { win.setBounds(d.bounds); setTimeout(() => { if (win && !win.isDestroyed()) setFull(true); }, wasFull ? 250 : 0); }
     }
     if (overlay && !overlay.isDestroyed()) overlay.setBounds(d.bounds);
   }
@@ -397,7 +428,9 @@ if (!app.requestSingleInstanceLock()) {
       y: WINDOWED ? d0.y + 60 : d0.y,
       width: 1600,
       height: 900,
-      fullscreen: !WINDOWED,
+      // Mac: "simple" full screen (no separate Space), so games and the guide can go over it.
+      fullscreen: !WINDOWED && !MAC,
+      simpleFullscreen: !WINDOWED && MAC,
       frame: WINDOWED,
       backgroundColor: '#0A0D12',
       show: false,
@@ -410,8 +443,10 @@ if (!app.requestSingleInstanceLock()) {
         backgroundThrottling: false
       }
     });
-    Menu.setApplicationMenu(null);
-    win.once('ready-to-show', () => { win.show(); win.focus(); });
+    // Mac keeps a minimal menu, so Cmd+Q and Cmd+H still work.
+    Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]) : null);
+    if (MAC) { try { app.setAboutPanelOptions({ applicationName: 'Couch Launcher', applicationVersion: VERSION, copyright: 'Made by Jahdiel', credits: 'Your games, on the couch, with a controller.' }); } catch (_) { /* fine */ } }
+    win.once('ready-to-show', () => { win.show(); if (MAC && !WINDOWED) win.setSimpleFullScreen(true); win.focus(); });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
     // Once the game takes over the screen, get out of its way.
@@ -508,6 +543,8 @@ if (!app.requestSingleInstanceLock()) {
       moveGameToChosenMonitor(r);
       w32.placeBelow(w32.hwndOf(win), game.hwnd);
       w32.focus(game.hwnd);
+    } else if (MAC) {
+      win.hide();
     } else {
       win.minimize();
     }
@@ -583,6 +620,8 @@ if (!app.requestSingleInstanceLock()) {
 
   function startProcess(exe, args, cwd, gameId) {
     if (!exe || !fs.existsSync(exe)) throw new Error('Program not found: ' + (exe || '(not set)'));
+    // Mac apps are folders (Name.app): start the program inside, so the launcher knows when it closes.
+    if (MAC && /\.app\/?$/i.test(exe)) { const bin = macAppBinary(exe); if (!bin) throw new Error('Couldn’t start ' + path.basename(exe)); cwd = path.dirname(exe); exe = bin; }
     const child = spawn(exe, args, { cwd, detached: false, windowsHide: false, stdio: 'ignore' });
     const r = { gameId, child, pids: [], startedAt: Date.now(), pending: true };
     running = r;
@@ -590,10 +629,25 @@ if (!app.requestSingleInstanceLock()) {
     child.on('exit', () => endGame(r));
   }
 
+  // The program inside a Mac app (Contents/MacOS/<CFBundleExecutable>).
+  function macAppBinary(appPath) {
+    const dir = path.join(appPath, 'Contents', 'MacOS');
+    let name = null;
+    try { name = require('child_process').execFileSync('/usr/bin/plutil', ['-extract', 'CFBundleExecutable', 'raw', '-o', '-', path.join(appPath, 'Contents', 'Info.plist')], { timeout: 5000 }).toString().trim(); } catch (_) { name = null; }
+    if (name && fs.existsSync(path.join(dir, name))) return path.join(dir, name);
+    try { const f = fs.readdirSync(dir).find((n) => !n.startsWith('.')); return f ? path.join(dir, f) : null; } catch (_) { return null; }
+  }
   // Store games (Steam/Epic) start through their launcher, so find the game's own processes
   // by looking for programs running from the game's install folder.
   function pidsIn(dir) {
     return new Promise((resolve) => {
+      if (MAC && dir) {
+        const d = dir.endsWith('/') ? dir : dir + '/';
+        return execFile('/bin/ps', ['-axww', '-o', 'pid=,command='], { timeout: 10000 }, (err, out) => {
+          if (err) return resolve(null);
+          resolve(String(out).split('\n').map((l) => /^\s*(\d+)\s+(.*)$/.exec(l)).filter((m) => m && m[2].startsWith(d) && !/crash|bugreport|errorreport/i.test(m[2])).map((m) => Number(m[1])).filter((n) => n !== process.pid));
+        });
+      }
       if (process.platform !== 'win32' || !dir) return resolve(null);
       const d = dir.endsWith('\\') ? dir : dir + '\\';
       // Crash reporters (Roblox, Unity, Unreal...) keep running after a game closes: ignore them.
@@ -821,6 +875,7 @@ if (!app.requestSingleInstanceLock()) {
   const playerCount = {}; // emulator -> players set up for this session
   handle('players:listen', (on) => { controller.setJoin(!!on); return true; });
   handle('players:set', (gameId, slots) => {
+    if (MAC) throw new Error('On a Mac, set players in the emulator');
     const { emu, exe } = emuOf(gameId);
     const list = (Array.isArray(slots) ? slots : []).map(Number).filter((n) => n >= 0 && n <= 3);
     const connected = readPads().map((p) => p.slot);
@@ -831,6 +886,7 @@ if (!app.requestSingleInstanceLock()) {
   // One controller: make sure it's Player 1 (only once you've used "Who's playing?" for that
   // emulator, so settings you never asked the launcher to touch stay as they are).
   handle('players:solo', (gameId) => {
+    if (MAC) return false;
     const { emu, exe } = emuOf(gameId);
     const connected = readPads().map((p) => p.slot);
     if (connected.length !== 1) return false;
@@ -957,9 +1013,12 @@ if (!app.requestSingleInstanceLock()) {
   // ---------- IPC ----------
   // A function declaration (not a const), so features anywhere in this file can register
   // their handlers no matter where they sit: an ordering mistake here stopped 1.6.x starting.
+  const T0 = Date.now();
+  const trace = (...x) => { if (process.env.COUCH_SELFTEST && selftestLog.length < 400) selftestLog.push(['main', Date.now() - T0].concat(x)); };
   function handle(ch, fn) {
     return ipcMain.handle(ch, async (_e, ...args) => {
-      try { return { ok: true, value: await fn(...args) }; } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+      const t = Date.now();
+      try { const value = await fn(...args); if (process.env.COUCH_SELFTEST) trace('ipc', ch, Date.now() - t); return { ok: true, value }; } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
     });
   }
 
@@ -1004,6 +1063,7 @@ if (!app.requestSingleInstanceLock()) {
   const eu = () => emuUpd || (emuUpd = require('./emuupdate').createEmuUpdates({ tmpDir: path.join(app.getPath('userData'), 'downloads') }));
   handle('emu:checkUpdates', async () => {
     const out = {};
+    if (MAC) return out; // Mac apps update themselves (or from their own sites)
     const ids = Object.keys(scanners.EMULATORS).filter((id) => lib.platforms[id] && lib.platforms[id].exe);
     await Promise.all(ids.map(async (id) => { try { out[id] = await eu().check(id, lib.platforms[id]); } catch (e) { out[id] = { status: 'error', error: e.message }; } }));
     return out;
@@ -1013,6 +1073,7 @@ if (!app.requestSingleInstanceLock()) {
     const cfg = lib.platforms[id];
     if (!cfg || !cfg.exe) throw new Error('Set up this emulator first');
     if (running && running.emu === id) throw new Error('Close the game first');
+    if (MAC) throw new Error('On a Mac, update emulators from their own sites');
     const name = scanners.EMULATORS[id] ? scanners.EMULATORS[id].name : id;
     const r = await eu().update(id, cfg, (msg) => send('notice', { title: name + ': ' + msg }));
     cfg.updatedTag = r.tag; cfg.updatedAt = Date.now();
@@ -1078,6 +1139,7 @@ if (!app.requestSingleInstanceLock()) {
     if (next.settings.customBg) used.add(path.resolve(next.settings.customBg));
     lib = next;
     persist();
+    syncAppearance();
     try {
       for (const f of fs.readdirSync(artDir())) {
         const full = path.resolve(path.join(artDir(), f));
@@ -1487,13 +1549,16 @@ if (!app.requestSingleInstanceLock()) {
   });
   const MUSIC_EXE = { 'Apple Music': 'AppleMusic.exe', Spotify: 'Spotify.exe' };
   const tasklist = () => new Promise((resolve) => execFile('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 10000 }, (err, out) => resolve(err ? '' : String(out).toLowerCase())));
+  const pgrep = (name) => new Promise((resolve) => execFile('/usr/bin/pgrep', ['-x', name], (err) => resolve(!err)));
   handle('media:running', async () => {
+    if (MAC) return { 'Apple Music': await pgrep('Music'), Spotify: await pgrep('Spotify') };
     const list = process.platform === 'win32' ? await tasklist() : '';
     return { 'Apple Music': list.includes('"applemusic.exe"'), Spotify: list.includes('"spotify.exe"') };
   });
   // Closes a music app: politely first, then for sure (music apps lose nothing by closing).
   handle('media:close', async (appName) => {
     const exe = MUSIC_EXE[appName];
+    if (MAC && exe) { await new Promise((r) => execFile('/usr/bin/osascript', ['-e', 'tell application "' + (appName === 'Spotify' ? 'Spotify' : 'Music') + '" to quit'], { timeout: 8000 }, () => r())); return true; }
     if (!exe || process.platform !== 'win32') return false;
     await new Promise((r) => execFile('taskkill', ['/IM', exe, '/T'], { windowsHide: true }, () => r()));
     await new Promise((r) => setTimeout(r, 1500));
@@ -1525,6 +1590,7 @@ if (!app.requestSingleInstanceLock()) {
   handle('emu:open', (id) => {
     const cfg = lib.platforms[id];
     if (!scanners.EMULATORS[id] || !cfg || !cfg.exe || !fs.existsSync(cfg.exe)) throw new Error('Set the emulator program first');
+    if (MAC) { execFile('/usr/bin/open', ['-a', cfg.exe], () => {}); return true; }
     const child = spawn(cfg.exe, [], { cwd: path.dirname(cfg.exe), detached: true, stdio: 'ignore' });
     child.unref();
     presentApp([path.basename(cfg.exe).toLowerCase()], scanners.EMULATORS[id].name, 15000);
@@ -1648,6 +1714,11 @@ if (!app.requestSingleInstanceLock()) {
     try { return !!JSON.parse(fs.readFileSync(dcFile(), 'utf8')).keys; } catch (_) { return false; }
   });
   handle('discord:status', () => {
+    if (MAC) {
+      const home = process.env.HOME || '';
+      const installed = ['Discord', 'Discord PTB', 'Discord Canary'].some((d) => fs.existsSync('/Applications/' + d + '.app') || fs.existsSync(path.join(home, 'Applications', d + '.app')));
+      return new Promise((resolve) => execFile('/usr/bin/pgrep', ['-x', 'Discord'], { timeout: 4000 }, (err, out) => resolve({ installed, running: !err && !!String(out || '').trim() })));
+    }
     const local = process.env.LOCALAPPDATA || '';
     const installed = ['Discord', 'DiscordPTB', 'DiscordCanary'].some((d) => fs.existsSync(path.join(local, d)));
     return { installed, running: !!discordWindow() };
@@ -1680,7 +1751,7 @@ if (!app.requestSingleInstanceLock()) {
     return true;
   });
   handle('discord:key', async (which) => {
-    if (!w32) throw new Error('Needs Windows');
+    if (!w32) throw new Error(MAC ? 'On a Mac, connect Discord (in this card) to mute and deafen from here' : 'Needs Windows');
     if (!discordWindow()) throw new Error('Discord isn’t open');
     // Ctrl+Shift+M (mute) and Ctrl+Shift+D (deafen). Discord reacts to these from anywhere once
     // they're added under Discord › Settings › Keybinds (the guide explains this the first time).
@@ -1755,6 +1826,7 @@ if (!app.requestSingleInstanceLock()) {
         try { places.push({ name: label, path: app.getPath(key), isDir: true, place: true }); } catch (_) { /* skip */ }
       }
       places.push({ name: 'Home folder', path: home, isDir: true, place: true });
+      if (MAC) places.unshift({ name: 'Applications', path: '/Applications', isDir: true, place: true });
       if (process.platform === 'win32') {
         for (let c = 67; c <= 90; c++) { // C: to Z:
           const d = String.fromCharCode(c) + ':\\';
@@ -1772,7 +1844,9 @@ if (!app.requestSingleInstanceLock()) {
       if (e.name.startsWith('$') || e.name.startsWith('.')) continue;
       let isDir = e.isDirectory();
       if (e.isSymbolicLink()) { try { isDir = fs.statSync(path.join(resolved, e.name)).isDirectory(); } catch (_) { continue; } }
-      if (!isDir && want && !want.has(path.extname(e.name).toLowerCase())) continue;
+      // Mac apps (Name.app) are folders, but they're the program you pick.
+      if (MAC && isDir && /\.app$/i.test(e.name) && want && (want.has('.exe') || want.has('.app'))) isDir = false;
+      else if (!isDir && want && !want.has(path.extname(e.name).toLowerCase()) && !(MAC && want.has('.exe') && path.extname(e.name) === '')) continue;
       entries.push({ name: e.name, path: path.join(resolved, e.name), isDir });
     }
     entries.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
@@ -1810,7 +1884,8 @@ if (!app.requestSingleInstanceLock()) {
     windowed: WINDOWED,
     hotkey: controller.available,
     guideButton: controller.available && controller.guide,
-    autostart: process.platform === 'win32' ? app.getLoginItemSettings(loginOpts()).openAtLogin : null,
+    guideError: MAC ? (controller.error || (controller.macDebug && controller.macDebug().error) || null) : null,
+    autostart: process.platform === 'win32' || MAC ? app.getLoginItemSettings(loginOpts()).openAtLogin : null,
     emulators: Object.fromEntries(Object.entries(scanners.EMULATORS).map(([k, v]) => [k, { name: v.name, system: v.system, exts: v.exts, catalog: !!v.catalog, color: v.color || null, exe: (v.exes || [k + '.exe'])[0], noFolder: k === 'rpcs3' || require('./emuscan').needsNoFolder(k) }]))
   }));
   function loginOpts() {
@@ -1823,6 +1898,13 @@ if (!app.requestSingleInstanceLock()) {
   });
   function doPower(action) {
     if (action === 'exit') { setTimeout(() => app.quit(), 50); return true; }
+    if (MAC) {
+      // Sleep needs no permission; restart / shut down ask macOS once (System Events).
+      if (action === 'sleep') execFile('/usr/bin/pmset', ['sleepnow'], () => {});
+      else if (action === 'restart' || action === 'shutdown') execFile('/usr/bin/osascript', ['-e', 'tell application "System Events" to ' + (action === 'restart' ? 'restart' : 'shut down')], () => {});
+      else return false;
+      return true;
+    }
     if (process.platform !== 'win32') return false;
     if (action === 'restart') execFile('shutdown', ['/r', '/t', '0'], { windowsHide: true }, () => {});
     else if (action === 'shutdown') execFile('shutdown', ['/s', '/t', '0'], { windowsHide: true }, () => {});
@@ -1915,6 +1997,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     lib = library.load(libFile());
+    syncAppearance();
     // First run: turn on start-with-Windows (only for the installed app).
     if (!fs.existsSync(libFile())) {
       if (app.isPackaged && lib.settings.autostart) {
@@ -1950,6 +2033,41 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(autoCheck, 3 * 60 * 60 * 1000);
     // Keyboard escape hatch to bring the launcher back from a game.
     try { globalShortcut.register('Control+Alt+Home', () => guidePressed()); } catch (_) { /* taken */ }
+    // Macs have no Home key: Control+Option+G opens the guide too.
+    if (MAC) { try { globalShortcut.register('Control+Alt+G', () => guidePressed()); } catch (_) { /* taken */ } }
+    // Build check (COUCH_SELFTEST=<folder>): saves pictures of the launcher and the guide, notes
+    // whether the controller reader started, and quits. Used on GitHub's Macs before a release.
+    if (process.env.COUCH_SELFTEST) {
+      const dir = process.env.COUCH_SELFTEST;
+      const snap = (w, name) => (w && !w.isDestroyed() ? w.webContents.capturePage().then((img) => fs.writeFileSync(path.join(dir, name), img.toPNG())).catch((e) => console.log('COUCH_SELFTEST snap ' + name + ': ' + e.message)) : Promise.resolve());
+      setTimeout(() => snap(win, 'launcher.png'), 9000);
+      // Step aside for whatever is behind (like a game), then open the guide over it.
+      setTimeout(() => { if (MAC) { win.hide(); app.hide(); } else if (win) win.minimize(); }, 12000);
+      setTimeout(() => showOverlay(), 14000);
+      setTimeout(() => snap(overlay, 'guide.png'), 18500);
+      const probe = (w) => (w && !w.isDestroyed() ? w.webContents.executeJavaScript("JSON.stringify({ html: document.documentElement.className, top: (document.getElementById('topbar') || {}).innerHTML ? document.getElementById('topbar').innerHTML.length : 0, view: (document.getElementById('view') || {}).innerHTML ? document.getElementById('view').innerHTML.length : 0, layers: document.querySelectorAll('.layer').length, guide: !!document.querySelector('.guide'), font: getComputedStyle(document.body).fontFamily.slice(0, 60), visible: document.visibilityState, stage: window.__stage || null })").catch((e) => 'error: ' + e.message) : Promise.resolve(null));
+      let probes = {};
+      trace('selftest start');
+      // Notes when the app core was too busy to answer (anything over a quarter second).
+      let tick = Date.now();
+      setInterval(() => { const n = Date.now(); if (n - tick > 250) trace('busy', n - tick); tick = n; }, 50);
+      for (const [n, w] of [['launcher', win], ['guide', overlay]]) {
+        if (!w || w.isDestroyed()) { trace(n, 'no window'); continue; }
+        w.webContents.on('did-finish-load', () => trace(n, 'loaded'));
+        w.webContents.on('render-process-gone', (_e, d) => trace(n, 'renderer gone', d && d.reason));
+        w.webContents.on('unresponsive', () => trace(n, 'unresponsive'));
+        trace(n, 'loading?', w.webContents.isLoading(), 'url', w.webContents.getURL().split('/').slice(-2).join('/'));
+      }
+      setTimeout(() => { probe(win).then((v) => { probes.launcher = v; }); }, 8500);
+      setTimeout(() => { probe(win).then((v) => { probes.launcher2 = v; }); }, 13000);
+      setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 19000);
+      setTimeout(() => {
+        let mac = null;
+        try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
+        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
+        app.quit();
+      }, 22000);
+    }
   });
 
   app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); if (tvPart) tvPart.quit(); if (audioMod) audioMod.stop(); if (rawPads) rawPads.stop(); });

@@ -1,6 +1,6 @@
 {
- "version": "1.15.3",
- "notes": "Guide: in a game, the game you're playing (Resume, Close) now sits right under Home, so opening the guide shows Home without scrolling. Music buttons name the app they open (Open Spotify / Open Apple Music instead of Open app).",
- "file": "CouchLauncher-update-1.15.3.zip",
- "size": 309762
+ "version": "1.16.0",
+ "notes": "Couch Launcher now runs on Mac: download the .dmg from Releases. The Xbox or PS button opens the guide over your games, and it looks like macOS (San Francisco type, frosted glass, system blue). On Windows: nothing changes.",
+ "file": "CouchLauncher-update-1.16.0.zip",
+ "size": 324565
 }

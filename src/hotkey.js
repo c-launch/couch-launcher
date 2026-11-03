@@ -66,7 +66,69 @@ function loadXInput() {
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
-function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onCapture, shareMap, extraShare }) {
+function createControllerWatcher(opts) {
+  if (process.platform === 'darwin') return createMacWatcher(opts);
+  return createWinWatcher(opts);
+}
+
+// Mac: the same buttons, read through IOKit (macpads.js). Xbox button / PS = guide, B / Circle =
+// back on the boot screen, View + Menu (Share + Options) held = back to the launcher.
+// onState(gamepads): every reading, for the guide window (it can't always read pads itself
+// while a game is in front).
+function createMacWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onState }) {
+  const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false,
+    xboxShareReadable: false, shareDebug: () => ({ xbox: [], otherMicrosoft: [], unavailable: true }), learnShare: () => false, macDebug: () => ({ available: false }) };
+  let mac;
+  try { mac = require('./macpads').createMacPads(); } catch (err) { return Object.assign(off, { error: String(err && err.message || err) }); }
+  if (!mac.available) return Object.assign(off, { error: mac.debug().error, macDebug: () => mac.debug() });
+  let timer = null, gameRunning = false, joining = false;
+  let heldSince = 0, comboFired = false, guideWasDown = false, backWasDown = false;
+  let prevSlot = [];
+  function poll() {
+    let states = [];
+    try { states = mac.states(); } catch (_) { states = []; }
+    const ps = !usePs || usePs();
+    let all = 0, lx = 0, ly = 0, guide = false, back = false, combo = false;
+    states.forEach((st, i) => {
+      if (st.kind === 'ps' && !ps) return;
+      const b = st.mask;
+      all |= b;
+      if (Math.abs(st.lx) > Math.abs(lx)) lx = st.lx;
+      if (Math.abs(st.ly) > Math.abs(ly)) ly = st.ly;
+      if (st.guide) guide = true;
+      if (b & 0x2000) back = true;
+      if ((b & 0x0030) === 0x0030) combo = true;
+      if (joining && onPress && (b & 0x1000) && !((prevSlot[i] || 0) & 0x1000)) onPress(i);
+      prevSlot[i] = b;
+    });
+    prevSlot.length = states.length;
+    if (onButtons) { try { onButtons(all & ~0x0400, lx, ly); } catch (_) { /* never stop the watcher */ } }
+    if (onState) { try { onState(mac.gamepads()); } catch (_) { /* never stop the watcher */ } }
+    if (guide && !guideWasDown) onGuide();
+    guideWasDown = guide;
+    if (back && !backWasDown && gameRunning && onBack) onBack();
+    backWasDown = back;
+    const now = Date.now();
+    if (combo && gameRunning) {
+      if (!heldSince) heldSince = now;
+      if (!comboFired && now - heldSince >= HOLD_MS) { comboFired = true; onCombo(); }
+    } else { heldSince = 0; comboFired = false; }
+  }
+  return {
+    available: true,
+    guide: true,
+    start() { if (!timer) timer = setInterval(poll, POLL_MS); },
+    stop() { if (timer) { clearInterval(timer); timer = null; } },
+    setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; },
+    setJoin(on) { joining = !!on; },
+    xboxShareReadable: false,
+    shareDebug: () => ({ xbox: [], otherMicrosoft: [], unavailable: true }),
+    learnShare: () => false,
+    macDebug: () => mac.debug()
+  };
+}
+
+function createWinWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onCapture, shareMap, extraShare }) {
   const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false };
   if (process.platform !== 'win32') return off;
   let x;
