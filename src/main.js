@@ -27,6 +27,13 @@ const newerThan = global.couchNewer || ((a, b) => String(a) > String(b));
 
 const WINDOWED = process.argv.includes('--windowed');
 const MAC = process.platform === 'darwin';
+// Build check (see COUCH_SELFTEST below): what the screens printed, to spot a screen that broke.
+const selftestLog = [];
+if (process.env.COUCH_SELFTEST) {
+  app.on('web-contents-created', (_e, wc) => wc.on('console-message', (_ev, level, message, line, source) => {
+    if (selftestLog.length < 200) selftestLog.push([level, String(message).slice(0, 500), line, String(source || '').split('/').pop()]);
+  }));
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -2028,10 +2035,14 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(() => snap(win, 'launcher.png'), 9000);
       setTimeout(() => showOverlay(), 11000);
       setTimeout(() => snap(overlay, 'guide.png'), 14000);
+      const probe = (w) => (w && !w.isDestroyed() ? w.webContents.executeJavaScript("JSON.stringify({ html: document.documentElement.className, top: (document.getElementById('topbar') || {}).innerHTML ? document.getElementById('topbar').innerHTML.length : 0, view: (document.getElementById('view') || {}).innerHTML ? document.getElementById('view').innerHTML.length : 0, layers: document.querySelectorAll('.layer').length, guide: !!document.querySelector('.guide'), font: getComputedStyle(document.body).fontFamily.slice(0, 60), visible: document.visibilityState })").catch((e) => 'error: ' + e.message) : Promise.resolve(null));
+      let probes = {};
+      setTimeout(() => { probe(win).then((v) => { probes.launcher = v; }); }, 8500);
+      setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 14500);
       setTimeout(() => {
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
-        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length }, null, 1)); } catch (_) { /* reported as missing */ }
+        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
         app.quit();
       }, 16000);
     }
