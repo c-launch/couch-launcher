@@ -17,14 +17,14 @@ Object.assign(app, {
   getPath: (n) => (n === 'userData' ? UD : path.join(UD, n)), getVersion: () => '1.0.0', isPackaged: true,
   whenReady: () => Promise.resolve(), requestSingleInstanceLock: () => true, setLoginItemSettings() {}, getLoginItemSettings: () => ({}),
   disableHardwareAcceleration() {}, commandLine: { appendSwitch() {} }, quit() {}, exit() {}, relaunch() {}, setAppUserModelId() {},
-  focus() {}, hide() {}, show() {}, getApplicationNameForProtocol: () => '', dock: { show() {}, hide() {} }
+  focus() {}, hide() {}, show() {}, isHidden: () => false, getApplicationNameForProtocol: () => '', dock: { show() {}, hide() {} }
 });
 class BW extends EventEmitter {
   constructor() { super(); windows++; this.webContents = Object.assign(new EventEmitter(), { send() {}, setWindowOpenHandler() {}, isLoading: () => false, getURL: () => 'file://x/index.html', executeJavaScript: async () => '{}', capturePage: async () => ({ toPNG: () => Buffer.alloc(0) }) }); }
   loadFile() { return Promise.resolve(); } loadURL() { return Promise.resolve(); } show() {} hide() {} focus() {} isFocused() { return true; }
   isMinimized() { return false; } isDestroyed() { return false; } setBounds() {} setAlwaysOnTop() {} setFullScreen() {} isFullScreen() { return true; }
   restore() {} minimize() {} getNativeWindowHandle() { return Buffer.alloc(8); } setMenu() {} setIgnoreMouseEvents() {} setSkipTaskbar() {} isVisible() { return true; }
-  setSimpleFullScreen() {} isSimpleFullScreen() { return true; } setVisibleOnAllWorkspaces() {} setFullScreenable() {} setHiddenInMissionControl() {} getBounds() { return display.bounds; }
+  setSimpleFullScreen() {} isSimpleFullScreen() { return true; } moveTop() {} setVisibleOnAllWorkspaces() {} setFullScreenable() {} setHiddenInMissionControl() {} getBounds() { return display.bounds; }
 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 }, scaleFactor: 1 };
 const electron = {

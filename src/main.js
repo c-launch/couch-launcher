@@ -201,10 +201,14 @@ if (!app.requestSingleInstanceLock()) {
     }
     overlay.setBounds(targetDisplay().bounds);
     overlay.webContents.send('overlay:open', { gameId: running ? running.gameId : null, canClose: canClose(), tv: tvPart && tvPart.playing ? tvPart.now() : null, yt: ytGuide });
+    // Mac: the launcher steps aside (app.hide) when you go back to a game, and a hidden app's
+    // windows don't show, so un-hide it first. macOS may not let it take focus from the game;
+    // the guide still floats on top and reads the controller itself (pad:ext), so it works either way.
+    if (MAC) { try { if (app.isHidden()) app.show(); } catch (_) { /* older Electron */ } }
     overlay.show();
     overlay.setAlwaysOnTop(true, 'screen-saver');
     if (w32) w32.forceForeground(w32.hwndOf(overlay));
-    if (MAC) app.focus({ steal: true });
+    if (MAC) { try { overlay.moveTop(); } catch (_) { /* fine */ } app.focus({ steal: true }); }
     overlay.focus();
     setTimeout(updatePause, 150); // after the game has seen it lost focus
   }
@@ -336,6 +340,7 @@ if (!app.requestSingleInstanceLock()) {
   function bringBack(showGuide) {
     if (!win || win.isDestroyed()) return;
     if (win.isMinimized()) win.restore();
+    if (MAC) { try { if (app.isHidden()) app.show(); } catch (_) { /* older Electron */ } }
     win.show();
     // Windows blocks background programs from taking focus; take it the way overlay tools do.
     win.setAlwaysOnTop(true);
@@ -2037,9 +2042,9 @@ if (!app.requestSingleInstanceLock()) {
       const snap = (w, name) => (w && !w.isDestroyed() ? w.webContents.capturePage().then((img) => fs.writeFileSync(path.join(dir, name), img.toPNG())).catch((e) => console.log('COUCH_SELFTEST snap ' + name + ': ' + e.message)) : Promise.resolve());
       setTimeout(() => snap(win, 'launcher.png'), 9000);
       // Step aside for whatever is behind (like a game), then open the guide over it.
-      setTimeout(() => { if (MAC) app.hide(); else if (win) win.minimize(); }, 10500);
-      setTimeout(() => showOverlay(), 12000);
-      setTimeout(() => snap(overlay, 'guide.png'), 15000);
+      setTimeout(() => { if (MAC) { win.hide(); app.hide(); } else if (win) win.minimize(); }, 12000);
+      setTimeout(() => showOverlay(), 14000);
+      setTimeout(() => snap(overlay, 'guide.png'), 18500);
       const probe = (w) => (w && !w.isDestroyed() ? w.webContents.executeJavaScript("JSON.stringify({ html: document.documentElement.className, top: (document.getElementById('topbar') || {}).innerHTML ? document.getElementById('topbar').innerHTML.length : 0, view: (document.getElementById('view') || {}).innerHTML ? document.getElementById('view').innerHTML.length : 0, layers: document.querySelectorAll('.layer').length, guide: !!document.querySelector('.guide'), font: getComputedStyle(document.body).fontFamily.slice(0, 60), visible: document.visibilityState, stage: window.__stage || null })").catch((e) => 'error: ' + e.message) : Promise.resolve(null));
       let probes = {};
       trace('selftest start');
@@ -2055,13 +2060,13 @@ if (!app.requestSingleInstanceLock()) {
       }
       setTimeout(() => { probe(win).then((v) => { probes.launcher = v; }); }, 8500);
       setTimeout(() => { probe(win).then((v) => { probes.launcher2 = v; }); }, 13000);
-      setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 15500);
+      setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 19000);
       setTimeout(() => {
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
         try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
         app.quit();
-      }, 18000);
+      }, 22000);
     }
   });
 
