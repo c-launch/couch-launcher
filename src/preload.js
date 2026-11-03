@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('launcher', {
   friendJoinable: () => call('friend:joinable'),
   friendPlaying: () => call('friend:playing'),
   steamAchievements: (appid) => call('steam:achievements', String(appid || '')),
+  steamNotInstalled: (force) => call('steam:notInstalled', !!force),
+  steamInstall: (appid) => call('steam:install', String(appid || '')),
   raStatus: () => call('ra:status'),
   raConnect: (user, key) => call('ra:connect', String(user || ''), String(key || '')),
   raDisconnect: () => call('ra:disconnect'),
@@ -67,6 +69,10 @@ contextBridge.exposeInMainWorld('launcher', {
   pads: () => call('pads:get'),
   captureStatus: () => call('capture:status'),
   news: (force) => call('news:get', !!force),
+  deals: (force) => call('deals:get', !!force),
+  dealOpen: (id) => call('deals:open', String(id || '')),
+  dealWatch: (id) => call('deals:watch', String(id || '')),
+  dealUnwatch: (gameID) => call('deals:unwatch', String(gameID || '')),
   newsOpen: (link) => call('news:open', String(link || '')),
   clips: () => call('clips:list'),
   clipsShow: (file) => call('clips:show', String(file || '')),
@@ -144,7 +150,7 @@ contextBridge.exposeInMainWorld('launcher', {
   tvSetMpv: (p) => call('tv:setMpv', p ? String(p) : ''),
   tvPlay: (req) => call('tv:play', req),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'news', 'tv:ended', 'hud'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'news', 'deals', 'tv:ended', 'hud'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

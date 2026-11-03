@@ -16,6 +16,7 @@ const { createNews } = require('./news');
 const clipsMod = require('./clips');
 const { createSteam } = require('./steam');
 const friendsLib = require('./friends');
+const dealsLib = require('./deals');
 const { createMedia } = require('./media');
 const { createPauser } = require('./pause');
 const { createWin32 } = require('./win32');
@@ -1179,6 +1180,68 @@ if (!app.requestSingleInstanceLock()) {
     placeNextWindow(10000);
     return true;
   });
+  // ---------- Free games and deals (Home) ----------
+  let dealsMod = null;
+  const dl = () => dealsMod || (dealsMod = dealsLib.createDeals({ userDataDir: app.getPath('userData'), country: (app.getLocaleCountryCode && app.getLocaleCountryCode()) || 'US' }));
+  // What's on Home, with the games you already have marked (and taken out of the deals).
+  function dealsView() {
+    const v = dl().view();
+    const apps = new Set(), names = new Set();
+    for (const g of lib.games) {
+      if (g.hidden) continue;
+      const a = friendsLib.steamAppOf(g); if (a) apps.add(a);
+      names.add(dealsLib.normTitle(g.title));
+    }
+    const own = (x) => !!((x.steamAppID && apps.has(x.steamAppID)) || names.has(dealsLib.normTitle(x.title)));
+    v.free = v.free.map((x) => Object.assign(x, { owned: own(x) }));
+    v.deals = v.deals.filter((x) => !own(x)).slice(0, 16);
+    return v;
+  }
+  const hasEpic = () => { try { return !!(app.getApplicationNameForProtocol && app.getApplicationNameForProtocol('com.epicgames.launcher://')); } catch (_) { return false; } };
+  async function openDeal(item) {
+    const url = dealsLib.openUrl(item, hasEpic());
+    if (!url) throw new Error('No store page for that one');
+    hideOverlay();
+    if (w32) w32.allowForeground();
+    await shell.openExternal(url);
+    if (url.startsWith('com.epicgames.launcher:')) openedApps.set('epic', { exes: ['epicgameslauncher.exe'], title: 'Epic Games', stop: presentApp(['epicgameslauncher.exe'], 'Epic Games', 30000) });
+    else placeNextWindow(10000);
+    return true;
+  }
+  const watchedItem = (gameID) => { const w = dl().watched().find((x) => x.gameID === String(gameID)); return w ? Object.assign({}, w, w.now || {}, { steamAppID: w.steamAppID }) : null; };
+  handle('deals:get', async (force) => {
+    try { await dl().get(!!force); } catch (e) { if (!dl().view().at) throw e; }
+    return dealsView();
+  });
+  handle('deals:open', (id) => {
+    id = String(id || '');
+    const item = id.startsWith('w:') ? watchedItem(id.slice(2)) : dl().find(id);
+    if (!item) throw new Error('That deal isn’t there any more');
+    return openDeal(item);
+  });
+  handle('deals:watch', (id) => { const it = dl().find(String(id || '')); if (!it || !it.gameID) throw new Error('That game can’t be watched'); dl().watch(it); return dealsView(); });
+  handle('deals:unwatch', (gameID) => { dl().unwatch(String(gameID || '')); return dealsView(); });
+  function startDealsWatch() {
+    const money = (n) => '$' + Number(n).toFixed(2);
+    const tick = async () => {
+      if (lib.settings.showDeals === false && lib.settings.notifyFree === false && !dl().watched().length) return;
+      try { await dl().get(false); } catch (_) { return; } // offline: next time
+      for (const f of dl().newFree()) {
+        const owned = dealsView().free.find((x) => x.id === f.id && x.owned);
+        if (owned || lib.settings.notifyFree === false) continue;
+        notify('Free to keep: ' + f.title, f.store + (f.until ? ' · until ' + new Date(f.until).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : ''), () => { openDeal(f).catch(() => {}); });
+      }
+      try {
+        for (const w of await dl().checkWatch(false)) {
+          if (lib.settings.notifyPrice === false) continue;
+          notify('Price drop: ' + w.title, money(w.now.price) + ' at ' + w.now.store + ' (was ' + money(w.was) + ')', () => { openDeal(watchedItem(w.gameID)).catch(() => {}); });
+        }
+      } catch (_) { /* next time */ }
+      send('deals', dealsView());
+    };
+    setTimeout(tick, 15000);
+    setInterval(tick, 30 * 60 * 1000); // fetches only every few hours
+  }
   function startNewsWatch() {
     const tick = async () => { try { send('news', await nw().get(false)); } catch (_) { /* offline: try later */ } };
     setTimeout(tick, 8000);
@@ -1482,18 +1545,36 @@ if (!app.requestSingleInstanceLock()) {
   // Guide › Close YouTube (it's kept, so opening it again carries on)
   handle('yt:guideClose', () => { ytGuide = false; hideOverlay(false); if (yt) yt.hide(); bringBack(false); return true; });
   handle('tv:guideStop', () => { if (tvPart && tvPart.playing) tvPart.stop('back'); hideOverlay(false); return true; });
+  // Steam Big Picture (made for controllers), then a Steam page in it.
+  async function openBigPicture(then) {
+    await shell.openExternal('steam://open/bigpicture');
+    if (then) setTimeout(() => { shell.openExternal(then).catch(() => {}); }, 2500);
+    const entry = { exes: ['steam.exe'], title: 'Steam Big Picture', stop: null };
+    openedApps.set('steam-bp', entry);
+    setTimeout(() => { if (openedApps.get('steam-bp') === entry) entry.stop = presentApp(['steam.exe'], 'Steam', 20000); }, 1500);
+    return true;
+  }
+  // Steam games you own that aren't on this PC (Library › Not installed). Install opens
+  // Steam's own install screen in Big Picture; the game then shows up with its download progress.
+  handle('steam:notInstalled', async (force) => {
+    if (!st().connected()) return { connected: false, list: [] };
+    const owned = await st().owned(!!force);
+    const have = new Set(lib.games.map((g) => friendsLib.steamAppOf(g)).filter(Boolean));
+    for (const d of downloads) have.add(String(d.appid));
+    return { connected: true, list: owned.filter((g) => !have.has(g.appid)) };
+  });
+  handle('steam:install', async (appid) => {
+    appid = String(appid || '');
+    if (!/^\d{1,10}$/.test(appid) || !(await st().owned(false)).some((g) => g.appid === appid)) throw new Error('That game isn’t in your Steam library');
+    hideOverlay();
+    if (w32) w32.allowForeground();
+    return openBigPicture('steam://install/' + appid);
+  });
   // Stores, opened the controller-friendly way where there is one (Steam: Big Picture).
   handle('store:open', async (id) => {
     hideOverlay();
     if (w32) w32.allowForeground();
-    if (id === 'steam') {
-      await shell.openExternal('steam://open/bigpicture');
-      setTimeout(() => { shell.openExternal('steam://store').catch(() => {}); }, 2500);
-      const entry = { exes: ['steam.exe'], title: 'Steam Big Picture', stop: null };
-      openedApps.set('steam-bp', entry);
-      setTimeout(() => { if (openedApps.get('steam-bp') === entry) entry.stop = presentApp(['steam.exe'], 'Steam', 20000); }, 1500);
-      return true;
-    }
+    if (id === 'steam') return openBigPicture('steam://store');
     if (id === 'epic') { await shell.openExternal('com.epicgames.launcher://store'); openedApps.set('epic', { exes: ['epicgameslauncher.exe'], title: 'Epic Games', stop: presentApp(['epicgameslauncher.exe'], 'Epic Games', 30000) }); return true; }
     if (id === 'xbox') {
       // The Xbox app (Game Pass): look up its app ID in the Start menu.
@@ -1844,6 +1925,7 @@ if (!app.requestSingleInstanceLock()) {
     startAwayWatch();
     syncRawPads(); setInterval(syncRawPads, 5000);
     startNewsWatch();
+    startDealsWatch();
     // Look for an update a few seconds after starting, then every 3 hours (never mid-game).
     let offered = null;
     const autoCheck = async () => {

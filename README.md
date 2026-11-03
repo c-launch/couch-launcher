@@ -120,12 +120,23 @@ Updates come online from this GitHub page (Releases). The launcher checks when i
 - **Clips** (dock, and the guide's Clips tab): your Medal clips and screenshots, read straight from Medal's capture folder (C:\Medal unless you changed it in Medal; *Change folder* if needed). In the player: A play/pause, left/right skip 5 seconds, LB/RB previous/next clip, Y show it in its folder.
 - **Find all art** (Settings › Platforms › Game art) replaces the tile and background of every game; *Find missing art* only fills gaps.
 
+## Free games and deals
+
+- **Home › Free games & deals** (between friends and news): Epic's weekly free games (now and next week), giveaways that are 100% off at Steam, GOG, Humble and other official stores, and the best current deals. Prices come from [CheapShark](https://www.cheapshark.com) in US dollars. Games you already have are marked, and they're left out of the deals.
+- A on a card: get it (Epic games open in the Epic launcher, Steam deals in Steam, others in your browser), **Watch the price** (the launcher checks every few hours and tells you when it drops below the lowest price it has seen), or hide the row.
+- Alerts for new free games and price drops can be turned off in **Settings › Controllers**, along with the row itself.
+
+## Install your Steam games
+
+**My library › Steam · not installed** lists the games in your Steam library that aren't on this PC (Steam has to be connected in Friends, and your Steam game details public). Choose one and **Install with Steam** opens Steam's install screen in Big Picture; the game shows up in your library with its download progress.
+
 ## Clips with Medal
 
 Tap **Share** for a screenshot, hold it for a clip; the launcher presses Medal's own hotkeys (Settings › Controllers › Clips with Medal). Medal needs to be running.
 - **PlayStation:** the Share / Create button. (Share + Options held is still "back to the launcher".) If Steam takes its own screenshot too, turn off Steam's screenshot shortcut for the controller in Steam › Settings › Controller.
 - **Xbox Series:** its Share button works over **Bluetooth** (Windows keeps it to itself on USB or the Xbox wireless adapter). Otherwise hold **View + RB** for a clip, **View + LB** for a screenshot.
 - **Keys:** clips use F8 (Medal's default). Set a screenshot key in Medal › Settings › Capture Hotkeys and pick the same one in the launcher.
+- **During games:** Windows only gives the Xbox controller's Bluetooth data to the app in front, so a small background reader (Windows Raw Input) reads Share while a game is in front. It starts once Share has been found (*Find Share*).
 - **Not working?** Settings › Controllers › *Test the Share button* shows whether the launcher sees your controller and its Share button live, and can send Medal a test clip (to check Medal's clip key).
 
 ## Players, saves and TV settings

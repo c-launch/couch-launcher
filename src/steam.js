@@ -9,6 +9,7 @@ const STATES = ['Offline', 'Online', 'Busy', 'Away', 'Snooze', 'Looking to trade
 
 function createSteam(userDataDir, safeStorage, steamRoot) {
   const file = path.join(userDataDir, 'steam.json');
+  let ownedCache = null;
 
   function read() {
     try {
@@ -179,6 +180,27 @@ function createSteam(userDataDir, safeStorage, steamRoot) {
       if (!/^7656\d{13}$/.test(String(steamid)) || !/^\d{1,10}$/.test(String(appid))) return null;
       const [mine, theirs] = await Promise.all([achOf(c.key, c.steamid, appid), achOf(c.key, String(steamid), appid)]);
       return mine || theirs ? { mine, theirs } : null;
+    },
+    // Every game in your Steam library (installed or not), most recently played first.
+    async owned(force) {
+      const c = read();
+      if (!c) throw new Error('Steam not connected');
+      if (!force && ownedCache && ownedCache.steamid === c.steamid && Date.now() - ownedCache.at < 30 * 60e3) return ownedCache.list;
+      const j = await get(API + '/IPlayerService/GetOwnedGames/v1/?key=' + encodeURIComponent(c.key) + '&steamid=' + c.steamid + '&include_appinfo=1&include_played_free_games=1');
+      const r = j.response || {};
+      if (!Array.isArray(r.games)) {
+        if (typeof r.game_count === 'number' && r.game_count === 0) return [];
+        throw new Error('Steam didn’t send your game list. In Steam: Profile › Edit Profile › Privacy Settings › Game details: Public.');
+      }
+      const list = r.games.filter((g) => g && /^\d{1,10}$/.test(String(g.appid)) && g.name).map((g) => ({
+        appid: String(g.appid), title: String(g.name).slice(0, 120),
+        hours: Math.round((g.playtime_forever || 0) / 6) / 10,
+        last: g.rtime_last_played ? g.rtime_last_played * 1000 : 0,
+        img: 'https://cdn.cloudflare.steamstatic.com/steam/apps/' + g.appid + '/library_600x900.jpg',
+        alt: appImg(g.appid)
+      })).sort((a, b) => (b.last - a.last) || (b.hours - a.hours) || a.title.localeCompare(b.title));
+      ownedCache = { steamid: c.steamid, at: Date.now(), list };
+      return list;
     },
     // Your own Steam name, picture, level and game count (for the launcher's profile).
     async me() {
