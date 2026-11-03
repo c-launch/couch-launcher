@@ -66,7 +66,7 @@ function loadXInput() {
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
-function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onCapture, shareMap }) {
+function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons, onCapture, shareMap, extraShare }) {
   const off = { start() {}, stop() {}, setGameRunning() {}, setJoin() {}, available: false, guide: false };
   if (process.platform !== 'win32') return off;
   let x;
@@ -128,6 +128,8 @@ function createControllerWatcher({ onGuide, onCombo, onBack, onPress, usePs, onB
         if (Math.abs(st.ly || 0) > Math.abs(ly)) ly = st.ly || 0;
       }
     }
+    // Share seen by the background reader (rawpads.js): it keeps working while a game is in front.
+    if (extraShare) { try { if (extraShare()) { cap.xShare = true; cap.xShareRaw = true; } } catch (_) { /* ignore */ } }
     if (onButtons) { try { onButtons(all & ~0x0400, lx, ly); } catch (_) { /* never stop the watcher */ } }
     if (onCapture) {
       cap.xShareReadable = !!(sony && (sony.xboxShareReadable !== undefined ? sony.xboxShareReadable : sony.xboxCount));

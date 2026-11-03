@@ -1,6 +1,6 @@
 {
- "version": "1.14.10",
- "notes": "Share test: shows what the Xbox controller sent while a game was in front (so it's clear whether Windows hides the controller from the launcher during games), and warns when Medal's clip and screenshot keys are the same.",
- "file": "CouchLauncher-update-1.14.10.zip",
- "size": 296985
+ "version": "1.14.11",
+ "notes": "Medal: Share now works during games. Windows only gives the Xbox controller's Bluetooth data to the app in front, so a small background reader keeps reading Share while a game is in front (the Share test shows it). Friend profiles: with no buttons in the header, Up shows the header again instead of getting stuck. Xbox profiles that xbl.io sends in a different format now load.",
+ "file": "CouchLauncher-update-1.14.11.zip",
+ "size": 302619
 }

@@ -1777,18 +1777,32 @@
         const WHY = { off: 'not sent: Share button for Medal is off', guide: 'not sent: the guide was open', launcher: 'not sent: the launcher was in front' };
         const front = c.front && c.front.exe ? ' (in ' + c.front.exe + ')' : '';
         let res = c.why ? WHY[c.why] || c.why : c.sent ? 'sent the ' + c.sent + ' key' : (c.what === 'Share' ? 'held too briefly for a clip, or no screenshot key' : 'not sent');
-        h += '<dt>Last press</dt><dd>' + esc(c.what + front + ', ' + ago(c.at) + ': ' + res) + '</dd>';
+        h += '<dt>Last press</dt><dd>' + esc(c.what + front + (c.via === 'background' ? ' via the background reader' : '') + ', ' + ago(c.at) + ': ' + res) + '</dd>';
         if (c.hid) h += '<dt></dt><dd class="mono">' + esc('Bluetooth data at that moment: ' + (c.hid.age == null ? 'none' : 'last report ' + (c.hid.age < 1000 ? c.hid.age + ' ms' : Math.round(c.hid.age / 1000) + ' s') + ' before') + (c.hid.buttons ? ' · last button change ' + ago(c.hid.buttons.at) + ' (from byte ' + c.hid.buttons.from + '): ' + c.hid.buttons.bytes.join(' ') : '')) + '</dd>';
         if (c.front && c.front.elevated && !c.front.selfElevated) h += '<dt></dt><dd class="bk-why">' + esc(c.front.exe + ' runs as administrator, so Windows doesn’t let the launcher press keys in it (Medal never sees them). Start the game normally, or run Couch Launcher as administrator too.') + '</dd>';
       } else h += '<dt>Last press</dt><dd>' + esc('None yet: hold Share in a game, then come back here') + '</dd>';
-      // What the controller sent while a game was in front.
+      // The background reader (reads Share while a game is in front).
+      const R = d.raw;
+      if (R) {
+        const rs = R.off ? (R.wanted ? 'Starting…' : 'Off: it starts once Share has been found (Find Share), with Share on for Medal')
+          : R.error ? 'Couldn’t start: ' + R.error
+          : !R.running ? 'Not running (restarts by itself)'
+          : !R.ready ? 'Starting…'
+          : R.share ? 'Running · Share pressed'
+          : 'Running · ' + R.reports + ' reports' + (R.pad ? ' · ' + R.pad.size + '-byte, last ' + ago(R.pad.at) : ' · no Xbox controller seen yet: move a stick');
+        h += '<dt>Background reader</dt><dd class="' + (R.share ? 'st-yes' : '') + '">' + esc(rs) + '</dd>';
+      }
+      // What the controller sent while a game was in front (moving the sticks sends dozens of
+      // reports a second, so a handful means Windows held the data back).
       const a = d.away;
       if (a && a.secs >= 3) {
+        const rate = a.reports / a.secs;
         let what;
-        if (!a.reports) what = 'nothing at all came from the controller: Windows stopped passing it to the launcher';
-        else if (a.blanks >= a.reports * 0.95) what = 'only blank data (sticks centered, nothing pressed): Windows hid the controller from the launcher';
-        else what = 'normal data (' + a.buttons + ' second' + (a.buttons === 1 ? '' : 's') + ' with button changes)';
-        h += '<dt>While a game was in front</dt><dd>' + esc(a.exe + ', ' + Math.round(a.secs / 60 * 10) / 10 + ' min, last ' + ago(a.at) + ': ' + a.reports + ' reports, ' + what) + '</dd>';
+        if (!a.reports) what = 'nothing came from the controller';
+        else if (a.blanks >= a.reports * 0.95) what = 'only blank data (sticks centered, nothing pressed)';
+        else what = (rate < 1 ? 'less than 1' : Math.round(rate)) + ' a second' + (rate < 5 ? ': if you were moving the sticks, Windows held the controller back from the launcher' : '');
+        h += '<dt>While a game was in front</dt><dd>' + esc(a.exe + ' for ' + (a.secs < 120 ? a.secs + ' s' : Math.round(a.secs / 60) + ' min') + ', ' + ago(a.at) + ': ' + a.reports + ' reports, ' + what) + '</dd>';
+        if (d.raw && !d.raw.off) h += '<dt></dt><dd class="mono">' + esc('Background reader in that time: ' + (a.raw || 0) + ' reports' + (a.raw ? '' : ' (Windows held it back too)')) + '</dd>';
       }
       h += '</dl>';
       if (msg) h += '<p class="hint">' + esc(msg) + '</p>';
@@ -2581,6 +2595,19 @@
       }
       return h + '</div></section></div>';
     };
+    let peek = false;
+    function scrollToRow(el) {
+      const sc = el && el.closest && el.closest('.fprof');
+      if (!sc) return;
+      const sec = el.closest('.fp-sec');
+      let top = !sec ? 0 : sec === $('.fp-sec', sc) ? sec.closest('.fp-below').offsetTop - remPx() * 6 : sc.scrollHeight;
+      // Without buttons in the header, keep as much of it in view as the row allows.
+      if (sec && sec === $('.fp-sec', sc) && !$('.fp-hero [data-nav]', sc)) {
+        const r = el.getBoundingClientRect(), cr = sc.getBoundingClientRect();
+        top = Math.max(0, Math.min(top, r.bottom - cr.top + sc.scrollTop - sc.clientHeight + remPx() * 4));
+      }
+      sc.scrollTo({ top, behavior: reduce() ? 'auto' : 'smooth' });
+    }
     const layer = openLayer({
       className: 'fp-layer',
       html: html(),
@@ -2592,17 +2619,20 @@
         if (!root) return false;
         const inHeroBelow = () => $$('.fp-hero [data-nav]', root).some((e) => e !== el && e.getBoundingClientRect().top >= el.getBoundingClientRect().bottom - 2);
         if (dir === 'down' && el.closest('.fp-hero') && !inHeroBelow()) { lastAct = el.dataset.key; const t = $('.fp-below [data-nav]', root); if (t) { setFocus(t); return true; } return false; }
-        if (dir === 'up' && el.closest('.fp-sec') === $('.fp-sec', root)) { const t = (lastAct && $('[data-key="' + cssEsc(lastAct) + '"]', root)) || $('.fp-hero [data-nav]', root); if (t) { setFocus(t); return true; } }
+        const first = el.closest('.fp-sec') === $('.fp-sec', root);
+        if (dir === 'up' && first) {
+          const t = (lastAct && $('[data-key="' + cssEsc(lastAct) + '"]', root)) || $('.fp-hero [data-nav]', root);
+          if (t) { setFocus(t); return true; }
+          // No buttons in the header (nothing to join, play or buy): up shows the header, down
+          // goes back to the row.
+          peek = true; root.scrollTo({ top: 0, behavior: reduce() ? 'auto' : 'smooth' }); return true;
+        }
+        if (dir === 'down' && first && peek) { peek = false; scrollToRow(el); return true; }
+        peek = false;
         return false;
       },
       // Down to Recent activity scrolls the page up to it; back up shows the whole header again.
-      onFocus: (el) => {
-        const sc = el && el.closest && el.closest('.fprof');
-        if (!sc) return;
-        const sec = el.closest('.fp-sec');
-        const top = !sec ? 0 : sec === $('.fp-sec', sc) ? sec.closest('.fp-below').offsetTop - remPx() * 6 : sc.scrollHeight;
-        sc.scrollTo({ top, behavior: reduce() ? 'auto' : 'smooth' });
-      },
+      onFocus: (el) => scrollToRow(el),
       onActivate: async (el) => {
         const act = el.dataset.act;
         if (act === 'do') { const f = Object.assign({}, known || {}, p || {}, { id }); if (!f.gamertag) f.gamertag = f.name || 'Friend'; return friendAct(f, el.dataset.do); }

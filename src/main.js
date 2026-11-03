@@ -48,6 +48,7 @@ if (!app.requestSingleInstanceLock()) {
     usePs: () => !(lib && lib.settings && lib.settings.psPads === false),
     // Where Share is in Windows' Xbox Bluetooth report (found once in Settings › Controllers).
     shareMap: () => (lib && lib.settings && lib.settings.xboxShareMap) || null,
+    extraShare: () => !!(rawPads && rawPads.share),
     // While a movie or episode plays, the controller drives the player.
     // Share button -> Medal (tap: screenshot, hold: clip). Not inside the launcher itself.
     onCapture: (st) => {
@@ -65,7 +66,7 @@ if (!app.requestSingleInstanceLock()) {
         try { front = w32 && w32.frontInfo ? w32.frontInfo() : null; } catch (_) { front = null; }
         let hid = null;
         try { const x = (controller.shareDebug().xbox || [])[0]; hid = x ? { age: x.lastAt ? Date.now() - x.lastAt : null, reports: x.reports, buttons: x.buttons } : null; } catch (_) { hid = null; }
-        lastCapture = { at: Date.now(), what: st.xShare ? 'Share' : st.psShare ? 'Share (PlayStation)' : 'View + ' + (st.xRB ? 'RB' : 'LB'), why, front: front ? { exe: front.exe, elevated: front.elevated, selfElevated: front.selfElevated } : null, sent: null, hid };
+        lastCapture = { at: Date.now(), what: st.xShare ? 'Share' : st.psShare ? 'Share (PlayStation)' : 'View + ' + (st.xRB ? 'RB' : 'LB'), why, front: front ? { exe: front.exe, elevated: front.elevated, selfElevated: front.selfElevated } : null, sent: null, hid, via: st.xShareRaw ? 'background' : null };
       }
       if (why) return;
       capture.input(st);
@@ -101,6 +102,24 @@ if (!app.requestSingleInstanceLock()) {
     return true;
   }
   let lastMedalPress = null, lastCapture = null, captureWasDown = false;
+  // Share during games: Windows only gives the controller's Bluetooth data to the app in front,
+  // so a small reader process takes it through Raw Input instead (rawpads.js). It runs while
+  // Share is on for Medal and has been found once (Find Share).
+  let rawPads = null;
+  function rawPadsWanted() {
+    if (!w32 || !lib || process.platform !== 'win32') return false;
+    const s = lib.settings;
+    return s.medalShare !== false && !!s.xboxShareMap && (s.medalXbox || 'auto') !== 'combo';
+  }
+  function syncRawPads() {
+    const on = rawPadsWanted();
+    if (on && !rawPads) {
+      let koffiPath = '';
+      try { koffiPath = require.resolve('koffi'); } catch (_) { koffiPath = ''; }
+      rawPads = require('./rawpads').createRawPads({ platform: process.platform, execPath: process.execPath, koffiPath, shareMap: () => (lib && lib.settings.xboxShareMap) || null });
+    }
+    if (rawPads) { if (on) rawPads.start(); else rawPads.stop(); }
+  }
   // The launcher's own windows in front? (Checked with Windows itself: Electron's own idea of
   // focus can lag behind when a game takes the screen.)
   function launcherInFront() {
@@ -751,7 +770,8 @@ if (!app.requestSingleInstanceLock()) {
   handle('capture:learn', () => controller.learnShare(15000));
   handle('capture:debug', () => Object.assign(saveLearnedShare(controller.shareDebug()), {
     clipKey: lib.settings.medalClipKey || 'F8', shotKey: lib.settings.medalShotKey || '', mode: lib.settings.medalXbox || 'auto',
-    on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32, lastCapture, away: awayStats
+    on: lib.settings.medalShare !== false, lastPress: lastMedalPress, keysOk: !!w32, lastCapture, away: awayStats,
+    raw: rawPads ? rawPads.debug() : { off: true, wanted: rawPadsWanted() }
   }));
   // What the Xbox controller's Bluetooth data looked like while another app was in front
   // (for the Share test): Windows can hide a controller from apps that aren't in front.
@@ -763,14 +783,15 @@ if (!app.requestSingleInstanceLock()) {
       let x = null;
       try { x = (controller.shareDebug().xbox || [])[0] || null; } catch (_) { x = null; }
       if (!x) { prev = null; return; }
-      const cur = { reports: x.reports || 0, blanks: x.blanks || 0, moves: x.buttons ? x.buttons.at : 0 };
+      const cur = { reports: x.reports || 0, blanks: x.blanks || 0, moves: x.buttons ? x.buttons.at : 0, raw: rawPads ? rawPads.debug().reports : 0 };
       const before = prev; prev = cur;
       let fg = null;
       try { fg = w32.foreground(); } catch (_) { fg = null; }
       if (!before || !fg || fg.pid === process.pid) return;
       if (fg.pid !== lastPid) { lastPid = fg.pid; try { lastExe = (w32.frontInfo() || {}).exe || ''; } catch (_) { lastExe = ''; } }
       if (!lastExe) return;
-      if (!awayStats || awayStats.exe !== lastExe) awayStats = { exe: lastExe, since: Date.now(), secs: 0, reports: 0, blanks: 0, buttons: 0 };
+      if (!awayStats || awayStats.exe !== lastExe) awayStats = { exe: lastExe, since: Date.now(), secs: 0, reports: 0, blanks: 0, buttons: 0, raw: 0 };
+      awayStats.raw += Math.max(0, cur.raw - before.raw);
       awayStats.secs += 1;
       awayStats.reports += Math.max(0, cur.reports - before.reports);
       awayStats.blanks += Math.max(0, cur.blanks - before.blanks);
@@ -1255,8 +1276,8 @@ if (!app.requestSingleInstanceLock()) {
   handle('friend:profile', async (id) => {
     id = String(id || '');
     const steamid = friendsLib.steamIdOf({ xuid: id });
-    const p = steamid ? await st().profile(steamid) : await xb().friendProfile(id);
     const cur = friendIn(id);
+    const p = steamid ? await st().profile(steamid) : await xb().friendProfile(id, cur);
     if (cur && !steamid) { p.online = cur.online; p.status = cur.status; p.game = cur.game; p.favorite = cur.favorite; }
     const svc = steamid ? 'steam' : 'xbox';
     const deco = friendsLib.decorate([Object.assign({}, cur || {}, p, { xuid: steamid ? 'steam-' + steamid : id, service: svc })], lib.games)[0];
@@ -1821,6 +1842,7 @@ if (!app.requestSingleInstanceLock()) {
     setTimeout(startAlerts, 15000);
     startDownloadWatch();
     startAwayWatch();
+    syncRawPads(); setInterval(syncRawPads, 5000);
     startNewsWatch();
     // Look for an update a few seconds after starting, then every 3 hours (never mid-game).
     let offered = null;
@@ -1837,7 +1859,7 @@ if (!app.requestSingleInstanceLock()) {
     try { globalShortcut.register('Control+Alt+Home', () => guidePressed()); } catch (_) { /* taken */ }
   });
 
-  app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); if (tvPart) tvPart.quit(); if (audioMod) audioMod.stop(); });
+  app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); if (tvPart) tvPart.quit(); if (audioMod) audioMod.stop(); if (rawPads) rawPads.stop(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', () => { pauser.resumeAll(); if (overlay && !overlay.isDestroyed()) overlay.destroy(); if (media) media.stop(); });
 }

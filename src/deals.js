@@ -70,8 +70,6 @@ function parseEpic(j, now) {
     const w = cur || next;
     if (!w) continue;
     const tp = e.price && e.price.totalPrice;
-    // Some of the list is 0%-off discounts on games that already cost nothing; skip those.
-    if (cur && tp && Number(tp.originalPrice) === 0) continue;
     const was = tp && tp.fmtPrice && typeof tp.fmtPrice.originalPrice === 'string' && tp.fmtPrice.originalPrice !== '0' ? tp.fmtPrice.originalPrice.slice(0, 20) : null;
     out.push({
       id: 'epic:' + slug, kind: 'free', title: String(e.title).slice(0, 120), store: 'Epic Games Store', storeId: '25',
@@ -206,12 +204,18 @@ function createDeals({ userDataDir, fetch: doFetch, now, country }) {
   // Free games that weren't there before (only free right now, not upcoming). The first time it
   // only learns what's already free.
   function newFree() {
-    const d = load();
-    const ids = [].concat(d.epic || [], d.give || []).filter((f) => !f.upcoming && f.until !== undefined ? f.until > now() : !f.upcoming).map((f) => f.id);
+    const d = load(), t = now();
+    const isNow = (f) => (f.upcoming ? f.from <= t : true) && !(f.until && f.until <= t);
+    const keys = (f) => [f.id, 't:' + normTitle(f.title)]; // the same game can come from Epic and CheapShark
+    const current = [].concat(d.epic || [], d.give || []).filter(isNow);
     const first = d.seenFree == null;
     const seen = new Set(d.seenFree || []);
-    const fresh = first ? [] : [].concat(d.epic || [], d.give || []).filter((f) => ids.includes(f.id) && !seen.has(f.id));
-    d.seenFree = [...new Set([...(d.seenFree || []), ...ids])].slice(-200);
+    const fresh = [];
+    for (const f of current) {
+      if (!first && !keys(f).some((k) => seen.has(k))) fresh.push(f);
+      keys(f).forEach((k) => seen.add(k));
+    }
+    d.seenFree = [...seen].slice(-400);
     save();
     return fresh;
   }
@@ -220,7 +224,7 @@ function createDeals({ userDataDir, fetch: doFetch, now, country }) {
   function view() {
     const d = load(), t = now();
     const free = [].concat(d.epic || [], d.give || [])
-      .filter((f) => (f.upcoming ? f.from > t - 864e5 : !(f.until && f.until <= t)))
+      .filter((f) => !(f.until && f.until <= t))
       .map((f) => Object.assign({}, f, { upcoming: !!(f.upcoming && f.from > t) }));
     const watched = new Set(d.watch.map((w) => w.gameID));
     return {
@@ -282,7 +286,11 @@ function openUrl(item, hasEpic) {
   if (!item) return null;
   if (item.slug && SLUG.test(item.slug)) return hasEpic ? 'com.epicgames.launcher://store/p/' + item.slug : 'https://store.epicgames.com/en-US/p/' + item.slug;
   if (item.storeId === '1' && item.steamAppID && APP_ID.test(item.steamAppID)) return 'steam://store/' + item.steamAppID;
-  if (item.dealID && DEAL_ID.test(item.dealID)) return 'https://www.cheapshark.com/redirect?dealID=' + encodeURIComponent(decodeURIComponent(item.dealID));
+  if (item.dealID && DEAL_ID.test(item.dealID)) {
+    let id = item.dealID;
+    try { id = decodeURIComponent(id); } catch (_) { /* already plain */ }
+    return 'https://www.cheapshark.com/redirect?dealID=' + encodeURIComponent(id);
+  }
   return null;
 }
 
