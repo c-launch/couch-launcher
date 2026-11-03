@@ -24,10 +24,17 @@ jobs:
           ls node_modules/koffi/build/koffi | head -40
           d=dist/mac; [ "$(uname -m)" = arm64 ] && d=dist/mac-arm64
           ( COUCH_SELFTEST="$PWD/st" ELECTRON_ENABLE_LOGGING=1 "$d/Couch Launcher.app/Contents/MacOS/Couch Launcher" > st/log.txt 2>&1 & echo $! > st/pid )
+          open -a Chess || true
+          sleep 13; screencapture -x st/screen-guide.png || echo "no screencapture"
           for i in $(seq 1 60); do [ -f st/result.json ] && break; sleep 1; done
           sleep 3; kill "$(cat st/pid)" 2>/dev/null || true
           cat st/result.json || echo "NO RESULT"
-          tail -80 st/log.txt
+          tail -30 st/log.txt
+          for f in screen-guide launcher guide; do
+            [ -f "st/$f.png" ] || continue
+            sips -s format jpeg -s formatOptions 70 -Z 1100 "st/$f.png" --out "st/$f.jpg" >/dev/null
+            echo "=====BEGIN $f"; base64 -i "st/$f.jpg" | tr -d '\n'; echo; echo "=====END $f"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
