@@ -23,9 +23,9 @@ jobs:
           mkdir -p st
           ls node_modules/koffi/build/koffi | head -40
           d=dist/mac; [ "$(uname -m)" = arm64 ] && d=dist/mac-arm64
+          open -a Chess || true; sleep 4
           ( COUCH_SELFTEST="$PWD/st" ELECTRON_ENABLE_LOGGING=1 "$d/Couch Launcher.app/Contents/MacOS/Couch Launcher" > st/log.txt 2>&1 & echo $! > st/pid )
-          open -a Chess || true
-          sleep 14.5; screencapture -x st/screen-guide.png || echo "no screencapture"
+          sleep 17; screencapture -x st/screen-guide.png || echo "no screencapture"
           for i in $(seq 1 60); do [ -f st/result.json ] && break; sleep 1; done
           sleep 3; kill "$(cat st/pid)" 2>/dev/null || true
           cat st/result.json || echo "NO RESULT"

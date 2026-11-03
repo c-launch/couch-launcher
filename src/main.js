@@ -2036,8 +2036,10 @@ if (!app.requestSingleInstanceLock()) {
       const dir = process.env.COUCH_SELFTEST;
       const snap = (w, name) => (w && !w.isDestroyed() ? w.webContents.capturePage().then((img) => fs.writeFileSync(path.join(dir, name), img.toPNG())).catch((e) => console.log('COUCH_SELFTEST snap ' + name + ': ' + e.message)) : Promise.resolve());
       setTimeout(() => snap(win, 'launcher.png'), 9000);
-      setTimeout(() => showOverlay(), 11000);
-      setTimeout(() => snap(overlay, 'guide.png'), 14000);
+      // Step aside for whatever is behind (like a game), then open the guide over it.
+      setTimeout(() => { if (MAC) app.hide(); else if (win) win.minimize(); }, 10500);
+      setTimeout(() => showOverlay(), 12000);
+      setTimeout(() => snap(overlay, 'guide.png'), 15000);
       const probe = (w) => (w && !w.isDestroyed() ? w.webContents.executeJavaScript("JSON.stringify({ html: document.documentElement.className, top: (document.getElementById('topbar') || {}).innerHTML ? document.getElementById('topbar').innerHTML.length : 0, view: (document.getElementById('view') || {}).innerHTML ? document.getElementById('view').innerHTML.length : 0, layers: document.querySelectorAll('.layer').length, guide: !!document.querySelector('.guide'), font: getComputedStyle(document.body).fontFamily.slice(0, 60), visible: document.visibilityState, stage: window.__stage || null })").catch((e) => 'error: ' + e.message) : Promise.resolve(null));
       let probes = {};
       trace('selftest start');
@@ -2050,13 +2052,13 @@ if (!app.requestSingleInstanceLock()) {
       }
       setTimeout(() => { probe(win).then((v) => { probes.launcher = v; }); }, 8500);
       setTimeout(() => { probe(win).then((v) => { probes.launcher2 = v; }); }, 13000);
-      setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 14500);
+      setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 15500);
       setTimeout(() => {
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
         try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
         app.quit();
-      }, 16000);
+      }, 18000);
     }
   });
 
