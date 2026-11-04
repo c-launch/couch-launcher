@@ -641,9 +641,11 @@ window.CouchTV = function (k) {
     if (opts.from0) req.startAt = 0;
     T.busy = true;
     const wait = toast('Starting ' + (video ? 'S' + video.season + ':E' + video.episode : meta.name) + '…');
+    const t0 = Date.now();
     try {
       await api.tvPlay(req);
-      S.tvPlaying = true;
+      // (It can already have ended, before the answer came back.)
+      if (!(T.endedAt >= t0)) { S.tvPlaying = true; S.tvPlayingAt = 0; }
     } catch (e) {
       if (/NO_MPV/.test(e.message)) { T.busy = false; if (await mpvSetup()) return play(meta, video, opts); return; }
       toast(e.message, true);
@@ -652,6 +654,7 @@ window.CouchTV = function (k) {
   // After the video closes: show where you are now.
   function ended(payload) {
     S.tvPlaying = false;
+    T.endedAt = Date.now();
     if (payload && payload.error) toast(payload.error, true);
     if (!isOpen()) return;
     library(true).then(() => {
