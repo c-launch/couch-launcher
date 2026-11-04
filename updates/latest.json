@@ -1,6 +1,6 @@
 {
- "version": "1.17.0",
- "notes": "The macOS look comes to Windows: glass panels, system blue, Apple-style type and notifications in the top-right corner. Your launcher switches to macOS Dark once; Settings › Themes has macOS Light, Original and the rest.",
- "file": "CouchLauncher-update-1.17.0.zip",
- "size": 324765
+ "version": "1.17.1",
+ "notes": "Movies & TV: every row on Home now ends with View more, which opens the whole category (more loads as you scroll down). Row names no longer repeat the same word twice.",
+ "file": "CouchLauncher-update-1.17.1.zip",
+ "size": 325375
 }

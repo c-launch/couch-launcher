@@ -129,6 +129,14 @@
 .tv-head .tv-chips { margin: 0 -10rem; padding-left: 10rem; padding-right: 10rem; }
 .tv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15.6rem, 1fr)); gap: 3.2rem 2.6rem; padding: 2rem 10rem 4rem; }
 .tv-grid .tv-poster { width: auto; }
+/* "View more" at the end of a Home row */
+.tv-more { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; background: var(--tv-btn); color: var(--tv-text); }
+.tv-more-ic { width: 6rem; height: 6rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--tv-text) 12%, transparent); }
+.tv-more-ic svg { width: 2.6rem; height: 2.6rem; }
+.tv-more-t { font-size: 1.8rem; font-weight: 600; }
+.tv-more.focused { background: var(--tv-focus-bg); color: var(--tv-focus-text); }
+.tv-more.focused .tv-more-ic { background: color-mix(in srgb, currentColor 14%, transparent); }
+.tv-more.focused::after { display: none; }
 .tv-grid > .tv-loading, .tv-grid > .tv-empty { grid-column: 1 / -1; padding-left: 0; padding-right: 0; }
 .tv-search { display: inline-flex; align-items: center; gap: 1.2rem; min-width: 60rem; padding: 1.5rem 2.4rem; border-radius: 1.4rem; background: var(--tv-btn); font-size: 2.1rem; color: var(--tv-sub); transition: transform var(--t-fast), background var(--t-fast), color var(--t-fast); }
 .tv-search.focused { background: var(--tv-focus-bg); color: var(--tv-focus-text); transform: scale(1.03); }
