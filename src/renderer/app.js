@@ -3969,35 +3969,60 @@
   }
 
   let extPads = null, extAt = 0;
-  api.on('pad:ext', (list) => { if (Array.isArray(list)) { extPads = list.map((p) => ({ id: String(p.id || 'Controller'), connected: true, buttons: (p.buttons || []).map((on) => ({ pressed: !!on, value: on ? 1 : 0 })), axes: p.axes || [] })); extAt = performance.now(); } });
+  api.on('pad:ext', (list) => { if (Array.isArray(list)) { extPads = list.map((p, i) => ({ id: String(p.id || 'Controller'), index: 'ext' + i, mapping: 'standard', connected: true, buttons: (p.buttons || []).map((on) => ({ pressed: !!on, value: on ? 1 : 0 })), axes: p.axes || [] })); extAt = performance.now(); } });
+  // Per controller: the buttons and stick seen let go at least once. A button or stick that has
+  // never been let go (a pedal or a stick that rests at one end, a device that reports a button
+  // as always held) is left out, so it can't block every other press.
+  const padSeen = new Map();
+  let suppressAt = 0;
+  let tvCheckAt = 0, tvIdle = 0;
   function pollPads(now) {
     requestAnimationFrame(pollPads);
-    const ext = OVERLAY && extPads && now - extAt < 400;
-    if ((!document.hasFocus() && !ext) || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; return; }
+    // The app core reads the controller too, and sends it here when this window is on top but
+    // wasn't given the focus (it can't read the controller itself then).
+    const ext = extPads && now - extAt < 400;
+    if (S.tvPlaying) watchTvPlaying(now);
+    if ((!document.hasFocus() && !ext) || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; suppressAt = now; return; }
     let pads;
-    try { pads = navigator.getGamepads(); } catch (_) { return; }
-    // Mac guide window: when it can't read the controller itself, use what the app core reads.
-    if (extPads && now - extAt < 400 && !Array.from(pads || []).some((p) => p && p.connected)) pads = extPads;
+    try { pads = Array.from(navigator.getGamepads() || []); } catch (_) { return; }
+    if (ext && (!document.hasFocus() || !pads.some((p) => p && p.connected))) pads = extPads;
+    // A real controller (standard layout) is there: ignore other devices (wheels, pedals, remotes).
+    const standard = pads.some((p) => p && p.connected && p.mapping === 'standard');
+    const live = new Set();
     const down = new Set();
     let dir = null, dirMag = 0, activePad = null;
     for (const p of pads) {
       if (!p || !p.connected) continue;
+      if (standard && p.mapping !== 'standard') continue;
+      const pk = String(p.index) + '|' + p.id;
+      live.add(pk);
+      let seen = padSeen.get(pk);
+      if (!seen) { seen = { off: new Set(), stick: false }; padSeen.set(pk, seen); }
       for (let i = 0; i < p.buttons.length; i++) {
         const bt = p.buttons[i];
         const on = bt && (bt.pressed || bt.value > 0.5);
-        if (!on) continue;
+        if (!on) { seen.off.add(i); continue; }
+        if (!seen.off.has(i)) continue;
         if (PADMAP[i]) { down.add(PADMAP[i]); activePad = p; }
         if (DIRS[i]) { dir = DIRS[i]; dirMag = 1; activePad = p; }
       }
       const ax = p.axes[0] || 0, ay = p.axes[1] || 0;
       const mag = Math.max(Math.abs(ax), Math.abs(ay));
-      if (mag > 0.55 && mag > dirMag) {
+      if (mag < 0.3) seen.stick = true;
+      if (seen.stick && mag > 0.55 && mag > dirMag) {
         dir = Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 'right' : 'left') : (ay > 0 ? 'down' : 'up');
         dirMag = mag; activePad = p;
       }
     }
+    for (const pk of padSeen.keys()) if (!live.has(pk)) padSeen.delete(pk);
     if (suppressUntilRelease) {
-      if (!down.size && !dir) suppressUntilRelease = false;
+      if (!suppressAt) suppressAt = now;
+      // Let go of everything (or 1.5 s passed: whatever is still held simply counts as held, so
+      // it won't press anything until it's pressed again).
+      if ((!down.size && !dir) || now - suppressAt > 1500) {
+        suppressUntilRelease = false; suppressAt = 0;
+        if (dir) { held.dir = dir; held.since = now; held.count = 0; held.next = now + 600; }
+      }
       prevButtons.clear(); for (const b of down) prevButtons.add(b);
       return;
     }
@@ -4022,6 +4047,19 @@
         held.next = now + Math.max(55, 150 - t / 12);
       }
     } else held.dir = null;
+  }
+
+  // A movie that ended without the launcher hearing about it would leave the controller with the
+  // player for good. Every few seconds while "playing", ask whether something is still playing.
+  function watchTvPlaying(now) {
+    if (!S.tvPlayingAt) S.tvPlayingAt = now;
+    if (now - S.tvPlayingAt < 8000 || now - tvCheckAt < 3000) return;
+    tvCheckAt = now;
+    Promise.resolve().then(() => api.tvStatus()).then((st) => {
+      if (!S.tvPlaying) return;
+      if (st && st.playing === false) { if (++tvIdle >= 2) { S.tvPlaying = false; S.tvPlayingAt = 0; tvIdle = 0; suppressUntilRelease = true; } }
+      else tvIdle = 0;
+    }).catch(() => {});
   }
 
   // ---------------------------------------------------------------- keyboard & mouse
