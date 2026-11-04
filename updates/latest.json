@@ -1,6 +1,6 @@
 {
- "version": "1.17.3",
- "notes": "Movies & TV: the next episode starts from the beginning (it used to start where you had resumed the one before). Episodes you haven't watched yet always start at 0:00.",
- "file": "CouchLauncher-update-1.17.3.zip",
- "size": 327498
+ "version": "1.18.0",
+ "notes": "Movies & TV: new Recommended for you and Because you watched … rows on Home, picked from what you've been watching (things already in your Library or Continue Watching are left out). View more shows them all.",
+ "file": "CouchLauncher-update-1.18.0.zip",
+ "size": 329003
 }
