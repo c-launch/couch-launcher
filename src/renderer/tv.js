@@ -82,7 +82,7 @@ window.CouchTV = function (k) {
   const isOpen = () => !!(T.layer && k.layers.includes(T.layer));
   const scroller = () => $('.tv-scroll', T.layer.el);
   function nav() {
-    const top = T.page === 'show' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
+    const top = T.page === 'show' || T.page === 'cat' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
     $('.tv-nav', T.layer.el).innerHTML = SECTIONS.map(([id, label]) => '<button class="tv-tab' + (top === id ? ' on' : '') + '" data-nav data-key="tvn-' + id + '" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="' + id + '">' + label + '</button>').join('') +
       '<button class="tv-tab ic' + (top === 'search' ? ' on' : '') + '" data-nav data-key="tvn-search" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="search" aria-label="Search">' + icon('search') + '</button>';
     // The highlight behind the current section slides over to the new one.
@@ -122,7 +122,7 @@ window.CouchTV = function (k) {
     sc.animate([{ opacity: 0, transform: 'translateX(' + (dir * 4) + 'rem)' }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.32,.72,0,1)' });
   }
   function go(page) {
-    const from = T.page === 'show' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
+    const from = T.page === 'show' || T.page === 'cat' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
     const a = ORDER.indexOf(from), b = ORDER.indexOf(page);
     T.page = page; T.stack = [];
     render();
@@ -161,7 +161,7 @@ window.CouchTV = function (k) {
     const sc = scroller();
     sc.className = 'tv-scroll page-' + T.page;
     $('.tv', T.layer.el).classList.toggle('on-show', T.page === 'show');
-    const fn = { home: homePage, movie: () => browsePage('movie'), series: () => browsePage('series'), library: libraryPage, addons: addonsPage, search: searchPage, show: showPage }[T.page] || homePage;
+    const fn = { home: homePage, movie: () => browsePage('movie'), series: () => browsePage('series'), library: libraryPage, addons: addonsPage, search: searchPage, show: showPage, cat: catPage }[T.page] || homePage;
     sc.innerHTML = '';
     fn(sc, gen);
     sc.scrollTop = scrollTop || 0;
@@ -268,14 +268,26 @@ window.CouchTV = function (k) {
       const slot = $('.tv-slot[data-i="' + i + '"]', sc);
       if (!slot) return;
       if (!items.length) { slot.remove(); return; }
-      const title = c.name === 'Popular' || c.name === 'Featured' || c.name === 'New' ? c.name + ' ' + typeName(c.type) : c.name + (c.addonName && !/cinemeta/i.test(c.addonName) ? ' · ' + c.addonName : '') + ' · ' + typeName(c.type);
+      const title = catTitle(c);
       const had = currentFocus() && currentFocus().closest('.tv-slot') === slot && currentFocus().dataset.key;
-      slot.innerHTML = sectionHTML(title, rowHTML(items.slice(0, 30).map((p, j) => posterHTML(p, 'r' + i + '-' + j, 'r' + i, 'r' + i)).join('')));
+      // The last card opens the whole category (more pages load as you scroll down).
+      const more = '<button class="tv-poster tv-more" data-nav data-key="r' + i + '-more" data-zone="r' + i + '" data-lock="r' + i + '" data-act="more" data-ref="' + ref({ c, title, items }) + '" aria-label="View more ' + esc(title) + '">' +
+        '<span class="tv-more-ic">' + icon('grid') + '</span><span class="tv-more-t">View more</span></button>';
+      slot.innerHTML = sectionHTML(title, rowHTML(items.slice(0, 30).map((p, j) => posterHTML(p, 'r' + i + '-' + j, 'r' + i, 'r' + i)).join('') + more));
       if (had) place(had);
       settle();
       if (i === 0) { T.featured = items.filter((p) => p.background || metahub('background', p.id)).slice(0, 6); T.heroI = 0; hero(); }
     }));
     if (!stale(gen) && !T.featured.length) { const h = $('.tv-hero', sc); if (h) h.remove(); place(); }
+  }
+  // "Popular Movies", "Live TV · USA TV Next · Live TV"… without saying the same name twice.
+  function catTitle(c) {
+    if (c.name === 'Popular' || c.name === 'Featured' || c.name === 'New') return c.name + ' ' + typeName(c.type);
+    const parts = [c.name];
+    if (c.addonName && !/cinemeta/i.test(c.addonName) && c.addonName.toLowerCase() !== String(c.name).toLowerCase()) parts.push(c.addonName);
+    const t = typeName(c.type);
+    if (t && !parts.some((x) => String(x).toLowerCase() === t.toLowerCase())) parts.push(t);
+    return parts.join(' · ');
   }
   function hero() {
     const sc = scroller(), h = $('.tv-hero', sc);
@@ -307,7 +319,7 @@ window.CouchTV = function (k) {
   function browsePage(type) {
     const sc = scroller();
     const gen = T.gen;
-    if (!T.grid || T.grid.type !== type) T.grid = { type, genre: null, cat: null, items: [], done: false, loading: false };
+    if (!T.grid || T.grid.type !== type || T.grid.view) T.grid = { type, genre: null, cat: null, items: [], done: false, loading: false };
     sc.innerHTML = '<div class="tv-head" data-block="top"><h1>' + typeName(type) + '</h1><div class="tv-chips" role="tablist"></div></div><div class="tv-grid"><div class="tv-loading">Loading…</div></div>';
     catalogs().then((cats) => {
       if (stale(gen)) return;
@@ -353,6 +365,22 @@ window.CouchTV = function (k) {
     box.insertAdjacentHTML('beforeend', g.items.slice(from).map((p, i) => posterHTML(p, 'g-' + (from + i), 'grid', null, ' data-gi="' + (from + i) + '"')).join(''));
     if (!focusKey) place();
     settle();
+  }
+
+  // ---------------------------------------------------------------- One category (View more)
+  function catPage(sc, gen) {
+    const g = T.grid;
+    if (!g || !g.cat) return homePage(sc, gen);
+    const genres = (!g.cat.genreRequired && g.cat.genres) || [];
+    sc.innerHTML = '<div class="tv-head" data-block="top"><h1>' + esc(g.title || g.cat.name) + '</h1><div class="tv-chips" role="tablist"></div></div><div class="tv-grid"><div class="tv-loading">Loading…</div></div>';
+    const chips = genres.length ? [{ k: 'cat', label: 'All', c: g.cat }].concat(genres.slice(0, 24).map((x) => ({ k: 'genre', label: x }))) : [];
+    const box = $('.tv-chips', sc);
+    if (chips.length) {
+      box.innerHTML = chips.map((ch, i) => '<button class="tv-chip' + ((ch.k === 'cat' && !g.genre) || (ch.k === 'genre' && ch.label === g.genre) ? ' on' : '') + '" data-nav data-key="chip-' + i + '" data-zone="chips" data-lock="chips" data-act="chip" data-ref="' + ref(ch) + '">' + esc(ch.label) + '</button>').join('');
+      const on = $('.tv-chip.on', box);
+      if (on) S.zoneMemory.chips = on.dataset.key;
+    } else box.remove();
+    if (!g.items.length) loadMore(gen); else drawGrid();
   }
 
   // ---------------------------------------------------------------- Library
@@ -776,6 +804,7 @@ window.CouchTV = function (k) {
       case 'settings': closeLayer(T.layer); return k.openSettings && k.openSettings();
       case 'item': return r && openShow(r, el);
       case 'resume': return r && playPreview({ id: r.id, type: r.type, name: r.name, poster: r.poster }, r);
+      case 'more': return r && push('cat', { grid: { view: true, type: r.c.type, cat: r.c, title: r.title, genre: null, items: (r.items || []).slice(), done: false, loading: false } });
       case 'hero-play': { const p = heroItem(); return p && playPreview(p, cwFor(p.id)); }
       case 'hero-info': { const p = heroItem(); return p && openShow(p, null); }
       case 'hero-lib': { const p = heroItem(); if (p) await toggleLib(p); return hero(); }
@@ -820,7 +849,7 @@ window.CouchTV = function (k) {
         return true;
       }
       const order = SECTIONS.map((x) => x[0]).concat(['search']);
-      const i = Math.max(0, order.indexOf(T.page));
+      const i = Math.max(0, order.indexOf(T.page === 'cat' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page));
       const n = Math.max(0, Math.min(order.length - 1, i + (b === 'RB' ? 1 : -1)));
       if (n !== i) go(order[n]);
       return true;
@@ -865,7 +894,7 @@ window.CouchTV = function (k) {
     // Near the end of a grid: get more.
     if (el.dataset.gi != null && T.grid && Number(el.dataset.gi) > T.grid.items.length - 16) loadMore(T.gen);
     // Show the poster's backdrop behind Movies and Series pages.
-    if ((T.page === 'movie' || T.page === 'series' || T.page === 'search') && el.dataset.act === 'item') { const p = got(el); if (p) backdrop(p.background || metahub('background', p.id)); }
+    if ((T.page === 'movie' || T.page === 'series' || T.page === 'search' || T.page === 'cat') && el.dataset.act === 'item') { const p = got(el); if (p) backdrop(p.background || metahub('background', p.id)); }
     hints(el);
   }
   // Rows scroll sideways to keep the focused card inside the page margins.
