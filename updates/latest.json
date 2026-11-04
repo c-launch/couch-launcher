@@ -1,6 +1,6 @@
 {
- "version": "1.16.0",
- "notes": "Couch Launcher now runs on Mac: download the .dmg from Releases. The Xbox or PS button opens the guide over your games, and it looks like macOS (San Francisco type, frosted glass, system blue). On Windows: nothing changes.",
- "file": "CouchLauncher-update-1.16.0.zip",
- "size": 324565
+ "version": "1.17.0",
+ "notes": "The macOS look comes to Windows: glass panels, system blue, Apple-style type and notifications in the top-right corner. Your launcher switches to macOS Dark once; Settings › Themes has macOS Light, Original and the rest.",
+ "file": "CouchLauncher-update-1.17.0.zip",
+ "size": 324765
 }

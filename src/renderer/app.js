@@ -54,7 +54,7 @@
   const extOf = (p) => { const m = /\.[^.\\/]+$/.exec(String(p)); return m ? m[0].toLowerCase() : ''; };
 
   function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); }
-  function tileColor(g) { const t = S.theme || window.THEMES.find((x) => x.id === (IS_MAC ? 'macos' : 'original')); return t.tiles[hash(g.title || g.id) % t.tiles.length]; }
+  function tileColor(g) { const t = S.theme || window.THEMES[0]; return t.tiles[hash(g.title || g.id) % t.tiles.length]; }
 
   function fmtPlay(sec) {
     if (!sec) return '';
@@ -957,11 +957,10 @@
     if (tab === 'themes') {
       let h = '<div class="sect-h"><div><h2>Themes</h2><p>Changes apply right away, everywhere.</p></div></div><div class="theme-grid">';
       for (const t of window.THEMES) {
-        if (t.mac && !IS_MAC) continue; // the macOS looks are for Macs
         const sel = s.theme === t.id;
         h += '<button class="tcard' + (sel ? ' sel' : '') + '" data-nav data-key="th-' + t.id + '" data-zone="body" data-action="theme" data-id="' + t.id + '">' +
           '<div class="sw" style="background:' + t.bg + '">' + [t.accent, t.tiles[0], t.tiles[1], t.tiles[2]].map((c) => '<span style="background:' + c + '"></span>').join('') + '</div>' +
-          '<div class="n">' + esc(t.name) + (sel ? '<span class="check">' + icon('check') + '</span>' : '') + '</div><div class="d">' + esc(IS_MAC ? t.desc.replace(' · the default', '') : t.desc) + '</div></button>';
+          '<div class="n">' + esc(t.name) + (sel ? '<span class="check">' + icon('check') + '</span>' : '') + '</div><div class="d">' + esc(t.desc) + '</div></button>';
       }
       h += '</div><div class="sub-h">Corner style</div><div class="pills">' + window.CORNERS.map((c) =>
         '<button class="pill' + (s.corners === c.id ? ' sel' : '') + '" data-nav data-key="co-' + c.id + '" data-zone="body" data-action="corners" data-id="' + c.id + '">' + c.name + '</button>').join('') + '</div>';

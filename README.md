@@ -20,7 +20,7 @@ Building it yourself instead: install **Node.js LTS**, then double-click **Build
 4. If macOS asks to let Couch Launcher **receive keystrokes from any app** (Input Monitoring), allow it: that's how it hears the Xbox / PS button while a game is in front.
 5. If the Xbox button opens Launchpad, turn that off in **System Settings › Game Controllers ›** your controller **› Home button**.
 
-On a Mac it looks like macOS: San Francisco type, frosted-glass panels, system blue, notifications in the top-right corner, and the game frosted behind the guide. **macOS Dark** and **macOS Light** are in **Settings › Themes** (the other themes are there too).
+On a Mac it looks like macOS: San Francisco type, frosted-glass panels, system blue, notifications in the top-right corner, and the game frosted behind the guide. **macOS Dark** and **macOS Light** are in **Settings › Themes** (the other themes are there too). Windows gets the same look, except the game behind the guide isn't frosted there.
 
 The guide works the same as on Windows: press the Xbox (or PS) button in a game and it opens over the game, which pauses; B or the button again goes back. On the keyboard it's **Control + Option + G**.
 
@@ -32,7 +32,7 @@ What's left out on a Mac, because macOS doesn't allow it or the app is Windows-o
 - Steam and Epic games show up on their own.
 - Emulators: **Settings › Platforms**, then for each one pick the program (Dolphin.exe, rpcs3.exe, Ryujinx.exe) and your games folder. Subfolders are included.
 - Anything else: **Add a game** and pick an .exe, a shortcut, or a game file.
-- Themes, corner styles and accent colors: **Settings › Themes**.
+- Themes, corner styles and accent colors: **Settings › Themes**. The default is **macOS Dark** (glass panels, system blue, Apple-style type, notifications in the top-right corner) on Windows and Mac; **Original** brings back the first look.
 - Start with Windows: **Settings › Startup & power** (on by default for the installed app).
 
 ## Controls

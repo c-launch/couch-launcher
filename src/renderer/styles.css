@@ -982,44 +982,47 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .mvbtn.on { background: color-mix(in srgb, var(--danger, #E2506B) 28%, var(--chip)); }
 .bk-why { color: var(--warn, #E8A33D) !important; }
 
-/* ---------- Mac: dressed like macOS ----------
-   San Francisco type, frosted "glass" panels with a fine light edge, rounder corners, macOS-style
-   notifications in the top-right corner, and (in the guide over a game) the game itself frosted
-   behind the guide by macOS. Everything else stays the same as on Windows. */
-html.mac body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif; letter-spacing: -0.005em; }
-html.mac .pinfo .p, html.mac .field-static, html.mac .fb-path, html.mac .cw-hex, html.mac .sharetest .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-html.mac h1, html.mac h2, html.mac .gtitle, html.mac .dialog h2, html.mac .gnow-t, html.mac .gp-name { letter-spacing: -0.022em; font-weight: 700; }
-html.mac .glabel { letter-spacing: 0.02em; text-transform: none; font-size: 1.35rem; font-weight: 600; }
+/* ---------- The macOS look (always on a Mac; on Windows with the macOS Dark / Light themes) ----------
+   San Francisco type (Inter on Windows, the closest match), frosted "glass" panels with a fine light
+   edge, rounder corners, macOS-style notifications in the top-right corner, and on a Mac the game
+   itself frosted behind the guide by macOS. */
+html.macos-look body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI Variable Display", "Helvetica Neue", sans-serif; letter-spacing: -0.005em; }
+html.macos-look .pinfo .p, html.macos-look .field-static, html.macos-look .fb-path, html.macos-look .cw-hex, html.macos-look .sharetest .mono { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace; }
+html.macos-look h1, html.macos-look h2, html.macos-look .gtitle, html.macos-look .dialog h2, html.macos-look .gnow-t, html.macos-look .gp-name { letter-spacing: -0.022em; font-weight: 700; }
+html.macos-look .glabel { letter-spacing: 0.02em; text-transform: none; font-size: 1.35rem; font-weight: 600; }
 /* Glass: see-through, heavily blurred, with a hairline highlight along the top edge. */
-html.mac .guide, html.mac .dialog, html.mac .toast, html.mac .navpill {
+html.macos-look .guide, html.macos-look .dialog, html.macos-look .toast, html.macos-look .navpill {
   background: color-mix(in srgb, var(--panel-solid) 66%, transparent);
   -webkit-backdrop-filter: blur(40px) saturate(180%); backdrop-filter: blur(40px) saturate(180%);
   border: 0.5px solid rgba(255,255,255,0.14);
   box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.22), 0 2.4rem 6rem rgba(0,0,0,0.45);
 }
-html.mac.light .guide, html.mac.light .dialog, html.mac.light .toast, html.mac.light .navpill {
+html.macos-look.light .guide, html.macos-look.light .dialog, html.macos-look.light .toast, html.macos-look.light .navpill {
   border-color: rgba(0,0,0,0.08); box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.9), 0 2.4rem 6rem rgba(0,0,0,0.16);
 }
-html.mac .guide { border-radius: 2.8rem; padding: 1.8rem 1.8rem 2.2rem; }
-html.mac .dialog { border-radius: 2.6rem; }
-html.mac .mitem { border-radius: 1.2rem; }
-html.mac .gtab { border-radius: 1.2rem; }
-html.mac .gtab.sel { box-shadow: none; background: color-mix(in srgb, var(--text) 12%, transparent); }
-html.mac .gsep, html.mac .gtabs { border-color: color-mix(in srgb, var(--text) 10%, transparent); }
-html.mac .gsep { background: color-mix(in srgb, var(--text) 10%, transparent); }
+html.macos-look .guide { border-radius: 2.8rem; padding: 1.8rem 1.8rem 2.2rem; }
+html.macos-look .dialog { border-radius: 2.6rem; }
+html.macos-look .mitem { border-radius: 1.2rem; }
+html.macos-look .gtab { border-radius: 1.2rem; }
+html.macos-look .gtab.sel { box-shadow: none; background: color-mix(in srgb, var(--text) 12%, transparent); }
+html.macos-look .gsep, html.macos-look .gtabs { border-color: color-mix(in srgb, var(--text) 10%, transparent); }
+html.macos-look .gsep { background: color-mix(in srgb, var(--text) 10%, transparent); }
 /* Dialog backdrops: macOS dims less and blurs more. */
-html.mac .layer { background: color-mix(in srgb, var(--bg) 40%, transparent); backdrop-filter: blur(14px); }
-html.mac .layer.guide-layer { background: color-mix(in srgb, var(--bg) 28%, transparent); backdrop-filter: blur(10px); }
+html.macos-look .layer { background: color-mix(in srgb, var(--bg) 40%, transparent); backdrop-filter: blur(14px); }
+html.macos-look .layer.guide-layer { background: color-mix(in srgb, var(--bg) 28%, transparent); backdrop-filter: blur(10px); }
 /* Over a game, macOS frosts the game behind the guide (the window's own vibrancy), so the page
    only adds a light tint. */
 html.mac.overlay-mode .layer.guide-layer { background: rgba(0,0,0,0.12); backdrop-filter: none; }
-html.mac.overlay-mode .guide { background: color-mix(in srgb, var(--panel-solid) 55%, transparent); }
+html.mac.macos-look.overlay-mode .guide { background: color-mix(in srgb, var(--panel-solid) 55%, transparent); }
+/* Windows can't frost the game behind the guide, so there the guide stays nearly solid to read well. */
+html.macos-look.overlay-mode:not(.mac) .layer.guide-layer { background: linear-gradient(to right, rgba(0,0,0,0.5), rgba(0,0,0,0.15) 45%, rgba(0,0,0,0) 70%); backdrop-filter: none; }
+html.macos-look.overlay-mode:not(.mac) .guide { background: color-mix(in srgb, var(--panel-solid) 94%, transparent); }
 /* Notifications: top right, like macOS's own, with the launcher's icon. */
-html.mac #toasts { left: auto; right: 2.4rem; transform: none; align-items: flex-end; }
-html.mac .toast { border-radius: 1.8rem; padding: 1.3rem 2rem 1.3rem 1.4rem; display: flex; align-items: center; gap: 1.2rem; font-weight: 500; max-width: 52rem; }
-html.mac .toast::before { content: ''; flex: 0 0 3.4rem; height: 3.4rem; border-radius: 0.8rem; background: url(logo.png) center / cover; }
-html.mac .toast.err { border-left-width: 0.5px; color: #FF6B6B; }
-html.mac.light .toast.err { color: #D70015; }
+html.macos-look #toasts { left: auto; right: 2.4rem; transform: none; align-items: flex-end; }
+html.macos-look .toast { border-radius: 1.8rem; padding: 1.3rem 2rem 1.3rem 1.4rem; display: flex; align-items: center; gap: 1.2rem; font-weight: 500; max-width: 52rem; }
+html.macos-look .toast::before { content: ''; flex: 0 0 3.4rem; height: 3.4rem; border-radius: 0.8rem; background: url(logo.png) center / cover; }
+html.macos-look .toast.err { border-left-width: 0.5px; color: #FF6B6B; }
+html.macos-look.light .toast.err { color: #D70015; }
 @keyframes macToastIn { from { opacity: 0; transform: translateX(3rem); } to { opacity: 1; transform: none; } }
-html.mac .toast { animation-name: macToastIn; }
-html.mac .navbtn.active { background: color-mix(in srgb, var(--text) 92%, transparent); }
+html.macos-look .toast { animation-name: macToastIn; }
+html.macos-look .navbtn.active { background: color-mix(in srgb, var(--text) 92%, transparent); }
