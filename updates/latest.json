@@ -1,6 +1,6 @@
 {
- "version": "1.18.0",
- "notes": "Movies & TV: new Recommended for you and Because you watched … rows on Home, picked from what you've been watching (things already in your Library or Continue Watching are left out). View more shows them all.",
- "file": "CouchLauncher-update-1.18.0.zip",
- "size": 329003
+ "version": "1.18.1",
+ "notes": "Movies & TV: the opening animation's words now shrink and fade into the logo cleanly, without a faint ghost of them behind it.",
+ "file": "CouchLauncher-update-1.18.1.zip",
+ "size": 329017
 }

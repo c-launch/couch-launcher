@@ -67,7 +67,7 @@ window.CouchTV = function (k) {
     const shift = mid - (mr.left + mr.width / 2);
     const wshift = mid - (wr.left + wr.width / 2);
     mark.style.transform = 'translateX(' + shift + 'px)';
-    word.style.transform = 'translateX(' + wshift + 'px) scale(.55)';
+    word.style.transform = 'translateX(' + wshift + 'px) scale(.18)';
     el.classList.add('move');
   }
   function introPhase(c) { const el = introEl(); if (el) el.classList.add(c); }
