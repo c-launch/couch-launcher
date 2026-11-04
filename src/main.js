@@ -2005,6 +2005,9 @@ if (!app.requestSingleInstanceLock()) {
       }
       persist();
     }
+    // 1.17: the macOS look (macOS Dark, rounder corners) becomes the look everywhere. Switched once;
+    // the earlier themes stay in Settings › Themes.
+    if (!lib.settings.macLook) { lib.settings.theme = 'macos'; lib.settings.corners = 'squircle'; lib.settings.macLook = true; if (fs.existsSync(libFile())) persist(); }
     createWindow();
     setTimeout(() => { try { createOverlay(); } catch (_) { /* made on first use */ } }, 2000);
     // Monitors plugged in or removed: stay on the chosen one, or fall back to the main one.
