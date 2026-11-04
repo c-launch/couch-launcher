@@ -287,7 +287,14 @@ function startMpv(exe, o) {
     load: (url, title, startAt) => {
       eof = false; state.pos = 0; state.dur = 0;
       cmd('set_property', 'force-media-title', String(title || '')).catch(() => {});
-      return cmd('loadfile', url, 'replace', startAt > 5 ? 'start=' + Math.floor(startAt) : '').catch(() => cmd('loadfile', url, 'replace'));
+      // Where this file starts, set every time: otherwise mpv keeps the start it was opened with,
+      // so after resuming an episode, the next one began at that same point. Set as mpv's
+      // "start" option (the way to pass it with loadfile changed in mpv 0.38).
+      const start = startAt > 5 ? String(Math.floor(startAt)) : 'none';
+      return cmd('set_property', 'options/start', start)
+        .catch(() => cmd('set_property', 'options/start', startAt > 5 ? start : '0'))
+        .catch(() => null)
+        .then(() => cmd('loadfile', url, 'replace'));
     },
     quit: () => {
       if (exited) return;

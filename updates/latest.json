@@ -1,6 +1,6 @@
 {
- "version": "1.17.2",
- "notes": "Controller fixes: when Windows or macOS doesn't give the launcher the focus (after a game, or when it starts with the computer), the controller and the guide keep working. A device that holds a button or a stick at one end (wheel, pedals, remote) can't block the controller any more. The Xbox button can't stop working until a restart. Errors go to errors.log instead of a hidden error box.",
- "file": "CouchLauncher-update-1.17.2.zip",
- "size": 327268
+ "version": "1.17.3",
+ "notes": "Movies & TV: the next episode starts from the beginning (it used to start where you had resumed the one before). Episodes you haven't watched yet always start at 0:00.",
+ "file": "CouchLauncher-update-1.17.3.zip",
+ "size": 327498
 }
