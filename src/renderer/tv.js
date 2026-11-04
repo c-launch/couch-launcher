@@ -237,9 +237,9 @@ window.CouchTV = function (k) {
       '<button class="tv-btn round" data-nav data-key="h-lib" data-zone="hero" data-act="hero-lib" aria-label="Add to Library">' + icon('plus') + '</button></div><div class="tv-dots"></div></div></section>' +
       (signedIn === false && !(S.lib.settings.tvSignInSeen) ? '<section class="tv-sec tv-signin-card" data-block><div><h2>Bring your Stremio stuff</h2><p>Sign in to use your own addons, library and Continue Watching, synced with the Stremio app.</p></div>' +
         '<button class="tv-btn primary" data-nav data-key="h-signin" data-zone="signin" data-act="signin">Sign in</button><button class="tv-btn" data-nav data-key="h-signin-no" data-zone="signin" data-act="signin-later">Not now</button></section>' : '') +
-      '<div class="tv-cw"></div><div class="tv-rows"><div class="tv-loading">Loading…</div></div>';
+      '<div class="tv-cw"></div><div class="tv-recs"></div><div class="tv-rows"><div class="tv-loading">Loading…</div></div>';
     $('.tv-hero', sc).classList.add('wait');
-    library().then(() => { if (!stale(gen)) drawCw(sc); });
+    library().then(() => { if (!stale(gen)) { drawCw(sc); loadRecs(sc, gen); } });
     loadBoard(sc, gen);
   }
   function drawCw(sc) {
@@ -271,8 +271,7 @@ window.CouchTV = function (k) {
       const title = catTitle(c);
       const had = currentFocus() && currentFocus().closest('.tv-slot') === slot && currentFocus().dataset.key;
       // The last card opens the whole category (more pages load as you scroll down).
-      const more = '<button class="tv-poster tv-more" data-nav data-key="r' + i + '-more" data-zone="r' + i + '" data-lock="r' + i + '" data-act="more" data-ref="' + ref({ c, title, items }) + '" aria-label="View more ' + esc(title) + '">' +
-        '<span class="tv-more-ic">' + icon('grid') + '</span><span class="tv-more-t">View more</span></button>';
+      const more = moreHTML('r' + i, { c, title, items }, title);
       slot.innerHTML = sectionHTML(title, rowHTML(items.slice(0, 30).map((p, j) => posterHTML(p, 'r' + i + '-' + j, 'r' + i, 'r' + i)).join('') + more));
       if (had) place(had);
       settle();
@@ -280,6 +279,75 @@ window.CouchTV = function (k) {
     }));
     if (!stale(gen) && !T.featured.length) { const h = $('.tv-hero', sc); if (h) h.remove(); place(); }
   }
+  // The last card of a row: opens everything in it on its own page.
+  function moreHTML(zone, what, title) {
+    return '<button class="tv-poster tv-more" data-nav data-key="' + zone + '-more" data-zone="' + zone + '" data-lock="' + zone + '" data-act="more" data-ref="' + ref(what) + '" aria-label="View more ' + esc(title) + '">' +
+      '<span class="tv-more-ic">' + icon('grid') + '</span><span class="tv-more-t">View more</span></button>';
+  }
+
+  // ---------------------------------------------------------------- Recommended
+  // "Recommended for you" and "Because you watched …", from what you've watched and saved lately:
+  // the genres you watch most (newer counts more), filled from your addons' catalogs, leaving out
+  // what's already in your Library or Continue Watching. Worked out again every 15 minutes.
+  async function loadRecs(sc, gen) {
+    const box = $('.tv-recs', sc);
+    if (!box) return;
+    const lib = T.lib || { continueWatching: [], items: [] };
+    const seen = new Map();
+    for (const it of lib.continueWatching.concat(lib.items).sort((a, b) => (b.lastWatched || 0) - (a.lastWatched || 0))) if (!seen.has(it.id)) seen.set(it.id, it);
+    const recent = [...seen.values()].filter((x) => x.type === 'movie' || x.type === 'series').slice(0, 8);
+    if (!recent.length) { box.innerHTML = ''; return; }
+    const sig = recent.map((x) => x.id).join(',');
+    let r = T.recs && T.recs.sig === sig && Date.now() - T.recs.at < 15 * 60e3 ? T.recs : null;
+    if (!r) {
+      try { r = await workOutRecs(recent, new Set(seen.keys())); } catch (_) { r = null; }
+      if (!r) return;
+      r.sig = sig; r.at = Date.now(); T.recs = r;
+    }
+    if (stale(gen)) return;
+    const had = currentFocus() && currentFocus().closest('.tv-recs') && currentFocus().dataset.key;
+    let h = '';
+    if (r.forYou.length) h += sectionHTML('Recommended for you', rowHTML(r.forYou.slice(0, 30).map((p, j) => posterHTML(p, 'rc-' + j, 'rc', 'rc')).join('') + moreHTML('rc', { c: null, title: 'Recommended for you', items: r.forYou }, 'Recommended for you')));
+    if (r.because && r.because.items.length) {
+      const t = 'Because you watched ' + r.because.name;
+      h += sectionHTML(t, rowHTML(r.because.items.slice(0, 30).map((p, j) => posterHTML(p, 'bw-' + j, 'bw', 'bw')).join('') + moreHTML('bw', { c: null, title: t, items: r.because.items }, t)));
+    }
+    box.innerHTML = h;
+    if (had) place(had);
+    settle();
+  }
+  async function workOutRecs(recent, owned) {
+    const metas = (await Promise.all(recent.map((it) => api.tvMeta(it.type, it.id).catch(() => null)))).filter((m) => m && (m.genres || []).length);
+    if (!metas.length) return { forYou: [], because: null };
+    const cats = (await catalogs().catch(() => [])).filter((c) => (c.type === 'movie' || c.type === 'series') && (c.genres || []).length);
+    const catFor = (type, g) => cats.find((c) => c.type === type && c.board && c.genres.includes(g)) || cats.find((c) => c.type === type && c.genres.includes(g));
+    const fetchGenre = async (type, g) => { const c = catFor(type, g); if (!c) return []; try { return await api.tvCatalog(c.addon, c.type, c.id, { genre: g }); } catch (_) { return []; } };
+    // Genres you watch, the newest counting most and each title's main genre a bit more.
+    const score = new Map();
+    metas.forEach((m, i) => (m.genres || []).forEach((g, j) => { const k = m.type + '|' + g; score.set(k, (score.get(k) || 0) + (metas.length - i) * (j === 0 ? 1.5 : 1)); }));
+    const top = [...score.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k]) => k.split('|'));
+    const lists = await Promise.all(top.map(([type, g]) => fetchGenre(type, g)));
+    const forYou = [], ids = new Set();
+    for (let i = 0; forYou.length < 60; i++) {
+      let any = false;
+      for (const l of lists) {
+        const p = l[i];
+        if (!p) continue;
+        any = true;
+        if (owned.has(p.id) || ids.has(p.id)) continue;
+        ids.add(p.id); forYou.push(p);
+      }
+      if (!any) break;
+    }
+    // The latest thing you watched: others in its genres, the ones sharing the most first.
+    const last = metas[0];
+    const pool = await fetchGenre(last.type, last.genres[0]);
+    const shared = (p) => (p.genres || []).filter((g) => last.genres.includes(g)).length;
+    const because = pool.filter((p) => p.id !== last.id && !owned.has(p.id)).map((p, i) => ({ p, i, n: shared(p) })).sort((a, b) => (b.n - a.n) || (a.i - b.i)).map((x) => x.p).slice(0, 40);
+    const shown = recent.find((x) => x.id === last.id); // the name as it shows in your Continue Watching
+    return { forYou, because: because.length >= 6 ? { name: (shown && shown.name) || last.name, items: because } : null };
+  }
+
   // "Popular Movies", "Live TV · USA TV Next · Live TV"… without saying the same name twice.
   function catTitle(c) {
     if (c.name === 'Popular' || c.name === 'Featured' || c.name === 'New') return c.name + ' ' + typeName(c.type);
@@ -370,8 +438,8 @@ window.CouchTV = function (k) {
   // ---------------------------------------------------------------- One category (View more)
   function catPage(sc, gen) {
     const g = T.grid;
-    if (!g || !g.cat) return homePage(sc, gen);
-    const genres = (!g.cat.genreRequired && g.cat.genres) || [];
+    if (!g || (!g.cat && !g.fixed)) return homePage(sc, gen);
+    const genres = (g.cat && !g.cat.genreRequired && g.cat.genres) || [];
     sc.innerHTML = '<div class="tv-head" data-block="top"><h1>' + esc(g.title || g.cat.name) + '</h1><div class="tv-chips" role="tablist"></div></div><div class="tv-grid"><div class="tv-loading">Loading…</div></div>';
     const chips = genres.length ? [{ k: 'cat', label: 'All', c: g.cat }].concat(genres.slice(0, 24).map((x) => ({ k: 'genre', label: x }))) : [];
     const box = $('.tv-chips', sc);
@@ -807,7 +875,7 @@ window.CouchTV = function (k) {
       case 'settings': closeLayer(T.layer); return k.openSettings && k.openSettings();
       case 'item': return r && openShow(r, el);
       case 'resume': return r && playPreview({ id: r.id, type: r.type, name: r.name, poster: r.poster }, r);
-      case 'more': return r && push('cat', { grid: { view: true, type: r.c.type, cat: r.c, title: r.title, genre: null, items: (r.items || []).slice(), done: false, loading: false } });
+      case 'more': return r && push('cat', { grid: { view: true, fixed: !r.c, type: r.c ? r.c.type : 'movie', cat: r.c || null, title: r.title, genre: null, items: (r.items || []).slice(), done: !r.c, loading: false } });
       case 'hero-play': { const p = heroItem(); return p && playPreview(p, cwFor(p.id)); }
       case 'hero-info': { const p = heroItem(); return p && openShow(p, null); }
       case 'hero-lib': { const p = heroItem(); if (p) await toggleLib(p); return hero(); }
