@@ -98,20 +98,20 @@ function createMacWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons,
       if (st.guide) guide = true;
       if (b & 0x2000) back = true;
       if ((b & 0x0030) === 0x0030) combo = true;
-      if (joining && onPress && (b & 0x1000) && !((prevSlot[i] || 0) & 0x1000)) onPress(i);
+      if (joining && onPress && (b & 0x1000) && !((prevSlot[i] || 0) & 0x1000)) { try { onPress(i); } catch (_) { /* fine */ } }
       prevSlot[i] = b;
     });
     prevSlot.length = states.length;
     if (onButtons) { try { onButtons(all & ~0x0400, lx, ly); } catch (_) { /* never stop the watcher */ } }
     if (onState) { try { onState(mac.gamepads()); } catch (_) { /* never stop the watcher */ } }
-    if (guide && !guideWasDown) onGuide();
+    if (guide && !guideWasDown) { try { onGuide(); } catch (_) { /* never stop the watcher */ } }
     guideWasDown = guide;
-    if (back && !backWasDown && gameRunning && onBack) onBack();
+    if (back && !backWasDown && gameRunning && onBack) { try { onBack(); } catch (_) { /* never stop the watcher */ } }
     backWasDown = back;
     const now = Date.now();
     if (combo && gameRunning) {
       if (!heldSince) heldSince = now;
-      if (!comboFired && now - heldSince >= HOLD_MS) { comboFired = true; onCombo(); }
+      if (!comboFired && now - heldSince >= HOLD_MS) { comboFired = true; try { onCombo(); } catch (_) { /* never stop the watcher */ } }
     } else { heldSince = 0; comboFired = false; }
   }
   return {
@@ -143,11 +143,16 @@ function createWinWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons,
   let sony = null;
   try { sony = require('./sonypads').createSonyPads({ wantPs: () => !usePs || usePs(), shareMap: () => (shareMap ? shareMap() : null) }); } catch (_) { sony = null; }
 
+  let exFailedAt = 0;
   function read(i) {
     const st = {};
+    // The hidden call (it's the one that sees the Xbox button) failed: plain reads for a few
+    // seconds, then try it again (it used to be given up on for good, so the guide button
+    // stopped working until the launcher restarted).
+    if (!exWorks && x.getStateEx && exFailedAt && Date.now() - exFailedAt > 10000) { exWorks = true; exFailedAt = 0; }
     if (exWorks) {
       try { const rc = x.getStateEx(i, st); return rc === 0 ? st.Gamepad : null; }
-      catch (_) { exWorks = false; } // fall back for good if the hidden call misbehaves
+      catch (_) { exWorks = false; exFailedAt = Date.now(); }
     }
     try { const rc = x.getState(i, st); return rc === 0 ? st.Gamepad : null; } catch (_) { return null; }
   }
@@ -198,21 +203,21 @@ function createWinWatcher({ onGuide, onCombo, onBack, onPress, usePs, onButtons,
       cap.xView = !!(xmask & 0x20); cap.xLB = !!(xmask & 0x100); cap.xRB = !!(xmask & 0x200);
       try { onCapture(cap); } catch (_) { /* never stop the watcher */ }
     }
-    if (guide && !guideWasDown) onGuide();
+    if (guide && !guideWasDown) { try { onGuide(); } catch (_) { /* never stop the watcher */ } }
     guideWasDown = guide;
-    if (back && !backWasDown && gameRunning && onBack) onBack();
+    if (back && !backWasDown && gameRunning && onBack) { try { onBack(); } catch (_) { /* never stop the watcher */ } }
     backWasDown = back;
 
     const now = Date.now();
     if (combo && gameRunning) {
       if (!heldSince) heldSince = now;
-      if (!comboFired && now - heldSince >= HOLD_MS) { comboFired = true; onCombo(); }
+      if (!comboFired && now - heldSince >= HOLD_MS) { comboFired = true; try { onCombo(); } catch (_) { /* never stop the watcher */ } }
     } else { heldSince = 0; comboFired = false; }
   }
 
   return {
     available: true,
-    get guide() { return exWorks; },
+    get guide() { return !!x.getStateEx; },
     start() { if (!timer) timer = setInterval(poll, POLL_MS); },
     stop() { if (timer) { clearInterval(timer); timer = null; } if (sony) sony.close(); },
     setGameRunning(on) { gameRunning = !!on; heldSince = 0; comboFired = false; },

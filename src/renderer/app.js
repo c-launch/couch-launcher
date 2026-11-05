@@ -54,7 +54,7 @@
   const extOf = (p) => { const m = /\.[^.\\/]+$/.exec(String(p)); return m ? m[0].toLowerCase() : ''; };
 
   function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); }
-  function tileColor(g) { const t = S.theme || window.THEMES.find((x) => x.id === (IS_MAC ? 'macos' : 'original')); return t.tiles[hash(g.title || g.id) % t.tiles.length]; }
+  function tileColor(g) { const t = S.theme || window.THEMES[0]; return t.tiles[hash(g.title || g.id) % t.tiles.length]; }
 
   function fmtPlay(sec) {
     if (!sec) return '';
@@ -957,11 +957,10 @@
     if (tab === 'themes') {
       let h = '<div class="sect-h"><div><h2>Themes</h2><p>Changes apply right away, everywhere.</p></div></div><div class="theme-grid">';
       for (const t of window.THEMES) {
-        if (t.mac && !IS_MAC) continue; // the macOS looks are for Macs
         const sel = s.theme === t.id;
         h += '<button class="tcard' + (sel ? ' sel' : '') + '" data-nav data-key="th-' + t.id + '" data-zone="body" data-action="theme" data-id="' + t.id + '">' +
           '<div class="sw" style="background:' + t.bg + '">' + [t.accent, t.tiles[0], t.tiles[1], t.tiles[2]].map((c) => '<span style="background:' + c + '"></span>').join('') + '</div>' +
-          '<div class="n">' + esc(t.name) + (sel ? '<span class="check">' + icon('check') + '</span>' : '') + '</div><div class="d">' + esc(IS_MAC ? t.desc.replace(' · the default', '') : t.desc) + '</div></button>';
+          '<div class="n">' + esc(t.name) + (sel ? '<span class="check">' + icon('check') + '</span>' : '') + '</div><div class="d">' + esc(t.desc) + '</div></button>';
       }
       h += '</div><div class="sub-h">Corner style</div><div class="pills">' + window.CORNERS.map((c) =>
         '<button class="pill' + (s.corners === c.id ? ' sel' : '') + '" data-nav data-key="co-' + c.id + '" data-zone="body" data-action="corners" data-id="' + c.id + '">' + c.name + '</button>').join('') + '</div>';
@@ -989,7 +988,9 @@
           '<div class="picon" style="background:var(--chip);color:var(--text)">' + icon('monitor') + '</div><div class="pinfo"><div class="t">' + esc(d.name) + '</div><div class="p">' +
           esc([d.size, d.hz ? d.hz + ' Hz' : '', d.primary ? 'Main monitor' : ''].filter(Boolean).join(' · ')) + '</div></div>' +
           (d.current ? '<span class="status ok">In use</span>' : '<span class="status off">Use this one</span>') + '</button>').join('') + '</div>' +
-        '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in ' + (IS_MAC ? 'System Settings › Displays' : 'Windows display settings') + '.</p>';
+        '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in ' + (IS_MAC ? 'System Settings › Displays' : 'Windows display settings') + '.</p>' +
+        '<div class="sub-h">Window</div><div class="toggles" style="grid-template-columns:1fr">' +
+        toggleHTML('d-full', 'Full screen', !S.info.windowed, 'Off: the launcher opens in a normal window you can move and resize. It restarts to switch.' + (IS_MAC ? ' (Also in the menu bar: Couch Launcher › Full Screen.)' : ''), 'full-toggle', '') + '</div>';
     }
     if (tab === 'controllers') {
       if (S.captureInfo === undefined) { S.captureInfo = null; Promise.resolve().then(() => api.captureStatus()).then((c) => { S.captureInfo = c || {}; if (S.view === 'settings' && S.setTab === 'controllers' && !layers.length) refreshContent(); }).catch(() => { S.captureInfo = {}; }); }
@@ -3818,6 +3819,13 @@
       }
       case 'theme': s.theme = el.dataset.id; s.accent = null; return themeChanged();
       case 'corners': s.corners = el.dataset.id; return themeChanged();
+      case 'full-toggle': {
+        const full = !S.info.windowed;
+        if (!(await confirmBox(full ? 'Open in a window?' : 'Open full screen?', 'The launcher restarts to switch.', 'Restart', false))) return;
+        toast('Restarting…');
+        try { await api.setWindowed(full); } catch (e) { toast(e.message, true); }
+        return;
+      }
       case 'accent': s.accent = el.dataset.c || null; return themeChanged();
       case 'set-toggle': s[el.dataset.k] = el.getAttribute('aria-checked') !== 'true'; if (el.dataset.k === 'useArtBackground') currentBg = undefined; return themeChanged();
       case 'autostart': {
@@ -3970,35 +3978,60 @@
   }
 
   let extPads = null, extAt = 0;
-  api.on('pad:ext', (list) => { if (Array.isArray(list)) { extPads = list.map((p) => ({ id: String(p.id || 'Controller'), connected: true, buttons: (p.buttons || []).map((on) => ({ pressed: !!on, value: on ? 1 : 0 })), axes: p.axes || [] })); extAt = performance.now(); } });
+  api.on('pad:ext', (list) => { if (Array.isArray(list)) { extPads = list.map((p, i) => ({ id: String(p.id || 'Controller'), index: 'ext' + i, mapping: 'standard', connected: true, buttons: (p.buttons || []).map((on) => ({ pressed: !!on, value: on ? 1 : 0 })), axes: p.axes || [] })); extAt = performance.now(); } });
+  // Per controller: the buttons and stick seen let go at least once. A button or stick that has
+  // never been let go (a pedal or a stick that rests at one end, a device that reports a button
+  // as always held) is left out, so it can't block every other press.
+  const padSeen = new Map();
+  let suppressAt = 0;
+  let tvCheckAt = 0, tvIdle = 0;
   function pollPads(now) {
     requestAnimationFrame(pollPads);
-    const ext = OVERLAY && extPads && now - extAt < 400;
-    if ((!document.hasFocus() && !ext) || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; return; }
+    // The app core reads the controller too, and sends it here when this window is on top but
+    // wasn't given the focus (it can't read the controller itself then).
+    const ext = extPads && now - extAt < 400;
+    if (S.tvPlaying) watchTvPlaying(now);
+    if ((!document.hasFocus() && !ext) || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; suppressAt = now; return; }
     let pads;
-    try { pads = navigator.getGamepads(); } catch (_) { return; }
-    // Mac guide window: when it can't read the controller itself, use what the app core reads.
-    if (extPads && now - extAt < 400 && !Array.from(pads || []).some((p) => p && p.connected)) pads = extPads;
+    try { pads = Array.from(navigator.getGamepads() || []); } catch (_) { return; }
+    if (ext && (!document.hasFocus() || !pads.some((p) => p && p.connected))) pads = extPads;
+    // A real controller (standard layout) is there: ignore other devices (wheels, pedals, remotes).
+    const standard = pads.some((p) => p && p.connected && p.mapping === 'standard');
+    const live = new Set();
     const down = new Set();
     let dir = null, dirMag = 0, activePad = null;
     for (const p of pads) {
       if (!p || !p.connected) continue;
+      if (standard && p.mapping !== 'standard') continue;
+      const pk = String(p.index) + '|' + p.id;
+      live.add(pk);
+      let seen = padSeen.get(pk);
+      if (!seen) { seen = { off: new Set(), stick: false }; padSeen.set(pk, seen); }
       for (let i = 0; i < p.buttons.length; i++) {
         const bt = p.buttons[i];
         const on = bt && (bt.pressed || bt.value > 0.5);
-        if (!on) continue;
+        if (!on) { seen.off.add(i); continue; }
+        if (!seen.off.has(i)) continue;
         if (PADMAP[i]) { down.add(PADMAP[i]); activePad = p; }
         if (DIRS[i]) { dir = DIRS[i]; dirMag = 1; activePad = p; }
       }
       const ax = p.axes[0] || 0, ay = p.axes[1] || 0;
       const mag = Math.max(Math.abs(ax), Math.abs(ay));
-      if (mag > 0.55 && mag > dirMag) {
+      if (mag < 0.3) seen.stick = true;
+      if (seen.stick && mag > 0.55 && mag > dirMag) {
         dir = Math.abs(ax) > Math.abs(ay) ? (ax > 0 ? 'right' : 'left') : (ay > 0 ? 'down' : 'up');
         dirMag = mag; activePad = p;
       }
     }
+    for (const pk of padSeen.keys()) if (!live.has(pk)) padSeen.delete(pk);
     if (suppressUntilRelease) {
-      if (!down.size && !dir) suppressUntilRelease = false;
+      if (!suppressAt) suppressAt = now;
+      // Let go of everything (or 1.5 s passed: whatever is still held simply counts as held, so
+      // it won't press anything until it's pressed again).
+      if ((!down.size && !dir) || now - suppressAt > 1500) {
+        suppressUntilRelease = false; suppressAt = 0;
+        if (dir) { held.dir = dir; held.since = now; held.count = 0; held.next = now + 600; }
+      }
       prevButtons.clear(); for (const b of down) prevButtons.add(b);
       return;
     }
@@ -4023,6 +4056,19 @@
         held.next = now + Math.max(55, 150 - t / 12);
       }
     } else held.dir = null;
+  }
+
+  // A movie that ended without the launcher hearing about it would leave the controller with the
+  // player for good. Every few seconds while "playing", ask whether something is still playing.
+  function watchTvPlaying(now) {
+    if (!S.tvPlayingAt) S.tvPlayingAt = now;
+    if (now - S.tvPlayingAt < 8000 || now - tvCheckAt < 3000) return;
+    tvCheckAt = now;
+    Promise.resolve().then(() => api.tvStatus()).then((st) => {
+      if (!S.tvPlaying) return;
+      if (st && st.playing === false) { if (++tvIdle >= 2) { S.tvPlaying = false; S.tvPlayingAt = 0; tvIdle = 0; suppressUntilRelease = true; } }
+      else tvIdle = 0;
+    }).catch(() => {});
   }
 
   // ---------------------------------------------------------------- keyboard & mouse

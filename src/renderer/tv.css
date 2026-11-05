@@ -129,6 +129,14 @@
 .tv-head .tv-chips { margin: 0 -10rem; padding-left: 10rem; padding-right: 10rem; }
 .tv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15.6rem, 1fr)); gap: 3.2rem 2.6rem; padding: 2rem 10rem 4rem; }
 .tv-grid .tv-poster { width: auto; }
+/* "View more" at the end of a Home row */
+.tv-more { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2rem; background: var(--tv-btn); color: var(--tv-text); }
+.tv-more-ic { width: 6rem; height: 6rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--tv-text) 12%, transparent); }
+.tv-more-ic svg { width: 2.6rem; height: 2.6rem; }
+.tv-more-t { font-size: 1.8rem; font-weight: 600; }
+.tv-more.focused { background: var(--tv-focus-bg); color: var(--tv-focus-text); }
+.tv-more.focused .tv-more-ic { background: color-mix(in srgb, currentColor 14%, transparent); }
+.tv-more.focused::after { display: none; }
 .tv-grid > .tv-loading, .tv-grid > .tv-empty { grid-column: 1 / -1; padding-left: 0; padding-right: 0; }
 .tv-search { display: inline-flex; align-items: center; gap: 1.2rem; min-width: 60rem; padding: 1.5rem 2.4rem; border-radius: 1.4rem; background: var(--tv-btn); font-size: 2.1rem; color: var(--tv-sub); transition: transform var(--t-fast), background var(--t-fast), color var(--t-fast); }
 .tv-search.focused { background: var(--tv-focus-bg); color: var(--tv-focus-text); transform: scale(1.03); }
@@ -217,8 +225,10 @@
 .tv-intro-ring { transform-origin: 50% 50%; transform: rotate(-90deg); stroke-dasharray: 277; stroke-dashoffset: 277; animation: tvRing .95s cubic-bezier(.65,0,.35,1) .1s forwards; }
 .tv-intro-play { transform-origin: 54% 50%; opacity: 0; transform: scale(.7); animation: tvPlay .5s cubic-bezier(.2,.8,.2,1) .3s forwards; }
 .tv-intro-word { position: relative; z-index: 1; font-family: Inter, "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; font-weight: 600; font-size: 5.6rem;
-  letter-spacing: -.025em; color: #F5F5F7; white-space: nowrap; transform-origin: left center;
-  transition: transform .55s cubic-bezier(.55,0,.75,.4), opacity .4s ease .12s; }
+  letter-spacing: -.025em; color: #F5F5F7; white-space: nowrap; transform-origin: center center;
+  /* Shrinks into the middle of the mark and is fully gone just before it gets there, so no
+     faint edge of it shows around the mark. */
+  transition: transform .55s cubic-bezier(.5,0,.5,1), opacity .26s cubic-bezier(.4,0,1,1) .06s; }
 .tv-intro.move .tv-intro-word { opacity: 0; }
 .tv-intro.fade .tv-intro-mark { opacity: 0; scale: 1.14; transition: transform .62s cubic-bezier(.65,0,.35,1), opacity .45s ease, scale .5s cubic-bezier(.2,.8,.2,1); }
 @keyframes tvLockIn { to { opacity: 1; transform: none; } }

@@ -175,7 +175,13 @@ function setupTv(ctx) {
   }
   function wire(s) {
     const { mpv } = s;
-    mpv.on('time', ({ pos, dur }) => { if (session !== s) return; s.pos = pos; if (dur > 0) s.dur = dur; s.controls.setTime(pos, dur); });
+    mpv.on('time', ({ pos, dur }) => {
+      if (session !== s) return;
+      // Switching episodes: the old one's last positions can still arrive. Skip them until the
+      // new one is near where it should start, so its spot isn't saved as the old one's.
+      if (s.loading) { if (Math.abs(pos - s.loading.expect) < 20 || Date.now() - s.loading.at > 8000) s.loading = null; else return; }
+      s.pos = pos; if (dur > 0) s.dur = dur; s.controls.setTime(pos, dur);
+    });
     mpv.on('pause', (p) => { if (session === s) { s.paused = !!p; s.controls.setPaused(p); } });
     mpv.on('buffering', (b) => { if (session === s) s.controls.setBuffering(b); });
     mpv.on('tracks', (t) => {
@@ -218,9 +224,10 @@ function setupTv(ctx) {
       if (!stream) throw new Error('No stream found for ' + epLabel(video));
       const url = await streamUrl(stream, video);
       if (session !== s) return;
-      Object.assign(s, { video, videoId, stream, pos: 0, dur: 0, subPicked: false });
+      const startAt = tv().resumeAt(s.meta.id, videoId);
+      Object.assign(s, { video, videoId, stream, pos: startAt > 5 ? startAt : 0, dur: 0, subPicked: false, loading: { at: Date.now(), expect: startAt > 5 ? startAt : 0 } });
       tv().rememberStream(s.meta.id, videoId, stream);
-      await s.mpv.load(url, s.meta.name + ' · ' + epLabel(video), tv().resumeAt(s.meta.id, videoId));
+      await s.mpv.load(url, s.meta.name + ' · ' + epLabel(video), startAt);
       s.mpv.pause(false);
       s.controls.setInfo(infoFor(s.meta, video));
       loadSubs(s);

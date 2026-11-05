@@ -6,6 +6,7 @@ const { spawn, execFile } = require('child_process');
 const scanners = require('./scanners');
 const library = require('./library');
 const { createControllerWatcher, loadXInput, readPads } = require('./hotkey');
+const { asGamepad } = require('./macpads');
 const { createPadMouse } = require('./padmouse');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
@@ -25,8 +26,18 @@ const { createArtFinder } = require('./artfinder');
 const VERSION = global.couchVersion || require('../package.json').version;
 const newerThan = global.couchNewer || ((a, b) => String(a) > String(b));
 
-const WINDOWED = process.argv.includes('--windowed');
+let WINDOWED = process.argv.includes('--windowed'); // also Settings › Display › Full screen: off
 const MAC = process.platform === 'darwin';
+// A mistake somewhere in the app core must never pop up Electron's error box: over a full-screen
+// launcher it hides behind it, takes the focus, and the controller seems to stop working.
+// It's written to errors.log (in the launcher's settings folder) instead.
+process.on('uncaughtException', (err) => {
+  try {
+    const f = path.join(app.getPath('userData'), 'errors.log');
+    try { if (fs.statSync(f).size > 512 * 1024) fs.renameSync(f, f + '.old'); } catch (_) { /* new file */ }
+    fs.appendFileSync(f, new Date().toISOString() + ' ' + String(err && err.stack || err) + '\n');
+  } catch (_) { /* nowhere to write */ }
+});
 // Build check (see COUCH_SELFTEST below): what the screens printed, to spot a screen that broke.
 const selftestLog = [];
 if (process.env.COUCH_SELFTEST) {
@@ -60,7 +71,7 @@ if (!app.requestSingleInstanceLock()) {
     extraShare: () => !!(rawPads && rawPads.share),
     // Mac: the guide window gets the controller from here (macOS may not give it to a window
     // that just came in front of a game).
-    onState: (gp) => { if (MAC && overlayShown()) sendOverlay('pad:ext', gp); },
+    onState: (gp) => { if (MAC) feedPads(gp); },
     // While a movie or episode plays, the controller drives the player.
     // Share button -> Medal (tap: screenshot, hold: clip). Not inside the launcher itself.
     onCapture: (st) => {
@@ -86,6 +97,7 @@ if (!app.requestSingleInstanceLock()) {
     onButtons: (mask, lx, ly) => {
       if (tvPart && tvPart.playing) { if (!overlayShown()) tvPart.input(mask, lx, ly); }
       else if (yt && yt.isFront()) yt.input(mask, lx, ly);
+      if (!MAC) feedPads([asGamepad({ mask, lx, ly, rx: 0, ry: 0, lt: 0, rt: 0 })]);
     },
     // B on the boot screen while Steam/Epic has focus (the launcher can't hear it then).
     onBack: () => {
@@ -93,6 +105,29 @@ if (!app.requestSingleInstanceLock()) {
       if (r && r.boot && win && !win.isDestroyed() && !win.isFocused()) { cancelLaunch(); send('launch:cancelled', { gameId: r.gameId }); }
     }
   });
+
+  // The controller as read here, for a launcher screen that's on top but wasn't given the keyboard
+  // focus (macOS and Windows sometimes refuse a window that asks for it, for example after a game
+  // or when it starts with the computer). Without focus the screen can't read the controller
+  // itself, so everything, the guide included, seemed to stop working.
+  // wantFront: the launcher asked to be in front (and hasn't been left for another app since).
+  let wantFront = true, lastFocusTry = 0;
+  // Anything the launcher opens (a store, a link, a program) is where you're going next.
+  for (const k of ['openExternal', 'openPath']) {
+    try { const orig = shell[k].bind(shell); shell[k] = (...args) => { wantFront = false; return orig(...args); }; } catch (_) { /* left as is */ }
+  }
+  function feedPads(gp) {
+    if (overlayShown()) {
+      if (MAC || !overlay.isFocused()) sendOverlay('pad:ext', gp);
+      return;
+    }
+    if (!wantFront || !win || win.isDestroyed() || !win.isVisible() || win.isMinimized() || win.isFocused()) return;
+    if ((tvPart && tvPart.playing) || (yt && yt.isShown())) return;
+    send('pad:ext', gp);
+    // Keep asking for the focus now and then; the keyboard and mouse need it.
+    const now = Date.now();
+    if (now - lastFocusTry > 3000) { lastFocusTry = now; try { if (w32) w32.forceForeground(w32.hwndOf(win)); if (MAC) app.focus({ steal: true }); win.focus(); } catch (_) { /* next time */ } }
+  }
 
   // Medal: the launcher presses Medal's own hotkeys (Settings › Controllers › Clips with Medal).
   let shotHintAt = 0;
@@ -339,6 +374,7 @@ if (!app.requestSingleInstanceLock()) {
 
   function bringBack(showGuide) {
     if (!win || win.isDestroyed()) return;
+    wantFront = true;
     if (win.isMinimized()) win.restore();
     if (MAC) { try { if (app.isHidden()) app.show(); } catch (_) { /* older Electron */ } }
     win.show();
@@ -390,6 +426,7 @@ if (!app.requestSingleInstanceLock()) {
   }
   // Watches for an app's window for a while (splash screens come first) and places each new one.
   function presentApp(exes, titlePrefix, ms) {
+    wantFront = false; // another app (store, music, Discord…) is coming to the front
     let stopped = false;
     if (!w32) return () => {};
     const done = new Map(); // window -> times placed
@@ -407,11 +444,24 @@ if (!app.requestSingleInstanceLock()) {
     tick();
     return () => { stopped = true; };
   }
+  // Full screen is switched off and on again only when the screen itself changed (another
+  // monitor, a new resolution). Hiding the Mac's menu bar for full screen changes the screen's
+  // usable area, and reacting to that switched full screen off and on in an endless loop
+  // (a black screen that kept flashing). If it ever toggles that often again, it stops.
+  let placeTimes = [], placeStorm = false, placeCount = 0;
   function placeWindows() {
     const d = targetDisplay();
     if (win && !win.isDestroyed()) {
       const isFull = () => (MAC ? win.isSimpleFullScreen() : win.isFullScreen());
       const setFull = (on) => (MAC ? win.setSimpleFullScreen(on) : win.setFullScreen(on));
+      const b = win.getBounds();
+      const there = b.x === d.bounds.x && b.y === d.bounds.y && b.width === d.bounds.width && b.height === d.bounds.height;
+      if (!WINDOWED && isFull() && there) { if (overlay && !overlay.isDestroyed()) overlay.setBounds(d.bounds); return; }
+      const now = Date.now();
+      placeTimes = placeTimes.filter((t) => now - t < 15000).concat(now);
+      if (placeTimes.length > 4) placeStorm = true;
+      placeCount++;
+      if (placeStorm) { if (!WINDOWED && !isFull()) setFull(true); if (overlay && !overlay.isDestroyed()) overlay.setBounds(d.bounds); return; }
       const wasFull = isFull();
       if (wasFull) setFull(false);
       if (WINDOWED) win.setBounds({ x: d.workArea.x + 60, y: d.workArea.y + 60, width: Math.min(1600, d.workArea.width - 120), height: Math.min(900, d.workArea.height - 120) });
@@ -444,13 +494,18 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
     // Mac keeps a minimal menu, so Cmd+Q and Cmd+H still work.
-    Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]) : null);
+    Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate([
+      { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' },
+        { label: 'Full Screen', type: 'checkbox', checked: !WINDOWED, accelerator: 'Ctrl+Cmd+F', click: () => setWindowed(!WINDOWED) },
+        { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
+      { role: 'editMenu' }]) : null);
     if (MAC) { try { app.setAboutPanelOptions({ applicationName: 'Couch Launcher', applicationVersion: VERSION, copyright: 'Made by Jahdiel', credits: 'Your games, on the couch, with a controller.' }); } catch (_) { /* fine */ } }
     win.once('ready-to-show', () => { win.show(); if (MAC && !WINDOWED) win.setSimpleFullScreen(true); win.focus(); });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
     // Once the game takes over the screen, get out of its way.
     win.on('blur', () => {
+      wantFront = false; // you went to another app (or a game took over): leave the controller to it
       setTimeout(updatePause, 50);
       const r = running;
       if (!r || !r.pending) return;
@@ -531,6 +586,7 @@ if (!app.requestSingleInstanceLock()) {
   // Steps aside so the game has the screen. With the game's window known, the launcher tucks
   // itself directly underneath it (no minimize, so no glimpse of the desktop going in or out).
   function handOver(r, fg) {
+    wantFront = false;
     if (r.bootTimer) clearTimeout(r.bootTimer);
     r.boot = false;
     r.pending = false;
@@ -1590,7 +1646,7 @@ if (!app.requestSingleInstanceLock()) {
   handle('emu:open', (id) => {
     const cfg = lib.platforms[id];
     if (!scanners.EMULATORS[id] || !cfg || !cfg.exe || !fs.existsSync(cfg.exe)) throw new Error('Set the emulator program first');
-    if (MAC) { execFile('/usr/bin/open', ['-a', cfg.exe], () => {}); return true; }
+    if (MAC) { wantFront = false; execFile('/usr/bin/open', ['-a', cfg.exe], () => {}); return true; }
     const child = spawn(cfg.exe, [], { cwd: path.dirname(cfg.exe), detached: true, stdio: 'ignore' });
     child.unref();
     presentApp([path.basename(cfg.exe).toLowerCase()], scanners.EMULATORS[id].name, 15000);
@@ -1877,6 +1933,12 @@ if (!app.requestSingleInstanceLock()) {
       return { exists: false, path: clean };
     }
   });
+  // Settings › Display › Full screen (and the Mac's app menu): restarts the launcher to switch.
+  handle('app:setWindowed', (on) => { setWindowed(!!on); return true; });
+  function setWindowed(on) {
+    lib.settings.windowed = on; persist();
+    setTimeout(() => { app.relaunch(); app.quit(); }, 400);
+  }
   handle('app:info', () => ({
     platform: process.platform,
     version: VERSION,
@@ -2005,12 +2067,22 @@ if (!app.requestSingleInstanceLock()) {
       }
       persist();
     }
+    // 1.17: the macOS look (macOS Dark, rounder corners) becomes the look everywhere. Switched once;
+    // the earlier themes stay in Settings › Themes.
+    if (lib.settings.windowed) WINDOWED = true;
+    if (!lib.settings.macLook) { lib.settings.theme = 'macos'; lib.settings.corners = 'squircle'; lib.settings.macLook = true; if (fs.existsSync(libFile())) persist(); }
     createWindow();
     setTimeout(() => { try { createOverlay(); } catch (_) { /* made on first use */ } }, 2000);
     // Monitors plugged in or removed: stay on the chosen one, or fall back to the main one.
     screen.on('display-removed', () => placeWindows());
     screen.on('display-added', () => placeWindows());
-    screen.on('display-metrics-changed', () => { if (!running) placeWindows(); }); // games: re-placed when they end
+    // Only a real change of the screen (size, resolution, scaling, turned). Not its usable area,
+    // which changes whenever the menu bar, Dock or taskbar shows or hides.
+    screen.on('display-metrics-changed', (_e, _d, changed) => {
+      if (running) return; // games: re-placed when they end
+      if (Array.isArray(changed) && !changed.some((c) => c === 'bounds' || c === 'scaleFactor' || c === 'rotation')) return;
+      placeWindows();
+    });
     controller.start();
     padMouse.start();
     startPadWatch();
@@ -2064,7 +2136,7 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(() => {
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
-        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
+        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, placements: placeCount, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
         app.quit();
       }, 22000);
     }

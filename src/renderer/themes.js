@@ -2,13 +2,14 @@
 // Color themes and corner styles. Each theme becomes a set of CSS variables.
 // Styles are inspired by community themes for the Windows 11 Taskbar Styler mod.
 
-// On a Mac the launcher dresses like macOS: San Francisco type, glass panels, system blue.
+// The macOS look: San Francisco type, glass panels, system blue. Always on a Mac; on Windows it
+// comes with the macOS Dark / Light themes (the default).
 window.IS_MAC = /Mac/i.test(navigator.platform || '') || /Macintosh/.test(navigator.userAgent || '');
-if (window.IS_MAC) document.documentElement.classList.add('mac');
+if (window.IS_MAC) document.documentElement.classList.add('mac', 'macos-look');
 
 window.THEMES = [
   {
-    id: 'macos', name: 'macOS Dark', desc: 'Glass panels and system blue · the Mac default', mac: true,
+    id: 'macos', name: 'macOS Dark', desc: 'Glass panels and system blue · the default', mac: true,
     bg: '#0B0B10', hero1: '#1A2B4C', hero2: '#3B2D6B', accent: '#0A84FF', onAccent: '#FFFFFF',
     panel: 'rgba(255,255,255,0.08)', panelSolid: '#1C1C21', panelHover: 'rgba(255,255,255,0.14)', chip: 'rgba(255,255,255,0.10)', border: 'rgba(255,255,255,0.10)', blur: 'blur(30px) saturate(180%)',
     text: '#F5F5F7', sub: '#98989F', sidebar: 'rgba(22,22,28,0.72)', field: 'rgba(0,0,0,0.28)', fieldBorder: 'rgba(255,255,255,0.12)',
@@ -22,7 +23,7 @@ window.THEMES = [
     tiles: ['#5E8FD6', '#957ACC', '#5FA57F', '#D0975A', '#58A3BF', '#CD6984', '#8C91A0', '#7C69C0'], light: true
   },
   {
-    id: 'original', name: 'Original', desc: 'Navy with amber · the default',
+    id: 'original', name: 'Original', desc: 'Navy with amber · the first look',
     bg: '#0A0D12', hero1: '#1F3346', hero2: '#2A4A62', accent: '#F2A33A', onAccent: '#0A0D12',
     panel: '#1B2632', panelSolid: '#1B2632', panelHover: '#243241', chip: '#2A3846', border: 'transparent', blur: 'none',
     text: '#F3F5F8', sub: '#A9B4C0', sidebar: '#10161E', field: '#0E141B', fieldBorder: '#2A3644',
@@ -84,8 +85,7 @@ window.textOn = function (hex) {
 };
 
 window.applyTheme = function (settings, animate) {
-  const fallback = window.THEMES.find((x) => x.id === (window.IS_MAC ? 'macos' : 'original'));
-  const t = window.THEMES.find((x) => x.id === settings.theme && (!x.mac || window.IS_MAC)) || fallback;
+  const t = window.THEMES.find((x) => x.id === settings.theme) || window.THEMES[0];
   const c = window.CORNERS.find((x) => x.id === settings.corners) || window.CORNERS[0];
   const accent = settings.accent || t.accent;
   const onAccent = settings.accent ? window.textOn(settings.accent) : t.onAccent;
@@ -104,6 +104,7 @@ window.applyTheme = function (settings, animate) {
   };
   for (const k of Object.keys(vars)) root.style.setProperty(k, vars[k]);
   root.classList.toggle('light', !!t.light);
+  root.classList.toggle('macos-look', !!(t.mac || window.IS_MAC));
   root.classList.toggle('reduce-motion', !!settings.reduceMotion);
   return t;
 };

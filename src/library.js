@@ -6,8 +6,10 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_SETTINGS = {
-  theme: process.platform === 'darwin' ? 'macos' : 'original',   // Macs start with the macOS look
-  corners: process.platform === 'darwin' ? 'squircle' : 'rounded',
+  theme: 'macos',        // the macOS look (glass, system blue), on Windows too
+  corners: 'squircle',
+  macLook: false,
+  windowed: false,       // open in a window instead of full screen (Settings › Display)        // switched to the macOS look once (1.17)
   accent: null,          // null = the theme's own accent
   useArtBackground: true,
   reduceMotion: false,
