@@ -2,6 +2,19 @@
 
 A controller-first, console-style game launcher for Windows and Mac. It starts full screen when you sign in, finds your Steam and Epic games, runs Dolphin, RPCS3 and Ryujinx games, and lets you add anything else with your own artwork.
 
+<a href="docs/trailer.mp4"><img src="docs/trailer-poster.jpg" alt="Watch the Couch Launcher trailer (1:18)" width="100%"></a>
+
+<img src="docs/screen-home.jpg" alt="Home: your games from every store and emulator in one row" width="100%">
+
+**Home.** Every game from Steam, Epic, the Xbox app and your emulators in one place, picked up right where you left off.
+
+<table><tr>
+<td width="50%"><img src="docs/screen-guide.jpg" alt="The guide open over a game"><br><b>The guide.</b> Press the Xbox or PS button in any game: friends to join, your music, and back home.</td>
+<td width="50%"><img src="docs/screen-tv.jpg" alt="Movies &amp; TV"><br><b>Movies &amp; TV.</b> Your shows and movies, Continue Watching and recommendations, all on one controller.</td>
+</tr></table>
+
+<sub>Games, art and names in these pictures and the trailer are made up for the demo.</sub>
+
 ## Install
 
 1. Open this page's **Releases** (right side of the repo page) and download **CouchLauncher-Setup-<version>.exe**.

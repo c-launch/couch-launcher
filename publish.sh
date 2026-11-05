@@ -14,14 +14,13 @@ mkdir -p "$REPO/updates"
 rm -f "$REPO"/updates/CouchLauncher-update-*.zip
 cp "$Z" "$REPO/updates/"
 python3 -c "import json,os,sys; json.dump({'version':sys.argv[1],'notes':sys.argv[2],'file':sys.argv[3],'size':os.path.getsize(sys.argv[4])}, open(sys.argv[5],'w'), ensure_ascii=False, indent=1)" "$V" "$NOTES" "$Z" "$Z" "$REPO/updates/latest.json"
-rm -rf "$REPO/src" "$REPO/build" "$REPO/tools"; cp -r src build tools .github README.md Build.bat "Try it (windowed).bat" make-update.sh publish.sh package.json "$REPO/"
+rm -rf "$REPO/src" "$REPO/build" "$REPO/tools" "$REPO/docs"; cp -r src build tools docs .github README.md Build.bat "Try it (windowed).bat" make-update.sh publish.sh package.json "$REPO/"
 cd "$REPO"
 git add -A
 git commit -q -m "Couch Launcher $V
 
 $NOTES
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01VkLb4Dg9CpUrgE4zjtmw75"
 git push -q origin HEAD:main 2>&1 | grep -v "push negotiation" || true
 echo "published $V"
