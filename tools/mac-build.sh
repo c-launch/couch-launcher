@@ -14,7 +14,13 @@ for pair in "mac-arm64:apple-silicon" "mac:intel"; do
   codesign --force --deep --sign - "$app"
   codesign --verify --deep --strict "$app"
   stage="$(mktemp -d)"; cp -R "$app" "$stage/"; ln -s /Applications "$stage/Applications"
-  hdiutil create -volname "Couch Launcher" -srcfolder "$stage" -ov -format UDZO "dist/CouchLauncher-$V-mac-$name.dmg"
+  # hdiutil sometimes says "Resource busy" on GitHub's Macs: try again a few times.
+  ok=""
+  for try in 1 2 3 4 5; do
+    if hdiutil create -volname "Couch Launcher" -srcfolder "$stage" -ov -format UDZO "dist/CouchLauncher-$V-mac-$name.dmg"; then ok=1; break; fi
+    sleep $((try * 5))
+  done
+  [ -n "$ok" ] || { echo "Couldn't make the .dmg"; exit 1; }
   rm -rf "$stage"
 done
 ls -la dist/*.dmg

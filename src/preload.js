@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld('launcher', {
   pickNative: (opts) => call('fs:pick', opts || {}),
   statPath: (p) => call('fs:stat', p),
   info: () => call('app:info'),
+  setWindowed: (on) => call('app:setWindowed', !!on),
   sleepGet: () => call('sleep:get'),
   sleepSet: (minutes, action) => call('sleep:set', Number(minutes) || 0, action === 'sleep' ? 'sleep' : 'shutdown'),
   backupStatus: () => call('backup:status'),

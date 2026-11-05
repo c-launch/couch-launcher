@@ -86,7 +86,7 @@ jobs:
           for i in $(seq 1 60); do [ -f st/result.json ] && break; sleep 1; done
           sleep 3; kill "$(cat st/pid)" 2>/dev/null || true
           cat st/result.json
-          node -e "const r=require('./st/result.json'); if (!r.mac || !r.mac.available || !r.overlay) { console.error('The Mac app started without its controller reader or guide'); process.exit(1); }"
+          node -e "const r=require('./st/result.json'); if (!r.mac || !r.mac.available || !r.overlay) { console.error('The Mac app started without its controller reader or guide'); process.exit(1); } if (r.placements > 4) { console.error('The Mac window kept switching full screen'); process.exit(1); }"
 
       - name: Add them to the release
         uses: softprops/action-gh-release@v2

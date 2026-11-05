@@ -8,7 +8,8 @@ const crypto = require('crypto');
 const DEFAULT_SETTINGS = {
   theme: 'macos',        // the macOS look (glass, system blue), on Windows too
   corners: 'squircle',
-  macLook: false,        // switched to the macOS look once (1.17)
+  macLook: false,
+  windowed: false,       // open in a window instead of full screen (Settings › Display)        // switched to the macOS look once (1.17)
   accent: null,          // null = the theme's own accent
   useArtBackground: true,
   reduceMotion: false,
