@@ -1,6 +1,6 @@
 {
- "version": "1.18.1",
- "notes": "Movies & TV: the opening animation's words now shrink and fade into the logo cleanly, without a faint ghost of them behind it.",
- "file": "CouchLauncher-update-1.18.1.zip",
- "size": 329017
+ "version": "1.18.2",
+ "notes": "Mac: fixed the launcher switching full screen on and off in a loop (black flashing screen). New: Settings › Display › Full screen, to open the launcher in a normal window instead (also in the Mac menu bar: Couch Launcher › Full Screen).",
+ "file": "CouchLauncher-update-1.18.2.zip",
+ "size": 330015
 }

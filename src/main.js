@@ -26,7 +26,7 @@ const { createArtFinder } = require('./artfinder');
 const VERSION = global.couchVersion || require('../package.json').version;
 const newerThan = global.couchNewer || ((a, b) => String(a) > String(b));
 
-const WINDOWED = process.argv.includes('--windowed');
+let WINDOWED = process.argv.includes('--windowed'); // also Settings › Display › Full screen: off
 const MAC = process.platform === 'darwin';
 // A mistake somewhere in the app core must never pop up Electron's error box: over a full-screen
 // launcher it hides behind it, takes the focus, and the controller seems to stop working.
@@ -444,11 +444,24 @@ if (!app.requestSingleInstanceLock()) {
     tick();
     return () => { stopped = true; };
   }
+  // Full screen is switched off and on again only when the screen itself changed (another
+  // monitor, a new resolution). Hiding the Mac's menu bar for full screen changes the screen's
+  // usable area, and reacting to that switched full screen off and on in an endless loop
+  // (a black screen that kept flashing). If it ever toggles that often again, it stops.
+  let placeTimes = [], placeStorm = false, placeCount = 0;
   function placeWindows() {
     const d = targetDisplay();
     if (win && !win.isDestroyed()) {
       const isFull = () => (MAC ? win.isSimpleFullScreen() : win.isFullScreen());
       const setFull = (on) => (MAC ? win.setSimpleFullScreen(on) : win.setFullScreen(on));
+      const b = win.getBounds();
+      const there = b.x === d.bounds.x && b.y === d.bounds.y && b.width === d.bounds.width && b.height === d.bounds.height;
+      if (!WINDOWED && isFull() && there) { if (overlay && !overlay.isDestroyed()) overlay.setBounds(d.bounds); return; }
+      const now = Date.now();
+      placeTimes = placeTimes.filter((t) => now - t < 15000).concat(now);
+      if (placeTimes.length > 4) placeStorm = true;
+      placeCount++;
+      if (placeStorm) { if (!WINDOWED && !isFull()) setFull(true); if (overlay && !overlay.isDestroyed()) overlay.setBounds(d.bounds); return; }
       const wasFull = isFull();
       if (wasFull) setFull(false);
       if (WINDOWED) win.setBounds({ x: d.workArea.x + 60, y: d.workArea.y + 60, width: Math.min(1600, d.workArea.width - 120), height: Math.min(900, d.workArea.height - 120) });
@@ -481,7 +494,11 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
     // Mac keeps a minimal menu, so Cmd+Q and Cmd+H still work.
-    Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }]) : null);
+    Menu.setApplicationMenu(MAC ? Menu.buildFromTemplate([
+      { label: app.name, submenu: [{ role: 'about' }, { type: 'separator' },
+        { label: 'Full Screen', type: 'checkbox', checked: !WINDOWED, accelerator: 'Ctrl+Cmd+F', click: () => setWindowed(!WINDOWED) },
+        { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
+      { role: 'editMenu' }]) : null);
     if (MAC) { try { app.setAboutPanelOptions({ applicationName: 'Couch Launcher', applicationVersion: VERSION, copyright: 'Made by Jahdiel', credits: 'Your games, on the couch, with a controller.' }); } catch (_) { /* fine */ } }
     win.once('ready-to-show', () => { win.show(); if (MAC && !WINDOWED) win.setSimpleFullScreen(true); win.focus(); });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -1916,6 +1933,12 @@ if (!app.requestSingleInstanceLock()) {
       return { exists: false, path: clean };
     }
   });
+  // Settings › Display › Full screen (and the Mac's app menu): restarts the launcher to switch.
+  handle('app:setWindowed', (on) => { setWindowed(!!on); return true; });
+  function setWindowed(on) {
+    lib.settings.windowed = on; persist();
+    setTimeout(() => { app.relaunch(); app.quit(); }, 400);
+  }
   handle('app:info', () => ({
     platform: process.platform,
     version: VERSION,
@@ -2046,13 +2069,20 @@ if (!app.requestSingleInstanceLock()) {
     }
     // 1.17: the macOS look (macOS Dark, rounder corners) becomes the look everywhere. Switched once;
     // the earlier themes stay in Settings › Themes.
+    if (lib.settings.windowed) WINDOWED = true;
     if (!lib.settings.macLook) { lib.settings.theme = 'macos'; lib.settings.corners = 'squircle'; lib.settings.macLook = true; if (fs.existsSync(libFile())) persist(); }
     createWindow();
     setTimeout(() => { try { createOverlay(); } catch (_) { /* made on first use */ } }, 2000);
     // Monitors plugged in or removed: stay on the chosen one, or fall back to the main one.
     screen.on('display-removed', () => placeWindows());
     screen.on('display-added', () => placeWindows());
-    screen.on('display-metrics-changed', () => { if (!running) placeWindows(); }); // games: re-placed when they end
+    // Only a real change of the screen (size, resolution, scaling, turned). Not its usable area,
+    // which changes whenever the menu bar, Dock or taskbar shows or hides.
+    screen.on('display-metrics-changed', (_e, _d, changed) => {
+      if (running) return; // games: re-placed when they end
+      if (Array.isArray(changed) && !changed.some((c) => c === 'bounds' || c === 'scaleFactor' || c === 'rotation')) return;
+      placeWindows();
+    });
     controller.start();
     padMouse.start();
     startPadWatch();
@@ -2106,7 +2136,7 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(() => {
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
-        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
+        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, placements: placeCount, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
         app.quit();
       }, 22000);
     }

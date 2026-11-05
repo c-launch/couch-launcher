@@ -988,7 +988,9 @@
           '<div class="picon" style="background:var(--chip);color:var(--text)">' + icon('monitor') + '</div><div class="pinfo"><div class="t">' + esc(d.name) + '</div><div class="p">' +
           esc([d.size, d.hz ? d.hz + ' Hz' : '', d.primary ? 'Main monitor' : ''].filter(Boolean).join(' · ')) + '</div></div>' +
           (d.current ? '<span class="status ok">In use</span>' : '<span class="status off">Use this one</span>') + '</button>').join('') + '</div>' +
-        '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in ' + (IS_MAC ? 'System Settings › Displays' : 'Windows display settings') + '.</p>';
+        '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in ' + (IS_MAC ? 'System Settings › Displays' : 'Windows display settings') + '.</p>' +
+        '<div class="sub-h">Window</div><div class="toggles" style="grid-template-columns:1fr">' +
+        toggleHTML('d-full', 'Full screen', !S.info.windowed, 'Off: the launcher opens in a normal window you can move and resize. It restarts to switch.' + (IS_MAC ? ' (Also in the menu bar: Couch Launcher › Full Screen.)' : ''), 'full-toggle', '') + '</div>';
     }
     if (tab === 'controllers') {
       if (S.captureInfo === undefined) { S.captureInfo = null; Promise.resolve().then(() => api.captureStatus()).then((c) => { S.captureInfo = c || {}; if (S.view === 'settings' && S.setTab === 'controllers' && !layers.length) refreshContent(); }).catch(() => { S.captureInfo = {}; }); }
@@ -3817,6 +3819,13 @@
       }
       case 'theme': s.theme = el.dataset.id; s.accent = null; return themeChanged();
       case 'corners': s.corners = el.dataset.id; return themeChanged();
+      case 'full-toggle': {
+        const full = !S.info.windowed;
+        if (!(await confirmBox(full ? 'Open in a window?' : 'Open full screen?', 'The launcher restarts to switch.', 'Restart', false))) return;
+        toast('Restarting…');
+        try { await api.setWindowed(full); } catch (e) { toast(e.message, true); }
+        return;
+      }
       case 'accent': s.accent = el.dataset.c || null; return themeChanged();
       case 'set-toggle': s[el.dataset.k] = el.getAttribute('aria-checked') !== 'true'; if (el.dataset.k === 'useArtBackground') currentBg = undefined; return themeChanged();
       case 'autostart': {
