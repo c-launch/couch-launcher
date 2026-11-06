@@ -990,8 +990,7 @@
           esc([d.size, d.hz ? d.hz + ' Hz' : '', d.primary ? 'Main monitor' : ''].filter(Boolean).join(' · ')) + '</div></div>' +
           (d.current ? '<span class="status ok">In use</span>' : '<span class="status off">Use this one</span>') + '</button>').join('') + '</div>' +
         (IS_MAC ? '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in System Settings › Displays.</p>'
-          : '<div class="sub-h">Games</div><div class="toggles" style="grid-template-columns:1fr">' +
-            toggleHTML('d-main', 'Make it the main monitor while you play', S.lib.settings.mainDisplayInGames !== false, 'Many games, older ones especially, only open on Windows’ main monitor. With this on, the monitor chosen above becomes the main one while a game runs (your taskbar moves there too), and everything goes back when it ends.', 'set-toggle', 'data-k="mainDisplayInGames"') + '</div>') +
+          : '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">A game still opens on another monitor? Some games, older ones especially, only open on Windows’ main monitor. In that game’s menu, choose <b>TV settings for this game › Make it the main monitor while playing</b>.</p>') +
         '<div class="sub-h">Window</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('d-full', 'Full screen', !S.info.windowed, 'Off: the launcher opens in a normal window you can move and resize. It restarts to switch.' + (IS_MAC ? ' (Also in the menu bar: Couch Launcher › Full Screen.)' : ''), 'full-toggle', '') + '</div>';
     }
@@ -3542,7 +3541,7 @@
   }
 
   // Per-game resolution / refresh rate / HDR on the chosen display (put back when the game ends).
-  const displayLabel = (d) => [d.w ? d.w + '×' + d.h : '', d.hz ? d.hz + ' Hz' : '', d.hdr === 'on' ? 'HDR on' : d.hdr === 'off' ? 'HDR off' : ''].filter(Boolean).join(', ') || 'Normal';
+  const displayLabel = (d) => [d.main ? 'main monitor' : '', d.w ? d.w + '×' + d.h : '', d.hz ? d.hz + ' Hz' : '', d.hdr === 'on' ? 'HDR on' : d.hdr === 'off' ? 'HDR off' : ''].filter(Boolean).join(', ') || 'Normal';
   async function displaySettings(g) {
     let info = null;
     try { info = await api.displayModes(); } catch (_) { info = null; }
@@ -3550,6 +3549,9 @@
     for (;;) {
       const d = g.display || {};
       const pick = await openMenu('TV settings · ' + g.title, [
+        // For games that only open on Windows' main monitor: the launcher's monitor becomes the
+        // main one while this game runs (the screens blink once at the start and once at the end).
+        { id: 'main', label: 'Make it the main monitor while playing: ' + (d.main ? 'On' : 'Off'), icon: 'monitor' },
         { id: 'res', label: 'Resolution: ' + (d.w ? d.w + '×' + d.h : 'Normal (' + info.current.w + '×' + info.current.h + ')'), icon: 'monitor' },
         { id: 'hz', label: 'Refresh rate: ' + (d.hz ? d.hz + ' Hz' : 'Normal (' + info.current.hz + ' Hz)'), icon: 'refresh' }
       ].concat(info.hdr && info.hdr.supported ? [{ id: 'hdr', label: 'HDR: ' + (d.hdr === 'on' ? 'On' : d.hdr === 'off' ? 'Off' : 'Normal (' + (info.hdr.enabled ? 'on' : 'off') + ')'), icon: 'palette' }] : [])
@@ -3557,6 +3559,14 @@
       if (!pick) return;
       const nd = Object.assign({}, d);
       if (pick === 'reset') { delete g.display; save(); toast('This game uses your normal display settings'); return; }
+      if (pick === 'main') {
+        if (d.main) delete nd.main;
+        else {
+          const ok = await confirmBox('Open ' + g.title + ' on this monitor?', 'For games that only open on Windows’ main monitor. While it runs, the launcher’s monitor becomes the main one (your taskbar moves there too). Your screens blink once when the game starts and once when it ends.', 'Turn on', false);
+          if (!ok) continue;
+          nd.main = true;
+        }
+      }
       if (pick === 'res') {
         const sizes = []; for (const m of info.modes) if (!sizes.some((x) => x.w === m.w && x.h === m.h)) sizes.push({ w: m.w, h: m.h });
         const r = await openMenu('Resolution', [{ id: 'n', label: 'Normal', icon: 'check' }].concat(sizes.slice(0, 14).map((x) => ({ id: x.w + 'x' + x.h, label: x.w + ' × ' + x.h, icon: 'monitor' }))));

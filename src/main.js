@@ -1045,13 +1045,12 @@ if (!app.requestSingleInstanceLock()) {
   let disp = null;
   const dsp = () => (disp === null ? (disp = createDisplay() || false) : disp);
   function displayDevice() { return dsp() ? dsp().deviceAt(toPx(targetDisplay().bounds)) : null; }
-  // Settings › Display › "Make it the main display during games": older games always open on
-  // the main display, so the chosen one becomes the main one until the game ends. What to put
+  // A game's TV settings › "Make it the main monitor while playing": games that only open on the
+  // main display open on the chosen one, which becomes the main one until the game ends. What to put
   // back is saved in a file first, so a crash or power cut can't leave it switched.
   const layoutFile = () => path.join(app.getPath('userData'), 'display-layout.json');
   function switchPrimaryFor(r, g) {
-    if (!dsp() || !r || !lib.settings.displayId || lib.settings.mainDisplayInGames === false) return;
-    if (g && g.launch && g.launch.type === 'emu') return; // emulators open where they're told
+    if (!dsp() || !r || !lib.settings.displayId || !(g && g.display && g.display.main)) return; // only games you turned it on for
     try {
       const dev = displayDevice();
       if (!dev || (dev.x === 0 && dev.y === 0)) return; // already the main display

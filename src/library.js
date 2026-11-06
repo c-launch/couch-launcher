@@ -8,9 +8,8 @@ const crypto = require('crypto');
 const DEFAULT_SETTINGS = {
   theme: 'macos',        // the macOS look (glass, system blue), on Windows too
   corners: 'squircle',
-  macLook: false,
-  windowed: false,
-  mainDisplayInGames: true, // the chosen display becomes the main one while a game runs       // open in a window instead of full screen (Settings › Display)        // switched to the macOS look once (1.17)
+  macLook: false,        // switched to the macOS look once (1.17)
+  windowed: false,       // open in a window instead of full screen (Settings › Display)
   accent: null,          // null = the theme's own accent
   useArtBackground: true,
   reduceMotion: false,

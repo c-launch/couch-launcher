@@ -1,6 +1,6 @@
 {
- "version": "1.18.4",
- "notes": "Games that only open on Windows' main monitor (like Need for Speed Underground 2 and Rayman Legends) now open on the monitor you chose: it becomes the main monitor while the game runs and everything goes back when it ends. Turn it off in Settings › Display › Make it the main monitor while you play.",
- "file": "CouchLauncher-update-1.18.4.zip",
- "size": 333665
+ "version": "1.18.5",
+ "notes": "The main-monitor switch is now per game, so other games launch without the screen blink: in a game's menu choose TV settings for this game › Make it the main monitor while playing (for games like NFS Underground 2 that only open on Windows' main monitor).",
+ "file": "CouchLauncher-update-1.18.5.zip",
+ "size": 333811
 }
