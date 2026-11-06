@@ -1,6 +1,6 @@
 {
- "version": "1.18.5",
- "notes": "The main-monitor switch is now per game, so other games launch without the screen blink: in a game's menu choose TV settings for this game › Make it the main monitor while playing (for games like NFS Underground 2 that only open on Windows' main monitor).",
- "file": "CouchLauncher-update-1.18.5.zip",
- "size": 333811
+ "version": "1.19.0",
+ "notes": "Idle screen: after a few minutes with nothing pressed, your game art fades through with the time (Settings › Display to change or turn off). Who's playing? now shows a picture of each player's controller, Switch style: Xbox, PlayStation, Switch Pro or Joy-Con, with player lights and its name, even when Steam Input or DS4Windows is in between.",
+ "file": "CouchLauncher-update-1.19.0.zip",
+ "size": 340492
 }

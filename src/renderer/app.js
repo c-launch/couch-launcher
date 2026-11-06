@@ -630,7 +630,7 @@
     return '<span class="bat lv' + pd.level + '" title="Battery: ' + LEVELS[pd.level] + '">' + [1, 2, 3].map((i) => '<i class="' + (pd.level >= i ? 'on' : '') + '"></i>').join('') + '</span>';
   }
   function padsHTML() {
-    if (Array.isArray(S.pads) && S.pads.length) return S.pads.map((pd) => '<span class="padb" title="Controller ' + (pd.slot + 1) + '">' + icon('pad') + '<b>' + (pd.slot + 1) + '</b>' + batteryHTML(pd) + '</span>').join('');
+    if (Array.isArray(S.pads) && S.pads.length) return S.pads.map((pd) => '<span class="padb" title="Controller ' + (pd.slot + 1) + ' · ' + esc(slotInfo(pd.slot).name) + '">' + icon('pad') + '<b>' + (pd.slot + 1) + '</b>' + batteryHTML(pd) + '</span>').join('');
     const n = padCount();
     return n ? icon('pad') + n : '';
   }
@@ -992,6 +992,7 @@
         (IS_MAC ? '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in System Settings › Displays.</p>'
           : '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">A game still opens on another monitor? Some games, older ones especially, only open on Windows’ main monitor. In that game’s menu, choose <b>TV settings for this game › Make it the main monitor while playing</b>.</p>') +
         '<div class="sub-h">Window</div><div class="toggles" style="grid-template-columns:1fr">' +
+        '<button class="toggle-row" data-nav data-key="d-idle" data-zone="body" data-action="idle-time"><span><div>Idle screen</div><div class="d">A slideshow of your games and the time when nothing’s been pressed for a while</div></span><span>' + (idleMinutes() ? 'After ' + idleMinutes() + ' min' : 'Off') + '</span></button>' +
         toggleHTML('d-full', 'Full screen', !S.info.windowed, 'Off: the launcher opens in a normal window you can move and resize. It restarts to switch.' + (IS_MAC ? ' (Also in the menu bar: Couch Launcher › Full Screen.)' : ''), 'full-toggle', '') + '</div>';
     }
     if (tab === 'controllers') {
@@ -1161,6 +1162,136 @@
     if (/057e|nintendo|pro controller|joy-?con/i.test(id)) return 'nin';
     return 'xbox';
   }
+  // Which controller is in each Xbox-style (XInput) slot. The app core reads the maker from the
+  // slot itself; Steam Input and DS4Windows put a stand-in there for a PlayStation or Switch pad,
+  // so for those the real controller is found here: the one the launcher reads directly whose
+  // face button went down at the same moment the slot pressed A.
+  const directPress = new Map(); // gamepad key -> { at, id }
+  const directFace = new Map();  // gamepad key -> face buttons down last frame
+  let directPads = [];           // ids of the controllers read directly (not through XInput)
+  const slotDevice = {};         // slot -> { kind, name } found that way
+  function directType(id) {
+    const m = /vendor:\s*([0-9a-f]{4}).*product:\s*([0-9a-f]{4})/i.exec(id) || [];
+    const v = (m[1] || '').toLowerCase(), p = (m[2] || '').toLowerCase();
+    if (v === '054c' || padKind(id) === 'ps') {
+      if (p === '0ce6') return { kind: 'ps', name: 'DualSense controller' };
+      if (p === '0df2') return { kind: 'ps', name: 'DualSense Edge controller' };
+      if (p === '05c4' || p === '09cc' || p === '0ba0') return { kind: 'ps', name: 'DualShock 4 controller' };
+      return { kind: 'ps', name: 'PlayStation controller' };
+    }
+    if (v === '057e' || padKind(id) === 'nin') {
+      if (p === '2009' || /pro controller/i.test(id)) return { kind: 'nin', name: 'Switch Pro Controller' };
+      if (/joy-?con/i.test(id) || p === '2006' || p === '2007' || p === '200e') return { kind: 'joycon', name: 'Joy-Con' };
+      return { kind: 'nin', name: 'Nintendo controller' };
+    }
+    const brands = { '2dc8': '8BitDo', '046d': 'Logitech', '20d6': 'PowerA', '0e6f': 'PDP', '0f0d': 'HORI', '0738': 'Mad Catz', '1532': 'Razer' };
+    if (brands[v]) return { kind: 'other', name: brands[v] + ' controller' };
+    const bare = String(id).replace(/\s*\(.*$/, '').trim();
+    return { kind: 'other', name: bare && bare.length < 40 ? bare : 'Controller' };
+  }
+  function noteDirect(pads, now) {
+    const ids = [];
+    for (const p of pads) {
+      if (!p || !p.connected || /xinput/i.test(p.id)) continue;
+      ids.push(p.id);
+      const k = p.index + '|' + p.id;
+      let face = 0;
+      for (let i = 0; i < 4; i++) { const b = p.buttons[i]; if (b && (b.pressed || b.value > 0.5)) face |= 1 << i; }
+      if (face & ~(directFace.get(k) || 0)) directPress.set(k, { at: now, id: p.id });
+      directFace.set(k, face);
+    }
+    directPads = ids;
+  }
+  // The slot just pressed A: was a directly read controller pressed with it?
+  // at: when the slot's A press came in. A direct press counts once (it's used up).
+  function learnSlot(slot, at) {
+    const pd = Array.isArray(S.pads) ? S.pads.find((p) => p.slot === slot) : null;
+    // Only a stand-in can be another controller: Steam Input's, or an Xbox 360 / unknown one
+    // (DS4Windows shows up as an Xbox 360 controller). An Xbox Series or 8BitDo pad stays that.
+    if (pd && pd.name && pd.kind !== 'steam' && !/360|style/i.test(pd.name)) return false;
+    let best = null, bestKey = null;
+    for (const [k, v] of directPress) {
+      const d = Math.abs(v.at - at);
+      if (d < 350 && (!best || d < Math.abs(best.at - at))) { best = v; bestKey = k; }
+    }
+    if (!best) return false;
+    directPress.delete(bestKey);
+    slotDevice[slot] = directType(best.id);
+    return true;
+  }
+  // { kind, name } for a slot (kind: xbox, ps, nin, steam, other).
+  function slotInfo(slot) {
+    if (slotDevice[slot]) return slotDevice[slot];
+    const pd = Array.isArray(S.pads) ? S.pads.find((p) => p.slot === slot) : null;
+    if (pd && pd.kind === 'steam') {
+      // One stand-in and one directly read controller: that's the one.
+      const steam = S.pads.filter((p) => p.kind === 'steam' && !slotDevice[p.slot]);
+      if (steam.length === 1 && directPads.length === 1) return directType(directPads[0]);
+      return { kind: 'steam', name: 'Controller via Steam' };
+    }
+    if (pd && pd.name) return { kind: pd.kind || 'xbox', name: pd.name };
+    return { kind: 'xbox', name: 'Controller ' + (slot + 1) };
+  }
+  // A drawing of the controller for the player cards (like the Switch's controller screen).
+  // kind: xbox, ps, nin, joycon, steam, other; empty: the outline shown while a spot is free.
+  function padArt(kind, empty) {
+    const stick = (x, y, c) => '<circle cx="' + x + '" cy="' + y + '" r="13" fill="' + c.well + '"/><circle cx="' + x + '" cy="' + y + '" r="9.5" fill="' + c.stick + '"/><circle cx="' + x + '" cy="' + y + '" r="6" fill="none" stroke="' + c.well + '" stroke-opacity=".35" stroke-width="1.2"/>';
+    const dpad = (x, y, c) => '<path d="M' + (x - 4) + ' ' + (y - 13) + 'h8v9h9v8h-9v9h-8v-9h-9v-8h9z" fill="' + c.dpad + '" stroke="' + c.well + '" stroke-opacity=".3" stroke-width="1" stroke-linejoin="round"/>';
+    const diamond = (x, y, cols, marks) => [[0, -10], [10, 0], [0, 10], [-10, 0]].map(([dx, dy], i) =>
+      '<circle cx="' + (x + dx) + '" cy="' + (y + dy) + '" r="5.6" fill="' + cols[i] + '"/>' + (marks ? marks[i](x + dx, y + dy) : '')).join('');
+    if (empty) {
+      return '<svg class="pp-art pp-free" viewBox="0 0 200 132" aria-hidden="true"><path d="M60 18h80c25 0 38 10 44 35l10 47c4 18-8 28-22 24-12-3-20-16-28-26H56c-8 10-16 23-28 26-14 4-26-6-22-24l10-47c6-25 19-35 44-35z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="7 6" stroke-linejoin="round"/></svg>';
+    }
+    if (kind === 'joycon') {
+      const half = (x, fill, flip) => '<rect x="' + x + '" y="10" width="44" height="112" rx="' + 18 + '" fill="' + fill + '"/>' +
+        '<rect x="' + (flip ? x : x + 30) + '" y="10" width="14" height="112" fill="' + fill + '"/>';
+      const c = { well: '#1d1d22', stick: '#3a3a42', dpad: '#2a2a30' };
+      return '<svg class="pp-art" viewBox="0 0 200 132" aria-hidden="true">' +
+        half(54, '#00b4e8', false) + half(102, '#ff4f4a', true) +
+        '<rect x="96" y="10" width="8" height="112" fill="#24242a" opacity=".55"/>' +
+        stick(76, 40, c) + [[0, -9], [9, 0], [0, 9], [-9, 0]].map(([dx, dy]) => '<circle cx="' + (76 + dx) + '" cy="' + (82 + dy) + '" r="4.6" fill="#1d1d22"/>').join('') +
+        stick(124, 82, c) + diamond(124, 40, ['#1d1d22', '#1d1d22', '#1d1d22', '#1d1d22']).replace(/r="5.6"/g, 'r="4.6"').replace(/cy="30"/g, 'cy="31"').replace(/cy="50"/g, 'cy="49"') +
+        '<rect x="62" y="16" width="14" height="3" rx="1.5" fill="#1d1d22" opacity=".6"/><circle cx="114" cy="62" r="3.4" fill="#1d1d22" opacity=".7"/></svg>';
+    }
+    // Body: the common shape, a rounder one for PlayStation.
+    const body = kind === 'ps'
+      ? 'M58 16h84c22 0 34 9 40 30l12 52c4 18-6 30-20 27-11-2-18-12-26-24-4-6-8-8-14-8H66c-6 0-10 2-14 8-8 12-15 22-26 24-14 3-24-9-20-27l12-52c6-21 18-30 40-30z'
+      : 'M60 18h80c25 0 38 10 44 35l10 47c4 18-8 28-22 24-12-3-20-16-28-26H56c-8 10-16 23-28 26-14 4-26-6-22-24l10-47c6-25 19-35 44-35z';
+    const look = {
+      xbox: { body: '#e9eaee', shade: '#cfd1d8', well: '#2a2c33', stick: '#41444d', dpad: '#3a3d45' },
+      ps: { body: '#f2f2f5', shade: '#d9dae0', well: '#1f2027', stick: '#33353d', dpad: '#d0d1d8' },
+      nin: { body: '#2c2d33', shade: '#1f2025', well: '#121317', stick: '#4a4c55', dpad: '#4a4c55' },
+      steam: { body: '#3b4252', shade: '#2e3442', well: '#171a21', stick: '#5a6275', dpad: '#5a6275' },
+      other: { body: '#4a4f5c', shade: '#3b404b', well: '#1b1d23', stick: '#6a7080', dpad: '#6a7080' }
+    }[kind] || null;
+    const c = look || { body: '#e9eaee', shade: '#cfd1d8', well: '#2a2c33', stick: '#41444d', dpad: '#3a3d45' };
+    let h = '<svg class="pp-art k-' + esc(kind || 'xbox') + '" viewBox="0 0 200 132" aria-hidden="true">' +
+      '<path d="' + body + '" fill="' + c.body + '"/>' +
+      '<path d="' + body + '" fill="none" stroke="' + c.shade + '" stroke-width="2.4" stroke-linejoin="round"/>';
+    if (kind === 'ps') {
+      // Two-tone middle, touch pad, light bar, the four shape buttons.
+      h += '<path d="M64 70c10-4 62-4 72 0l4 30H60z" fill="#1f2027"/>' +
+        '<rect x="74" y="24" width="52" height="32" rx="6" fill="#e6e7ec" stroke="#cfd0d7" stroke-width="1.4"/>' +
+        '<path d="M70 28v24M130 28v24" stroke="#4d8dff" stroke-width="2.6" stroke-linecap="round"/>' +
+        dpad(46, 48, c) + stick(80, 84, c) + stick(120, 84, c) +
+        diamond(154, 48, ['#f2f2f5', '#f2f2f5', '#f2f2f5', '#f2f2f5'], [
+          (x, y) => '<path d="M' + x + ' ' + (y - 3.2) + 'l3 5h-6z" fill="none" stroke="#2fb79a" stroke-width="1.3" stroke-linejoin="round"/>',
+          (x, y) => '<circle cx="' + x + '" cy="' + y + '" r="2.8" fill="none" stroke="#e5484d" stroke-width="1.3"/>',
+          (x, y) => '<path d="M' + (x - 2.5) + ' ' + (y - 2.5) + 'l5 5m0-5l-5 5" stroke="#4d8dff" stroke-width="1.3" stroke-linecap="round"/>',
+          (x, y) => '<rect x="' + (x - 2.5) + '" y="' + (y - 2.5) + '" width="5" height="5" fill="none" stroke="#d66bd0" stroke-width="1.3"/>'
+        ]).replace(/fill="#f2f2f5"\/>/g, 'fill="#f2f2f5" stroke="#c9cad1"/>') +
+        '<circle cx="100" cy="64" r="3.6" fill="#33353d"/>';
+    } else {
+      const cols = kind === 'xbox' || !look ? ['#f3c13a', '#e5484d', '#3fae3f', '#3d7bff'] : [c.stick, c.stick, c.stick, c.stick];
+      h += stick(54, 48, c) + dpad(80, 84, c) + stick(122, 84, c) + diamond(150, 48, cols) +
+        (kind === 'nin'
+          ? '<circle cx="110" cy="52" r="4" fill="' + c.stick + '"/><rect x="86" y="49" width="7" height="7" rx="1.5" fill="' + c.stick + '"/>'
+          : '<circle cx="100" cy="40" r="7" fill="' + (kind === 'xbox' || !look ? '#2a2c33' : c.stick) + '"/><circle cx="86" cy="54" r="3" fill="' + c.well + '"/><circle cx="114" cy="54" r="3" fill="' + c.well + '"/>');
+    }
+    return h + '</svg>';
+  }
+  // Switch-style lights under the drawing: player 1 lights one, player 2 two, and so on.
+  const padLights = (n) => '<span class="pp-leds">' + [0, 1, 2, 3].map((i) => '<i class="' + (i < n ? 'on' : '') + '"></i>').join('') + '</span>';
   // Re-render only the right side of Library/Settings (focus stays where it is).
   function refreshContent() {
     const c = $('#content');
@@ -1321,6 +1452,7 @@
     return best;
   }
   function move(dir) {
+    noteActivity();
     const top = topLayer();
     if (top && top.onMove && top.onMove(dir, currentFocus())) return true;
     const els = navEls();
@@ -1777,7 +1909,11 @@
   function playersLabel() {
     const sl = S.lib.settings.playerSlots || [];
     if (!sl.length) return 'Not set up yet: everyone presses A once, and emulator games use those players';
-    return sl.map((x, i) => 'P' + (i + 1) + ': Controller ' + (x + 1)).join(' · ');
+    return sl.map((x, i) => {
+      const on = Array.isArray(S.pads) && S.pads.some((p) => p.slot === x);
+      const nm = on ? slotInfo(x).name : '';
+      return 'P' + (i + 1) + ': Controller ' + (x + 1) + (nm && !/^Controller \d/.test(nm) ? ' (' + nm.replace(/ controller$/i, '') + ')' : '');
+    }).join(' · ');
   }
   // Settings › Controllers › Players (also in the guide): pick once, used for every emulator game.
   async function setUpPlayersNow() {
@@ -1796,9 +1932,11 @@
       const card = (i) => {
         const slot = joined[i];
         const pd = pads && slot != null ? pads.find((p) => p.slot === slot) : null;
+        const info = slot != null ? slotInfo(slot) : null;
         return '<div class="pp' + (slot != null ? ' in' : '') + '"><div class="pp-n">Player ' + (i + 1) + '</div>' +
-          (slot != null ? '<div class="pp-c">' + icon('pad') + '<span>Controller ' + (slot + 1) + '</span>' + (pd ? batteryHTML(pd) : '') + '</div>'
-            : '<div class="pp-c wait">' + glyph('A') + '<span>Press A to join</span></div>') + '</div>';
+          '<div class="pp-pic">' + padArt(info ? info.kind : null, !info) + '</div>' +
+          (slot != null ? padLights(i + 1) + '<div class="pp-c pp-dev k-' + info.kind + '" data-slot="' + slot + '"><span class="pp-d"><b>' + esc(info.name) + '</b>' + (/^Controller \d/.test(info.name) ? '' : '<small>Controller ' + (slot + 1) + '</small>') + '</span>' + (pd ? batteryHTML(pd) : '') + '</div>'
+            : '<div class="pp-c wait"><span>Press</span>' + glyph('A') + '<span>to join</span></div>') + '</div>';
       };
       const html = () => '<div class="dialog whoplays"><h2>Who’s playing?</h2><p class="hint">' + esc(g.title) +
         ' · Everyone presses <b>A</b> on their controller, in player order.' + (pads ? ' ' + pads.length + ' controller' + (pads.length === 1 ? '' : 's') + ' connected.' : '') + '</p>' +
@@ -1810,6 +1948,9 @@
       const join = (slot) => {
         if (joined.includes(slot) || joined.length >= 4) return;
         joined.push(slot);
+        // Which controller it is: the one pressed with it may only show up a moment later.
+        const at = performance.now();
+        if (!learnSlot(slot, at)) setTimeout(() => { if (!result && joined.includes(slot) && learnSlot(slot, at)) draw(); }, 360);
         draw();
         // Everyone's in: start on its own.
         if (pads && joined.length >= pads.length) { clearTimeout(startTimer); startTimer = setTimeout(() => done(joined.slice()), 900); }
@@ -3834,6 +3975,14 @@
       }
       case 'theme': s.theme = el.dataset.id; s.accent = null; return themeChanged();
       case 'corners': s.corners = el.dataset.id; return themeChanged();
+      case 'idle-time': {
+        const opts = [2, 5, 10, 30, 0];
+        const r = await openMenu('Idle screen', opts.map((m) => ({ id: String(m), label: m ? 'After ' + m + ' minutes' : 'Off', icon: m === idleMinutes() ? 'check' : (m ? 'moon' : 'x') })));
+        if (r == null) return;
+        s.idleMinutes = Number(r); save(); refreshContent();
+        if (s.idleMinutes) { const k = $('[data-key="d-idle"]'); if (k) setFocus(k); }
+        return;
+      }
       case 'full-toggle': {
         const full = !S.info.windowed;
         if (!(await confirmBox(full ? 'Open in a window?' : 'Open full screen?', 'The launcher restarts to switch.', 'Restart', false))) return;
@@ -3927,6 +4076,7 @@
 
   // ---------------------------------------------------------------- buttons: shared by controller and keyboard
   function button(b) {
+    noteActivity();
     const top = topLayer();
     if (top && top.onButton && top.onButton(b)) return;
     const el = currentFocus();
@@ -3977,6 +4127,77 @@
   }
 
   // ---------------------------------------------------------------- controller input
+  // ---------------------------------------------------------------- Idle screen
+  // After a few minutes with nothing pressed (and no game, movie or video going), a slow
+  // slideshow of your games' art with the time, like a console's. Any button, key or the mouse
+  // brings the launcher back (that press does nothing else). Settings › Display › Idle screen.
+  let lastActivity = Date.now(), idle = null;
+  function noteActivity(mouse) {
+    lastActivity = Date.now();
+    if (idle && mouse && Date.now() - idle.openedAt > 800) closeIdle();
+  }
+  const idleMinutes = () => { const m = S.lib && S.lib.settings && S.lib.settings.idleMinutes; return m === 0 ? 0 : Number(m) || 5; };
+  function idleArt() {
+    const list = games().filter((g) => g.art && (g.art.hero || g.art.tile)).sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
+    const pics = list.map((g) => ({ src: fileUrl(g.art.hero || g.art.tile), title: g.title, wide: !!g.art.hero }));
+    for (let i = pics.length - 1; i > 3; i--) { const j = 4 + Math.floor(Math.random() * (i - 3)); [pics[i], pics[j]] = [pics[j], pics[i]]; } // newest few first, then mixed
+    return pics;
+  }
+  function openIdle() {
+    if (idle || OVERLAY) return;
+    const pics = idleArt();
+    const layer = openLayer({
+      className: 'idle-layer',
+      html: '<div class="idle-pics"><div class="idle-pic"></div><div class="idle-pic"></div></div><div class="idle-shade"></div>' +
+        '<div class="idle-info"><div class="idle-time"></div><div class="idle-date"></div><div class="idle-game"></div></div>' +
+        '<div class="idle-hint">Press any button</div>',
+      onButton: () => { closeIdle(); return true; },
+      onMove: () => { closeIdle(); return true; },
+      onBack: () => closeIdle(),
+      onKey: () => { closeIdle(); return true; },
+      prompts: () => []
+    });
+    idle = { layer, pics, i: -1, slot: 0, openedAt: Date.now() };
+    const el = layer.el;
+    const tick = () => {
+      const d = new Date();
+      $('.idle-time', el).textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      $('.idle-date', el).textContent = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    };
+    const next = () => {
+      if (!idle || !pics.length) return;
+      idle.i = (idle.i + 1) % pics.length;
+      const p = pics[idle.i];
+      const slots = $$('.idle-pic', el);
+      const cur = slots[idle.slot], other = slots[1 - idle.slot];
+      other.style.backgroundImage = "url('" + p.src.replace(/'/g, '%27') + "')";
+      other.classList.toggle('tile', !p.wide);
+      other.classList.remove('show'); void other.offsetWidth; other.classList.add('show');
+      cur.classList.remove('show');
+      idle.slot = 1 - idle.slot;
+      $('.idle-game', el).textContent = p.title;
+    };
+    tick(); next();
+    idle.timers = [setInterval(tick, 10000), setInterval(next, reduce() ? 15000 : 9000)];
+  }
+  function closeIdle() {
+    if (!idle) return;
+    const x = idle; idle = null;
+    (x.timers || []).forEach(clearInterval);
+    closeLayer(x.layer);
+    lastActivity = Date.now();
+  }
+  if (!OVERLAY) {
+    setInterval(() => {
+      const mins = idleMinutes();
+      if (idle || !mins || !S.lib) return;
+      if (Date.now() - lastActivity < mins * 60e3) return;
+      // Only when the launcher is what's on screen and nothing is playing or open.
+      if (!document.hasFocus() || S.playing || S.tvPlaying || layers.length || document.querySelector('.tv-layer, .yt-layer')) return;
+      openIdle();
+    }, 15000);
+  }
+
   const PADMAP = { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 8: 'VIEW', 9: 'MENU', 16: 'HOME' };
   const DIRS = { 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
   const prevButtons = new Set();
@@ -4009,6 +4230,7 @@
     if ((!document.hasFocus() && !ext) || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; suppressAt = now; return; }
     let pads;
     try { pads = Array.from(navigator.getGamepads() || []); } catch (_) { return; }
+    noteDirect(pads, now);
     if (ext && (!document.hasFocus() || !pads.some((p) => p && p.connected))) pads = extPads;
     // A real controller (standard layout) is there: ignore other devices (wheels, pedals, remotes).
     const standard = pads.some((p) => p && p.connected && p.mapping === 'standard');
@@ -4090,6 +4312,7 @@
   const KEYMAP = { Enter: 'A', ' ': 'A', Escape: 'B', Backspace: 'B', y: 'Y', Y: 'Y', F2: 'Y', m: 'MENU', M: 'MENU', ContextMenu: 'MENU', q: 'LB', Q: 'LB', e: 'RB', E: 'RB', PageUp: 'LT', PageDown: 'RT', Delete: 'X', Home: 'HOME' };
   const KEYDIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   document.addEventListener('keydown', (e) => {
+    noteActivity();
     if (S.tvPlaying) return; // the player has the keyboard
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     const top = topLayer();
@@ -4104,6 +4327,7 @@
   });
   let mouseTimer = null;
   let lastMouse = null;
+  document.addEventListener('mousemove', () => noteActivity(true));
   document.addEventListener('mousemove', (e) => {
     // Menus opening under a still cursor also fire mouse events: only real movement counts.
     const p = [e.screenX, e.screenY];
@@ -4208,14 +4432,20 @@
   api.on('news', (n) => { if (n && Array.isArray(n.items)) { S.news = n; S.newsErr = null; paintNews(); } });
   api.on('deals', (v) => { if (v && Array.isArray(v.free)) { S.deals = v; dealsAt = Date.now(); paintDeals(); } });
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
-  api.on('pads', (list) => { S.pads = Array.isArray(list) ? list : null; const p = $('#padcount'); if (p) p.innerHTML = padsHTML(); if (S.onPads) S.onPads(); });
+  api.on('pads', (list) => {
+    S.pads = Array.isArray(list) ? list : null;
+    // A controller left its slot: what was found for it no longer holds.
+    for (const k of Object.keys(slotDevice)) if (!S.pads || !S.pads.some((p) => String(p.slot) === k)) delete slotDevice[k];
+    const p = $('#padcount'); if (p) p.innerHTML = padsHTML();
+    if (S.onPads) S.onPads();
+  });
   api.on('notice', (n) => { if (n && n.title && !OVERLAY) toast(n.join ? n.title + ' · open Friends to join' : n.title); });
   api.on('tv:ended', (p) => { suppressUntilRelease = true; TV().ended(p); if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) loadTvSettings(); });
   (async () => { try { S.pads = await api.pads(); tickClock(); } catch (_) { /* not available */ } })();
   api.on('game:started', (p) => { if (S.playing && p && S.playing.id === p.gameId) S.playing.started = true; });
   api.on('update:found', (r) => { if (!S.playing) checkForUpdate(true, r); });
   api.on('overlay', () => { suppressUntilRelease = true; setInput('pad'); openGuide({ fromGame: true }); });
-  api.on('guide', () => { suppressUntilRelease = true; setInput('pad'); toggleGuide(!!S.playing); });
+  api.on('guide', () => { suppressUntilRelease = true; setInput('pad'); noteActivity(); if (idle) { closeIdle(); return; } toggleGuide(!!S.playing); });
   api.on('window:focus', () => {
     suppressUntilRelease = true;
     // Came back to the launcher while a game is still going (Alt+Tab, store games): show the guide.
@@ -4301,6 +4531,6 @@
     try { S.tvStatus = await api.tvStatus(); } catch (_) { S.tvStatus = S.tvStatus || { signedIn: false }; }
     if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) refreshContent();
   }
-  window.__couch = { S, move, button, setFocus, currentFocus, layers, TV, go }; // used by tests
+  window.__couch = { S, move, button, setFocus, currentFocus, layers, TV, openIdle, closeIdle, go }; // used by tests
   init().catch((e) => { document.body.innerHTML = '<pre style="color:#fff;padding:40px;font-size:18px">Couch Launcher couldn’t start:\n' + esc(e && e.stack || e) + '</pre>'; });
 })();

@@ -669,9 +669,9 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .home-tiles .row-inner > * { pointer-events: auto; }
 
 /* Who's playing? */
-.whoplays { width: 96rem; }
-.pp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.4rem; margin: 1.6rem 0 0.6rem; }
-.pp { border-radius: var(--r-card); background: var(--chip); padding: 2rem 1.6rem; min-height: 15rem; display: flex; flex-direction: column; justify-content: space-between; border: 0.2rem solid transparent; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.whoplays { width: 112rem; }
+.pp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.4rem; margin: 1.6rem 0 0.6rem; }
+.pp { border-radius: var(--r-card); background: var(--chip); padding: 2rem 1.6rem; min-height: 15rem; display: flex; flex-direction: column; gap: 1.2rem; border: 0.2rem solid transparent; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
 .pp.in { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--chip)); animation: ppIn 260ms var(--ease) both; }
 @keyframes ppIn { from { transform: scale(0.94); } to { transform: none; } }
 .pp-n { font-size: 2.2rem; font-weight: 800; }
@@ -679,6 +679,21 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .pp-c.wait { color: var(--sub); font-weight: 500; }
 .pp-c svg { width: 2.2rem; height: 2.2rem; }
 .pp-c .glyph { transform: scale(0.9); }
+.pp-c.pp-dev { align-items: center; min-height: 3.8rem; }
+.pp-d { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; }
+.pp-d b { font-weight: 700; font-size: 1.5rem; overflow-wrap: anywhere; }
+.pp-d small { font-size: 1.2rem; color: var(--sub); font-weight: 500; }
+.pp-dev .bat { flex: none; }
+.pp-pic { display: flex; align-items: center; justify-content: center; height: 12rem; }
+.pp-art { width: 100%; max-width: 20rem; height: 100%; filter: drop-shadow(0 0.6rem 1.2rem rgba(0, 0, 0, 0.35)); }
+.pp-art.pp-free { color: var(--sub); opacity: 0.45; filter: none; }
+.pp.in .pp-art { animation: ppArt 420ms cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes ppArt { from { transform: translateY(1.2rem) scale(0.8); opacity: 0; } to { transform: none; opacity: 1; } }
+.pp-leds { display: flex; gap: 0.6rem; justify-content: center; }
+.pp-leds i { width: 1.6rem; height: 0.5rem; border-radius: 0.3rem; background: color-mix(in srgb, var(--text) 18%, transparent); }
+.pp-leds i.on { background: #4ade80; box-shadow: 0 0 0.8rem rgba(74, 222, 128, 0.7); }
+.pp .pp-c.wait { min-height: 3.8rem; justify-content: center; }
+.reduce-motion .pp.in .pp-art { animation: none; }
 .reduce-motion .pp.in { animation: none; }
 
 /* ---------- Gaming news (below Home: focus slides the page up) ---------- */
@@ -1026,3 +1041,20 @@ html.macos-look.light .toast.err { color: #D70015; }
 @keyframes macToastIn { from { opacity: 0; transform: translateX(3rem); } to { opacity: 1; transform: none; } }
 html.macos-look .toast { animation-name: macToastIn; }
 html.macos-look .navbtn.active { background: color-mix(in srgb, var(--text) 92%, transparent); }
+
+/* ---------- Idle screen ---------- */
+.layer.idle-layer { background: #000; backdrop-filter: none; z-index: 900; cursor: none; animation: idleIn 1.2s ease both; }
+@keyframes idleIn { from { opacity: 0; } to { opacity: 1; } }
+.idle-pics, .idle-pic, .idle-shade { position: absolute; inset: 0; }
+.idle-pic { background: center / cover no-repeat; opacity: 0; transition: opacity 2.2s ease; transform: scale(1.04); }
+.idle-pic.tile { background-size: contain; background-color: #000; }
+.idle-pic.show { opacity: 1; animation: idleDrift 11s linear both; }
+@keyframes idleDrift { from { transform: scale(1.04) translate3d(0, 0, 0); } to { transform: scale(1.14) translate3d(-1.6%, -1%, 0); } }
+html.reduce-motion .idle-pic.show { animation: none; }
+.idle-shade { background: linear-gradient(to top, rgba(0,0,0,.72) 0%, rgba(0,0,0,.2) 38%, rgba(0,0,0,0) 60%), linear-gradient(to right, rgba(0,0,0,.35), rgba(0,0,0,0) 45%); }
+.idle-info { position: absolute; left: 6rem; bottom: 5.5rem; color: #fff; text-shadow: 0 .2rem 2rem rgba(0,0,0,.5); }
+.idle-time { font-size: 11rem; font-weight: 700; letter-spacing: -.04em; line-height: 1; }
+.idle-date { font-size: 2.6rem; font-weight: 500; opacity: .85; margin-top: 1rem; }
+.idle-game { font-size: 1.9rem; opacity: .6; margin-top: 2.4rem; }
+.idle-hint { position: absolute; right: 6rem; bottom: 6rem; color: rgba(255,255,255,.55); font-size: 1.7rem; animation: idleHint 4s ease-in-out infinite; }
+@keyframes idleHint { 0%, 100% { opacity: .35; } 50% { opacity: .8; } }

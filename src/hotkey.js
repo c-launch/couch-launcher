@@ -61,8 +61,54 @@ function loadXInput() {
       getBattery = lib.func('__stdcall', 'XInputGetBatteryInformation', 'uint32', ['uint32', 'uint8', koffi.out(koffi.pointer(bat))]);
     } catch (_) { getBattery = null; }
   }
-  xinputCache = { getState, getStateEx, getBattery };
+  // Which device is in each slot (vendor / product): the hidden call at ordinal 108
+  // (XInputGetCapabilitiesEx, xinput1_4 only).
+  let getCapsEx = null;
+  if (dllName === 'xinput1_4.dll') {
+    try {
+      const k32 = koffi.load('kernel32.dll');
+      const GetModuleHandleW = k32.func('__stdcall', 'GetModuleHandleW', 'void *', ['str16']);
+      const GetProcAddress = k32.func('__stdcall', 'GetProcAddress', 'void *', ['void *', 'uintptr_t']);
+      const mod = GetModuleHandleW(dllName);
+      const ptr = mod && GetProcAddress(mod, 108);
+      if (ptr) {
+        const capsEx = koffi.struct('CL_XINPUT_CAPS_EX', {
+          Type: 'uint8', SubType: 'uint8', Flags: 'uint16', Gamepad: pad, wLeftMotorSpeed: 'uint16', wRightMotorSpeed: 'uint16',
+          VendorId: 'uint16', ProductId: 'uint16', ProductVersion: 'uint16', unk1: 'uint16', unk2: 'uint32'
+        });
+        const proto = koffi.proto('__stdcall', 'CL_XInputGetCapabilitiesEx', 'uint32', ['uint32', 'uint32', 'uint32', koffi.out(koffi.pointer(capsEx))]);
+        if (typeof koffi.call === 'function') getCapsEx = (i, c) => koffi.call(ptr, proto, 1, i, 0, c);
+        else { const f = koffi.decode(ptr, proto); getCapsEx = (i, c) => f(1, i, 0, c); }
+      }
+    } catch (_) { getCapsEx = null; }
+  }
+  xinputCache = { getState, getStateEx, getBattery, getCapsEx };
   return xinputCache;
+}
+
+// What to call the controller in a slot, from its vendor / product numbers.
+// kind: 'xbox' | 'ps' | 'nin' | 'steam' | 'other' (steam: Steam Input's stand-in for another pad).
+const hex4 = (n) => ('000' + (n >>> 0).toString(16)).slice(-4);
+function padType(vid, pid) {
+  const v = hex4(vid || 0), p = hex4(pid || 0);
+  if (v === '045e') {
+    if (['028e', '028f', '0291', '02a1', '0719'].includes(p)) return { kind: 'xbox', name: 'Xbox 360 controller' };
+    if (['02e3', '0b00', '0b05', '0b22'].includes(p)) return { kind: 'xbox', name: 'Xbox Elite controller' };
+    if (['0b12', '0b13', '0b20', '0b21'].includes(p)) return { kind: 'xbox', name: 'Xbox Series controller' };
+    if (['02d1', '02dd', '02ea', '0b02', '0b06', '0b0a'].includes(p)) return { kind: 'xbox', name: 'Xbox One controller' };
+    return { kind: 'xbox', name: 'Xbox controller' };
+  }
+  if (v === '054c') {
+    if (p === '0ce6') return { kind: 'ps', name: 'DualSense controller' };
+    if (p === '0df2') return { kind: 'ps', name: 'DualSense Edge controller' };
+    if (p === '05c4' || p === '09cc' || p === '0ba0') return { kind: 'ps', name: 'DualShock 4 controller' };
+    return { kind: 'ps', name: 'PlayStation controller' };
+  }
+  if (v === '057e') return { kind: 'nin', name: p === '2009' ? 'Switch Pro Controller' : 'Nintendo controller' };
+  if (v === '28de') return { kind: 'steam', name: 'Steam Input controller' };
+  const brands = { '2dc8': '8BitDo', '046d': 'Logitech', '20d6': 'PowerA', '24c6': 'PowerA', '0e6f': 'PDP', '0f0d': 'HORI', '0738': 'Mad Catz', '1532': 'Razer', '3537': 'GameSir', '2f24': 'GameSir', '1949': 'Amazon Luna', '18d1': 'Stadia' };
+  if (brands[v]) return { kind: 'other', name: brands[v] + ' controller' };
+  return { kind: 'xbox', name: 'Xbox-style controller' };
 }
 
 // onGuide(): Xbox button pressed. onCombo(): View + Menu held while a game runs.
@@ -250,9 +296,15 @@ function readPads() {
         }
       } catch (_) { /* unknown */ }
     }
-    out.push({ slot: i, power, level });
+    let vid = 0, pid = 0;
+    if (x.getCapsEx) {
+      const c = {};
+      try { if (x.getCapsEx(i, c) === 0) { vid = c.VendorId || 0; pid = c.ProductId || 0; } } catch (_) { /* unknown */ }
+    }
+    const t = vid ? padType(vid, pid) : { kind: 'xbox', name: 'Xbox-style controller' };
+    out.push({ slot: i, power, level, vid: hex4(vid), pid: hex4(pid), kind: t.kind, name: t.name });
   }
   return out;
 }
 
-module.exports = { createControllerWatcher, loadXInput, readPads };
+module.exports = { createControllerWatcher, loadXInput, readPads, padType };
