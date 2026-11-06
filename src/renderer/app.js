@@ -989,7 +989,9 @@
           '<div class="picon" style="background:var(--chip);color:var(--text)">' + icon('monitor') + '</div><div class="pinfo"><div class="t">' + esc(d.name) + '</div><div class="p">' +
           esc([d.size, d.hz ? d.hz + ' Hz' : '', d.primary ? 'Main monitor' : ''].filter(Boolean).join(' · ')) + '</div></div>' +
           (d.current ? '<span class="status ok">In use</span>' : '<span class="status off">Use this one</span>') + '</button>').join('') + '</div>' +
-        '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in ' + (IS_MAC ? 'System Settings › Displays' : 'Windows display settings') + '.</p>' +
+        (IS_MAC ? '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in System Settings › Displays.</p>'
+          : '<div class="sub-h">Games</div><div class="toggles" style="grid-template-columns:1fr">' +
+            toggleHTML('d-main', 'Make it the main monitor while you play', S.lib.settings.mainDisplayInGames !== false, 'Many games, older ones especially, only open on Windows’ main monitor. With this on, the monitor chosen above becomes the main one while a game runs (your taskbar moves there too), and everything goes back when it ends.', 'set-toggle', 'data-k="mainDisplayInGames"') + '</div>') +
         '<div class="sub-h">Window</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('d-full', 'Full screen', !S.info.windowed, 'Off: the launcher opens in a normal window you can move and resize. It restarts to switch.' + (IS_MAC ? ' (Also in the menu bar: Couch Launcher › Full Screen.)' : ''), 'full-toggle', '') + '</div>';
     }

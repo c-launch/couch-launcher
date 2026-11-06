@@ -136,7 +136,44 @@ function createDisplay() {
     return true;
   }
 
-  return { devices, deviceAt, current, modes, setMode, restoreMode, hdr, setHdr };
+  // ---- Which display is the main one ("Make this my main display").
+  // Older games (Need for Speed Underground 2, Rayman Legends…) always open on the main display,
+  // whatever window tricks are tried. So for them the chosen display becomes the main one while
+  // the game runs, and the layout before is put back afterwards.
+  // layout: [{ name, x, y }]; the main display is the one at 0,0.
+  function layout() { return devices().map((d) => ({ name: d.name, x: d.x, y: d.y })); }
+  function primaryName() { const p = devices().find((d) => d.x === 0 && d.y === 0); return p ? p.name : null; }
+  // CDS_UPDATEREGISTRY | CDS_NORESET (| CDS_SET_PRIMARY), then one apply for all of them.
+  function applyLayout(list, primary) {
+    for (const d of list) {
+      const dm = newMode();
+      dm.writeUInt32LE(0x20, 72); // DM_POSITION
+      dm.writeInt32LE(d.x, 76); dm.writeInt32LE(d.y, 80);
+      const rc = ChangeDisplaySettingsExW(d.name, dm, null, 0x1 | 0x10000000 | (d.name === primary ? 0x10 : 0), null);
+      if (rc !== 0) throw new Error('Windows didn’t accept the display layout (' + rc + ')');
+    }
+    const rc = ChangeDisplaySettingsExW(null, null, null, 0, null);
+    if (rc !== 0) throw new Error('Windows didn’t apply the display layout (' + rc + ')');
+  }
+  // Makes `name` the main display; returns the layout to put back, or null if it already was.
+  function makePrimary(name) {
+    const before = layout();
+    const t = before.find((d) => d.name === name);
+    if (!t) throw new Error('Display not found');
+    if (t.x === 0 && t.y === 0) return null;
+    applyLayout(before.map((d) => ({ name: d.name, x: d.x - t.x, y: d.y - t.y })), name);
+    return { layout: before, primary: before.find((d) => d.x === 0 && d.y === 0) ? before.find((d) => d.x === 0 && d.y === 0).name : null };
+  }
+  function restoreLayout(saved) {
+    if (!saved || !saved.layout || !saved.primary) return false;
+    const now = layout().map((d) => d.name);
+    const list = saved.layout.filter((d) => now.includes(d.name)); // a display unplugged since: leave it out
+    if (!list.some((d) => d.name === saved.primary)) return false;
+    applyLayout(list, saved.primary);
+    return true;
+  }
+
+  return { devices, deviceAt, current, modes, setMode, restoreMode, hdr, setHdr, layout, primaryName, makePrimary, restoreLayout };
 }
 
 module.exports = { createDisplay };

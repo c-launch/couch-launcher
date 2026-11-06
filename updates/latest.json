@@ -1,6 +1,6 @@
 {
- "version": "1.18.3",
- "notes": "Anti-cheat games (Fortnite, Valorant, Apex and others): the launcher now keeps its hands off them, so their anti-cheat won't kick you for a 'forbidden tool'. While one runs it isn't paused by the guide, the Share button doesn't press Medal's keys for you, the background controller reader is off and its window isn't moved.",
- "file": "CouchLauncher-update-1.18.3.zip",
- "size": 332255
+ "version": "1.18.4",
+ "notes": "Games that only open on Windows' main monitor (like Need for Speed Underground 2 and Rayman Legends) now open on the monitor you chose: it becomes the main monitor while the game runs and everything goes back when it ends. Turn it off in Settings › Display › Make it the main monitor while you play.",
+ "file": "CouchLauncher-update-1.18.4.zip",
+ "size": 333665
 }

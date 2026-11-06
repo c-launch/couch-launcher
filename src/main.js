@@ -1045,7 +1045,31 @@ if (!app.requestSingleInstanceLock()) {
   let disp = null;
   const dsp = () => (disp === null ? (disp = createDisplay() || false) : disp);
   function displayDevice() { return dsp() ? dsp().deviceAt(toPx(targetDisplay().bounds)) : null; }
+  // Settings › Display › "Make it the main display during games": older games always open on
+  // the main display, so the chosen one becomes the main one until the game ends. What to put
+  // back is saved in a file first, so a crash or power cut can't leave it switched.
+  const layoutFile = () => path.join(app.getPath('userData'), 'display-layout.json');
+  function switchPrimaryFor(r, g) {
+    if (!dsp() || !r || !lib.settings.displayId || lib.settings.mainDisplayInGames === false) return;
+    if (g && g.launch && g.launch.type === 'emu') return; // emulators open where they're told
+    try {
+      const dev = displayDevice();
+      if (!dev || (dev.x === 0 && dev.y === 0)) return; // already the main display
+      const saved = { layout: dsp().layout(), primary: dsp().primaryName() };
+      fs.writeFileSync(layoutFile(), JSON.stringify(saved));
+      if (dsp().makePrimary(dev.name)) r.layoutRestore = saved;
+      else fs.unlinkSync(layoutFile());
+    } catch (e) { try { fs.unlinkSync(layoutFile()); } catch (_) { /* none */ } send('notice', { title: 'Couldn’t switch the main display: ' + String(e.message || e) }); }
+  }
+  function restorePrimary(r) {
+    let saved = r && r.layoutRestore;
+    if (r) r.layoutRestore = null;
+    if (!saved) { try { saved = JSON.parse(fs.readFileSync(layoutFile(), 'utf8')); } catch (_) { return; } }
+    try { if (dsp()) dsp().restoreLayout(saved); } catch (_) { /* tried; the file stays for the next start */ return; }
+    try { fs.unlinkSync(layoutFile()); } catch (_) { /* gone */ }
+  }
   function applyDisplay(r, g) {
+    switchPrimaryFor(r, g);
     const want = g && g.display;
     if (!want || !dsp() || !r) return;
     try {
@@ -1061,11 +1085,14 @@ if (!app.requestSingleInstanceLock()) {
   }
   function restoreDisplay(r) {
     const x = r && r.dispRestore;
-    if (!x || !dsp()) return;
-    r.dispRestore = null;
-    try { if (x.mode) dsp().restoreMode(x.name); } catch (_) { /* fine */ }
-    try { if (typeof x.hdr === 'boolean') dsp().setHdr(x.name, x.hdr); } catch (_) { /* fine */ }
-    setTimeout(placeWindows, 800);
+    if (x && dsp()) {
+      r.dispRestore = null;
+      try { if (x.mode) dsp().restoreMode(x.name); } catch (_) { /* fine */ }
+      try { if (typeof x.hdr === 'boolean') dsp().setHdr(x.name, x.hdr); } catch (_) { /* fine */ }
+    }
+    const hadLayout = !!(r && r.layoutRestore);
+    if (hadLayout) restorePrimary(r);
+    if (x || hadLayout) setTimeout(placeWindows, 800);
   }
   handle('display:modes', () => {
     const dev = displayDevice();
@@ -2100,6 +2127,8 @@ if (!app.requestSingleInstanceLock()) {
     // 1.17: the macOS look (macOS Dark, rounder corners) becomes the look everywhere. Switched once;
     // the earlier themes stay in Settings › Themes.
     if (lib.settings.windowed) WINDOWED = true;
+    // A game's main-display switch that never got put back (crash, power cut): put it back now.
+    if (fs.existsSync(layoutFile())) restorePrimary(null);
     if (!lib.settings.macLook) { lib.settings.theme = 'macos'; lib.settings.corners = 'squircle'; lib.settings.macLook = true; if (fs.existsSync(libFile())) persist(); }
     createWindow();
     setTimeout(() => { try { createOverlay(); } catch (_) { /* made on first use */ } }, 2000);
@@ -2109,8 +2138,10 @@ if (!app.requestSingleInstanceLock()) {
     // Only a real change of the screen (size, resolution, scaling, turned). Not its usable area,
     // which changes whenever the menu bar, Dock or taskbar shows or hides.
     screen.on('display-metrics-changed', (_e, _d, changed) => {
-      if (running) return; // games: re-placed when they end
       if (Array.isArray(changed) && !changed.some((c) => c === 'bounds' || c === 'scaleFactor' || c === 'rotation')) return;
+      // During a game (the chosen monitor may just have become the main one): only the guide moves
+      // with it; the launcher is put back in place when the game ends.
+      if (running) { setTimeout(() => { if (overlay && !overlay.isDestroyed()) overlay.setBounds(targetDisplay().bounds); }, 300); return; }
       placeWindows();
     });
     controller.start();

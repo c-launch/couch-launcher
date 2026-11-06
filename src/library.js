@@ -9,7 +9,8 @@ const DEFAULT_SETTINGS = {
   theme: 'macos',        // the macOS look (glass, system blue), on Windows too
   corners: 'squircle',
   macLook: false,
-  windowed: false,       // open in a window instead of full screen (Settings › Display)        // switched to the macOS look once (1.17)
+  windowed: false,
+  mainDisplayInGames: true, // the chosen display becomes the main one while a game runs       // open in a window instead of full screen (Settings › Display)        // switched to the macOS look once (1.17)
   accent: null,          // null = the theme's own accent
   useArtBackground: true,
   reduceMotion: false,
