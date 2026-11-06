@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld('launcher', {
   playersListen: (on) => call('players:listen', !!on),
   playersSet: (gameId, slots) => call('players:set', String(gameId || ''), Array.isArray(slots) ? slots.map(Number) : []),
   playersSolo: (gameId) => call('players:solo', String(gameId || '')),
+  vpadsStatus: () => call('vpads:status'),
+  vpadsInstall: () => call('vpads:install'),
+  vpadsTest: (slots) => call('vpads:test', Array.isArray(slots) ? slots.map((n) => (Number.isInteger(n) ? n : null)) : []),
+  vpadsStop: () => call('vpads:stop'),
+  vpadsLearn: () => call('vpads:learn'),
   downloads: () => call('downloads:get'),
   openStore: (id) => call('store:open', String(id || '')),
   discordStatus: () => call('discord:status'),
@@ -152,7 +157,7 @@ contextBridge.exposeInMainWorld('launcher', {
   tvSetMpv: (p) => call('tv:setMpv', p ? String(p) : ''),
   tvPlay: (req) => call('tv:play', req),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'news', 'deals', 'tv:ended', 'hud'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'vpads', 'news', 'deals', 'tv:ended', 'hud'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

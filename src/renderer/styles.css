@@ -351,6 +351,10 @@ img { -webkit-user-drag: none; }
 .pf-list { display: flex; flex-direction: column; gap: 0.6rem; }
 .xbox-connect .steps { margin: 0; padding-left: 2.4rem; font-size: 1.7rem; line-height: 1.7; }
 .xbox-connect .steps b { color: var(--text); }
+.dialog.steady { width: 84rem; }
+.steady .steps { margin: 0 0 1.6rem; padding-left: 2.4rem; font-size: 1.7rem; line-height: 1.7; color: var(--sub); }
+.steady .steps b { color: var(--text); }
+.steady .pad-list { margin: 1.2rem 0 0.4rem; }
 
 /* ---------- Friends panel ---------- */
 .layer.side-layer { justify-content: flex-end; align-items: stretch; background: color-mix(in srgb, var(--bg) 45%, transparent); }
@@ -1053,3 +1057,4 @@ html.reduce-motion .idle-pic.show { animation: none; }
 .idle-game { font-size: 1.9rem; opacity: .6; margin-top: 2.4rem; }
 .idle-hint { position: absolute; right: 6rem; bottom: 6rem; color: rgba(255,255,255,.55); font-size: 1.7rem; animation: idleHint 4s ease-in-out infinite; }
 @keyframes idleHint { 0%, 100% { opacity: .35; } 50% { opacity: .8; } }
+.steady .pinfo .p { font-family: inherit; }

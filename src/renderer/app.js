@@ -635,7 +635,7 @@
     return n ? icon('pad') + n : '';
   }
   function padCount() {
-    try { return Array.from(navigator.getGamepads()).filter((p) => p && p.connected).length; } catch (_) { return 0; }
+    try { return Array.from(navigator.getGamepads()).filter((p) => p && p.connected && !(S.vpadsOn && /vendor:\s*1532\b.*product:\s*1000\b/i.test(p.id))).length; } catch (_) { return 0; }
   }
   // The dock, in order. These three are pages (LB/RB slide to them); the rest open something.
   // Clips come from Medal, which is Windows only: no Clips on a Mac.
@@ -1027,6 +1027,8 @@
         '<button class="toggle-row" data-nav data-key="c-players" data-zone="body" data-action="players-setup"><span><div>Players</div><div class="d">' + esc(playersLabel()) + '</div></span><span class="status ok">Set up</span></button>' +
         '<button class="toggle-row" data-nav data-key="c-pick" data-zone="body" data-action="pick-mode"><span><div>Players in emulator games</div><div class="d">Ryujinx, Dolphin and RPCS3 (Xbox-style controllers).</div></span><span class="status ok">' +
           ({ saved: 'Use my saved players', ask: 'Ask every time', auto: 'Ask every time', always: 'Ask every time', off: 'Leave as set in the emulator' }[S.lib.settings.pickPlayers || 'saved']) + '</span></button>' +
+        '<button class="toggle-row" data-nav data-key="c-steady" data-zone="body" data-action="steady"><span><div>Steady players in Ryujinx</div><div class="d">The launcher holds a virtual controller for each player during the game, so a controller dying doesn’t shuffle the players. When it’s back on, it takes its spot again.</div></span><span class="status ok">' +
+          (S.lib.settings.steadyPlayers ? 'On' : 'Off') + '</span></button>' +
         toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
         toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
         toggleHTML('c-njoin', 'Tell me when a friend starts a game I can join', S.lib.settings.notifyJoin !== false, 'Steam friends in a lobby or on a server (their Steam profile has to be public). Join from the alert or the guide.', 'set-toggle', 'data-k="notifyJoin"') +
@@ -1189,10 +1191,12 @@
     const bare = String(id).replace(/\s*\(.*$/, '').trim();
     return { kind: 'other', name: bare && bare.length < 40 ? bare : 'Controller' };
   }
+  // The launcher's own virtual controllers (Steady players): never counted as real ones.
+  const isVirtualPad = (id) => /vendor:\s*1532\b.*product:\s*1000\b/i.test(String(id || ''));
   function noteDirect(pads, now) {
     const ids = [];
     for (const p of pads) {
-      if (!p || !p.connected || /xinput/i.test(p.id)) continue;
+      if (!p || !p.connected || /xinput/i.test(p.id) || isVirtualPad(p.id)) continue;
       ids.push(p.id);
       const k = p.index + '|' + p.id;
       let face = 0;
@@ -1866,6 +1870,60 @@
     save();
     if (S.view === 'settings') refreshContent();
     toast(slots.length + (slots.length === 1 ? ' player' : ' players') + ' saved');
+  }
+  // Settings › Controllers › Steady players in Ryujinx.
+  async function steadyMenu() {
+    let st;
+    try { st = await api.vpadsStatus(); } catch (e) { toast(e.message, true); return; }
+    const s = S.lib.settings;
+    const items = [];
+    if (!st.installed) items.push({ id: 'install', label: 'Install ViGEmBus (free driver; Windows asks once)', icon: 'download' });
+    else {
+      if (st.ryujinx) items.push({ id: 'learn', label: st.learned ? 'Set up with Ryujinx again' : 'Set up with Ryujinx (once, about a minute)', icon: 'gear' });
+      items.push({ id: 'test', label: 'Try the virtual controllers', icon: 'pad' });
+      if (st.learned) items.push({ id: 'toggle', label: s.steadyPlayers ? 'Turn off' : 'Turn on', icon: s.steadyPlayers ? 'x' : 'check' });
+    }
+    const pick = await openMenu('Steady players' + (st.installed ? (st.learned ? (s.steadyPlayers ? ' · On' : ' · Off') : ' · Not set up with Ryujinx') : ''), items);
+    if (pick === 'install') {
+      toast('Downloading ViGEmBus… Windows will ask for permission: say Yes and follow the setup');
+      try { const ok = await api.vpadsInstall(); toast(ok ? 'ViGEmBus is installed' : 'ViGEmBus setup closed without installing', !ok); if (ok) steadyMenu(); }
+      catch (e) { toast(e.message, true); }
+    } else if (pick === 'toggle') {
+      s.steadyPlayers = !s.steadyPlayers; save(); refreshContent();
+      toast(s.steadyPlayers ? 'Steady players on: used for Ryujinx games with your saved players' : 'Steady players off');
+    } else if (pick === 'test') steadyLive(false);
+    else if (pick === 'learn') steadyLive(true);
+  }
+  // The virtual controllers plugged in until this closes. learn: the Ryujinx steps.
+  async function steadyLive(learn) {
+    const slots = (S.lib.settings.playerSlots || []).filter((sl) => !Array.isArray(S.pads) || S.pads.some((p) => p.slot === sl));
+    const use = slots.length ? slots : (Array.isArray(S.pads) && S.pads.length ? [S.pads[0].slot] : [null]);
+    try { await api.vpadsTest(learn ? use.slice(0, 1) : use); } catch (e) { toast(e.message, true); return; }
+    let state = [];
+    const rows = () => (state.length ? state : use.map((sl, i) => ({ p: i + 1, slot: sl, on: sl != null }))).map((x) =>
+      '<div class="prow"><div class="picon" style="background:var(--accent);color:var(--on-accent)">P' + x.p + '</div><div class="pinfo"><div class="t">Couch Player ' + x.p + '</div><div class="p">' +
+      (x.slot != null ? esc(slotInfo(x.slot).name) + ' · Controller ' + (x.slot + 1) : 'No controller') + '</div></div><span class="status ' + (x.on ? 'ok' : '') + '">' + (x.on ? 'Connected' : 'Waiting for a controller') + '</span></div>').join('');
+    const body = learn
+      ? '<ol class="steps"><li>Open Ryujinx › Options › Settings › Input.</li><li>For Player 1, pick the controller that just appeared (a <b>PS4-style controller</b>). Press a button: Ryujinx shows it moving.</li><li>Click Save, close Ryujinx, then come back and choose <b>Done</b>.</li></ol>'
+      : '<p class="hint">Turn a player’s controller off and on: it comes back to the same player. A controller nobody is using joins a free spot by pressing A.</p>';
+    const html = () => '<div class="dialog steady"><h2>' + (learn ? 'Set up with Ryujinx' : 'Virtual controllers') + '</h2>' + body + '<div class="pad-list">' + rows() + '</div>' +
+      '<div class="dialog-foot"><button class="btn big" data-nav data-key="vs-stop" data-act="stop">' + (learn ? 'Cancel' : 'Unplug them') + '</button>' +
+      (learn ? '<button class="btn big primary" data-nav data-key="vs-done" data-act="done">' + icon('check') + 'Done</button>' : '') + '</div></div>';
+    const layer = openLayer({
+      html: html(), focus: learn ? 'vs-done' : 'vs-stop',
+      onActivate: async (el) => {
+        if (el.dataset.act === 'done') {
+          try { await api.vpadsLearn(); S.lib.settings.steadyPlayers = true; save(); toast('Ryujinx is set up. Steady players is on'); closeLayer(layer); }
+          catch (e) { toast(e.message, true); }
+          return;
+        }
+        closeLayer(layer);
+      },
+      onBack: () => closeLayer(layer),
+      onClose: () => { S.onVpads = null; api.vpadsStop().catch(() => {}); if (S.view === 'settings') refreshContent(); },
+      prompts: () => (learn ? [['A', 'Select'], ['B', 'Cancel']] : [['A', 'Select'], ['B', 'Unplug them']])
+    });
+    S.onVpads = (st) => { state = st || []; const list = $('.steady .pad-list', layer.el); if (list) list.innerHTML = rows(); };
   }
   function whoIsPlaying(g, pads) {
     return new Promise((resolve) => {
@@ -3751,6 +3809,7 @@
         return;
       }
       case 'friend': return friendMenu(el.dataset.friend);
+      case 'steady': return steadyMenu();
       case 'pick-mode': {
         const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
         if (m) { s.pickPlayers = m; save(); refreshContent(); }
@@ -4181,6 +4240,7 @@
     for (const p of pads) {
       if (!p || !p.connected) continue;
       if (standard && p.mapping !== 'standard') continue;
+      if (S.vpadsOn && isVirtualPad(p.id)) continue;
       const pk = String(p.index) + '|' + p.id;
       live.add(pk);
       let seen = padSeen.get(pk);
@@ -4373,6 +4433,7 @@
   api.on('news', (n) => { if (n && Array.isArray(n.items)) { S.news = n; S.newsErr = null; paintNews(); } });
   api.on('deals', (v) => { if (v && Array.isArray(v.free)) { S.deals = v; dealsAt = Date.now(); paintDeals(); } });
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
+  api.on('vpads', (st) => { S.vpadsOn = Array.isArray(st) && st.length > 0; if (S.onVpads) S.onVpads(st); });
   api.on('pads', (list) => {
     S.pads = Array.isArray(list) ? list : null;
     // A controller left its slot: what was found for it no longer holds.

@@ -36,7 +36,9 @@ function ryujinxConfigPath(exe, env) {
   return exists(appdata) ? appdata : null;
 }
 
-function setRyujinxPlayers(file, slots, connected) {
+// guids: { virtualGuid, realGuid }: if Player 1 is on the launcher's virtual controllers (steady
+// players), your own controllers' id is put back.
+function setRyujinxPlayers(file, slots, connected, guids) {
   const text = readText(file);
   if (!text) throw new Error('Ryujinx settings not found');
   const crlf = text.includes('\r\n');
@@ -46,14 +48,18 @@ function setRyujinxPlayers(file, slots, connected) {
   const isPad = (e) => e && /^GamepadSDL/i.test(String(e.backend || '')) && /^\d+-/.test(String(e.id || ''));
   const template = list.find((e) => isPad(e) && e.player_index === 'Player1') || list.find(isPad);
   if (!template) throw new Error('Set up Player 1 with a controller in Ryujinx once (Options › Settings › Input), then try again');
-  const guid = String(template.id).replace(/^\d+-/, '');
+  let guid = String(template.id).replace(/^\d+-/, '');
+  if (guids && guids.virtualGuid && guid === guids.virtualGuid) {
+    if (!guids.realGuid) throw new Error('Ryujinx is set to the launcher’s virtual controllers: pick your controller for Player 1 in Ryujinx once');
+    guid = guids.realGuid;
+  }
   const order = connected.slice().sort((a, b) => a - b); // SDL lists Xbox-style pads in slot order
   // A controller that isn't connected any more is left out.
   const players = slots.filter((slot) => order.includes(slot)).map((slot, i) => ({ n: i + 1, rank: order.indexOf(slot) }));
   if (!players.length) throw new Error('None of those controllers are connected');
   const taken = new Set(players.map((p) => 'Player' + p.n));
   // Keep other players' setups (keyboard, handheld, other controller types); replace the rest.
-  const keep = list.filter((e) => !taken.has(e.player_index) && !(isPad(e) && String(e.id).replace(/^\d+-/, '') === guid));
+  const keep = list.filter((e) => !taken.has(e.player_index) && !(isPad(e) && [guid, guids && guids.virtualGuid].includes(String(e.id).replace(/^\d+-/, ''))));
   const made = players.map((p) => Object.assign(JSON.parse(JSON.stringify(template)), {
     id: p.rank + '-' + guid,
     name: String(template.name || 'Controller').replace(/\(\d+\)\s*$/, '').trim() + ' (' + p.rank + ')',
@@ -64,6 +70,42 @@ function setRyujinxPlayers(file, slots, connected) {
   if (crlf) out = out.replace(/\n/g, '\r\n');
   writeSafe(file, out);
   return players.length;
+}
+
+// Steady players: Player 1-n on the launcher's virtual controllers (vpads.js). They all share
+// one SDL id (learned once, see ryujinxPlayer1Guid), numbered 0, 1, … in the order they were
+// plugged in, which is player order. Your button setup (Player 1's) is kept.
+function setRyujinxVirtual(file, n, guid) {
+  const text = readText(file);
+  if (!text) throw new Error('Ryujinx settings not found');
+  if (!/^[0-9a-f-]{32,36}$/i.test(String(guid || ''))) throw new Error('Steady players isn’t set up for Ryujinx yet');
+  const crlf = text.includes('\r\n');
+  const cfg = JSON.parse(text);
+  const list = Array.isArray(cfg.input_config) ? cfg.input_config : [];
+  const isPad = (e) => e && /^GamepadSDL/i.test(String(e.backend || '')) && /^\d+-/.test(String(e.id || ''));
+  const template = list.find((e) => isPad(e) && e.player_index === 'Player1') || list.find(isPad);
+  if (!template) throw new Error('Set up Player 1 with a controller in Ryujinx once (Options › Settings › Input), then try again');
+  const count = Math.max(1, Math.min(4, n | 0));
+  const taken = new Set(Array.from({ length: count }, (_, i) => 'Player' + (i + 1)));
+  const keep = list.filter((e) => !taken.has(e.player_index) && !(isPad(e) && String(e.id).replace(/^\d+-/, '') === guid));
+  const made = Array.from({ length: count }, (_, i) => Object.assign(JSON.parse(JSON.stringify(template)), {
+    id: i + '-' + guid,
+    name: 'Couch Player ' + (i + 1) + ' (' + i + ')',
+    player_index: 'Player' + (i + 1)
+  }));
+  cfg.input_config = made.concat(keep);
+  let out = JSON.stringify(cfg, null, 2);
+  if (crlf) out = out.replace(/\n/g, '\r\n');
+  writeSafe(file, out);
+  return count;
+}
+// What Ryujinx calls Player 1's controller right now (its id without the number), or null.
+function ryujinxPlayer1Guid(file) {
+  let cfg;
+  try { cfg = JSON.parse(readText(file) || ''); } catch (_) { return null; }
+  const e = (Array.isArray(cfg.input_config) ? cfg.input_config : []).find((x) => x && x.player_index === 'Player1' && /^GamepadSDL/i.test(String(x.backend || '')));
+  const m = e && /^\d+-(.+)$/.exec(String(e.id || ''));
+  return m ? m[1] : null;
 }
 
 // Controller profiles "Player 1" ... "Player 4", copies of your setup, to load by hand in
@@ -207,12 +249,12 @@ function setRpcs3Players(file, slots) {
 }
 
 // slots: XInput slot for Player 1, 2, ... ; connected: all connected XInput slots.
-function setPlayers(emu, exe, slots, connected, env) {
+function setPlayers(emu, exe, slots, connected, env, guids) {
   if (!Array.isArray(slots) || !slots.length || slots.length > 4) throw new Error('Pick 1 to 4 players');
   if (emu === 'ryujinx') {
     const f = ryujinxConfigPath(exe, env);
     if (!f) throw new Error('Ryujinx settings not found (start Ryujinx once first)');
-    const n = setRyujinxPlayers(f, slots, connected);
+    const n = setRyujinxPlayers(f, slots, connected, guids);
     makeRyujinxProfiles(f);
     return n;
   }
@@ -229,4 +271,4 @@ function setPlayers(emu, exe, slots, connected, env) {
   throw new Error('Unknown emulator');
 }
 
-module.exports = { setPlayers, setRyujinxPlayers, makeRyujinxProfiles, setDolphinFile, setRpcs3Players, ryujinxConfigPath, dolphinUserDir, rpcs3InputFile };
+module.exports = { setPlayers, setRyujinxPlayers, setRyujinxVirtual, ryujinxPlayer1Guid, makeRyujinxProfiles, setDolphinFile, setRpcs3Players, ryujinxConfigPath, dolphinUserDir, rpcs3InputFile };

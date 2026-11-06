@@ -680,6 +680,7 @@ if (!app.requestSingleInstanceLock()) {
   // Ends tracking of the current game, counts play time and returns to the launcher.
   function endGame(r, extra) {
     if (!r || running !== r) return;
+    if (vpadsGame) stopSteady();
     restoreDisplay(r);
     if (r.cancelled) {
       if (r.watchTimer) clearInterval(r.watchTimer);
@@ -960,14 +961,65 @@ if (!app.requestSingleInstanceLock()) {
   };
   const playerCount = {}; // emulator -> players set up for this session
   handle('players:listen', (on) => { controller.setJoin(!!on); return true; });
-  handle('players:set', (gameId, slots) => {
+  // Steady players (Settings › Controllers): virtual controllers held for the game's players.
+  let vp = null, vpadsGame = null;
+  function vpadsPart() {
+    if (vp || MAC || process.platform !== 'win32') return vp;
+    let koffiPath = '';
+    try { koffiPath = require.resolve('koffi'); } catch (_) { koffiPath = ''; }
+    vp = require('./vpads').createVPads({ execPath: process.execPath, koffiPath, onState: (st) => { send('vpads', st); sendOverlay('vpads', st); } });
+    return vp;
+  }
+  function stopSteady() { vpadsGame = null; if (vp) vp.stop(); }
+  const ryujinxGuids = () => ({ virtualGuid: lib.settings.vpadGuid || null, realGuid: lib.settings.ryujinxRealGuid || null });
+  handle('players:set', async (gameId, slots) => {
     if (MAC) throw new Error('On a Mac, set players in the emulator');
     const { emu, exe } = emuOf(gameId);
     const list = (Array.isArray(slots) ? slots : []).map(Number).filter((n) => n >= 0 && n <= 3);
     const connected = readPads().map((p) => p.slot);
-    const n = players.setPlayers(emu, exe, list, connected.length ? connected : list);
+    if (emu === 'ryujinx' && lib.settings.steadyPlayers && lib.settings.vpadGuid && list.length && vpadsPart()) {
+      const f = players.ryujinxConfigPath(exe);
+      const cur = f ? players.ryujinxPlayer1Guid(f) : null;
+      if (cur && cur !== lib.settings.vpadGuid && lib.settings.ryujinxRealGuid !== cur) { lib.settings.ryujinxRealGuid = cur; persist(); }
+      const r = f ? await vp.start(list) : { error: 'Ryujinx settings not found' };
+      if (r && r.ok) {
+        const n = players.setRyujinxVirtual(f, list.length, lib.settings.vpadGuid);
+        vpadsGame = gameId; playerCount[emu] = n;
+        return n;
+      }
+      send('notice', { title: 'Steady players didn’t start (' + ((r && r.error) || 'unknown') + '). Using your controllers directly.' });
+    }
+    const n = players.setPlayers(emu, exe, list, connected.length ? connected : list, undefined, ryujinxGuids());
     playerCount[emu] = n;
     return n;
+  });
+  handle('vpads:status', async () => ({
+    installed: await require('./vpads').busInstalled(), on: !!lib.settings.steadyPlayers, learned: !!lib.settings.vpadGuid,
+    running: !!(vp && vp.running), players: vp ? vp.players : [], ryujinx: !!((lib.platforms.ryujinx || {}).exe)
+  }));
+  handle('vpads:install', async () => require('./vpads').installBus());
+  // Try them out (Settings): one virtual controller per saved player, until stopped.
+  handle('vpads:test', async (slots) => {
+    if (running) throw new Error('Close the game first');
+    if (!vpadsPart()) throw new Error('Only on Windows');
+    const list = (Array.isArray(slots) ? slots : []).map((n) => (Number.isInteger(n) && n >= 0 && n <= 3 ? n : null)).slice(0, 4);
+    const r = await vp.start(list.length ? list : [null]);
+    if (!r || !r.ok) throw new Error((r && r.error) || 'Didn’t start');
+    return r.players;
+  });
+  handle('vpads:stop', () => { stopSteady(); return true; });
+  // Teaching the launcher what Ryujinx calls the virtual controllers: while they're plugged in,
+  // you pick one as Player 1 in Ryujinx and save; this reads it back.
+  handle('vpads:learn', () => {
+    const exe = (lib.platforms.ryujinx || {}).exe;
+    const f = players.ryujinxConfigPath(exe);
+    if (!f) throw new Error('Ryujinx settings not found (start Ryujinx once first)');
+    const g = players.ryujinxPlayer1Guid(f);
+    if (!g) throw new Error('Player 1 in Ryujinx isn’t a controller yet');
+    if (g === lib.settings.ryujinxRealGuid) throw new Error('Player 1 is still your own controller. Pick the new one, save, then try again.');
+    lib.settings.vpadGuid = g;
+    persist();
+    return true;
   });
   // One controller: make sure it's Player 1 (only once you've used "Who's playing?" for that
   // emulator, so settings you never asked the launcher to touch stay as they are).
@@ -979,7 +1031,7 @@ if (!app.requestSingleInstanceLock()) {
     const f = emu === 'ryujinx' ? players.ryujinxConfigPath(exe) : emu === 'rpcs3' ? players.rpcs3InputFile(exe)
       : (players.dolphinUserDir(exe) ? path.join(players.dolphinUserDir(exe), 'Config', 'GCPadNew.ini') : null);
     if (!f || !fs.existsSync(f + '.couch-original')) return false;
-    try { players.setPlayers(emu, exe, connected, connected); playerCount[emu] = 1; return true; } catch (_) { return false; }
+    try { players.setPlayers(emu, exe, connected, connected, undefined, ryujinxGuids()); playerCount[emu] = 1; return true; } catch (_) { return false; }
   });
 
   // Windows notification (shows over games too) plus a toast in the launcher.
@@ -1240,7 +1292,7 @@ if (!app.requestSingleInstanceLock()) {
   // Settings the app core keeps itself (the screens' copy of them can be out of date): kept as
   // they are when the screens save. (Saving used to put an old empty mpv path back, so mpv had to
   // be chosen again after a restart.)
-  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone', 'xboxShareMap'];
+  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone', 'xboxShareMap', 'vpadGuid', 'ryujinxRealGuid'];
   handle('lib:save', (data) => {
     const next = library.normalize(data);
     for (const k of CORE_SETTINGS) if (lib && lib.settings && lib.settings[k] !== undefined) next.settings[k] = lib.settings[k];
