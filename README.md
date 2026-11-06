@@ -2,7 +2,9 @@
 
 A controller-first, console-style game launcher for Windows and Mac. It starts full screen when you sign in, finds your Steam and Epic games, runs Dolphin, RPCS3 and Ryujinx games, and lets you add anything else with your own artwork.
 
-<a href="docs/trailer.mp4"><img src="docs/trailer-poster.jpg" alt="Watch the Couch Launcher trailer (1:18)" width="100%"></a>
+<img src="docs/trailer-preview.webp" alt="The Couch Launcher trailer, playing" width="100%">
+
+<sub>The trailer plays above without sound. <a href="https://github.com/c-launch/couch-launcher/raw/main/docs/trailer.mp4">Download it with sound (1:18, 9 MB)</a>.</sub>
 
 <img src="docs/screen-home.jpg" alt="Home: your games from every store and emulator in one row" width="100%">
 
