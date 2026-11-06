@@ -1,6 +1,6 @@
 {
- "version": "1.19.0",
- "notes": "Idle screen: after a few minutes with nothing pressed, your game art fades through with the time (Settings › Display to change or turn off). Who's playing? now shows a picture of each player's controller, Switch style: Xbox, PlayStation, Switch Pro or Joy-Con, with player lights and its name, even when Steam Input or DS4Windows is in between.",
- "file": "CouchLauncher-update-1.19.0.zip",
- "size": 340492
+ "version": "1.19.1",
+ "notes": "Who's playing? cards are back to a clean look: each player shows their controller's name (Xbox Series, DualSense, Switch Pro, Joy-Con…), player lights and battery, without the drawings.",
+ "file": "CouchLauncher-update-1.19.1.zip",
+ "size": 338339
 }

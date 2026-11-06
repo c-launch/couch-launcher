@@ -1232,65 +1232,7 @@
     if (pd && pd.name) return { kind: pd.kind || 'xbox', name: pd.name };
     return { kind: 'xbox', name: 'Controller ' + (slot + 1) };
   }
-  // A drawing of the controller for the player cards (like the Switch's controller screen).
-  // kind: xbox, ps, nin, joycon, steam, other; empty: the outline shown while a spot is free.
-  function padArt(kind, empty) {
-    const stick = (x, y, c) => '<circle cx="' + x + '" cy="' + y + '" r="13" fill="' + c.well + '"/><circle cx="' + x + '" cy="' + y + '" r="9.5" fill="' + c.stick + '"/><circle cx="' + x + '" cy="' + y + '" r="6" fill="none" stroke="' + c.well + '" stroke-opacity=".35" stroke-width="1.2"/>';
-    const dpad = (x, y, c) => '<path d="M' + (x - 4) + ' ' + (y - 13) + 'h8v9h9v8h-9v9h-8v-9h-9v-8h9z" fill="' + c.dpad + '" stroke="' + c.well + '" stroke-opacity=".3" stroke-width="1" stroke-linejoin="round"/>';
-    const diamond = (x, y, cols, marks) => [[0, -10], [10, 0], [0, 10], [-10, 0]].map(([dx, dy], i) =>
-      '<circle cx="' + (x + dx) + '" cy="' + (y + dy) + '" r="5.6" fill="' + cols[i] + '"/>' + (marks ? marks[i](x + dx, y + dy) : '')).join('');
-    if (empty) {
-      return '<svg class="pp-art pp-free" viewBox="0 0 200 132" aria-hidden="true"><path d="M60 18h80c25 0 38 10 44 35l10 47c4 18-8 28-22 24-12-3-20-16-28-26H56c-8 10-16 23-28 26-14 4-26-6-22-24l10-47c6-25 19-35 44-35z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="7 6" stroke-linejoin="round"/></svg>';
-    }
-    if (kind === 'joycon') {
-      const half = (x, fill, flip) => '<rect x="' + x + '" y="10" width="44" height="112" rx="' + 18 + '" fill="' + fill + '"/>' +
-        '<rect x="' + (flip ? x : x + 30) + '" y="10" width="14" height="112" fill="' + fill + '"/>';
-      const c = { well: '#1d1d22', stick: '#3a3a42', dpad: '#2a2a30' };
-      return '<svg class="pp-art" viewBox="0 0 200 132" aria-hidden="true">' +
-        half(54, '#00b4e8', false) + half(102, '#ff4f4a', true) +
-        '<rect x="96" y="10" width="8" height="112" fill="#24242a" opacity=".55"/>' +
-        stick(76, 40, c) + [[0, -9], [9, 0], [0, 9], [-9, 0]].map(([dx, dy]) => '<circle cx="' + (76 + dx) + '" cy="' + (82 + dy) + '" r="4.6" fill="#1d1d22"/>').join('') +
-        stick(124, 82, c) + diamond(124, 40, ['#1d1d22', '#1d1d22', '#1d1d22', '#1d1d22']).replace(/r="5.6"/g, 'r="4.6"').replace(/cy="30"/g, 'cy="31"').replace(/cy="50"/g, 'cy="49"') +
-        '<rect x="62" y="16" width="14" height="3" rx="1.5" fill="#1d1d22" opacity=".6"/><circle cx="114" cy="62" r="3.4" fill="#1d1d22" opacity=".7"/></svg>';
-    }
-    // Body: the common shape, a rounder one for PlayStation.
-    const body = kind === 'ps'
-      ? 'M58 16h84c22 0 34 9 40 30l12 52c4 18-6 30-20 27-11-2-18-12-26-24-4-6-8-8-14-8H66c-6 0-10 2-14 8-8 12-15 22-26 24-14 3-24-9-20-27l12-52c6-21 18-30 40-30z'
-      : 'M60 18h80c25 0 38 10 44 35l10 47c4 18-8 28-22 24-12-3-20-16-28-26H56c-8 10-16 23-28 26-14 4-26-6-22-24l10-47c6-25 19-35 44-35z';
-    const look = {
-      xbox: { body: '#e9eaee', shade: '#cfd1d8', well: '#2a2c33', stick: '#41444d', dpad: '#3a3d45' },
-      ps: { body: '#f2f2f5', shade: '#d9dae0', well: '#1f2027', stick: '#33353d', dpad: '#d0d1d8' },
-      nin: { body: '#2c2d33', shade: '#1f2025', well: '#121317', stick: '#4a4c55', dpad: '#4a4c55' },
-      steam: { body: '#3b4252', shade: '#2e3442', well: '#171a21', stick: '#5a6275', dpad: '#5a6275' },
-      other: { body: '#4a4f5c', shade: '#3b404b', well: '#1b1d23', stick: '#6a7080', dpad: '#6a7080' }
-    }[kind] || null;
-    const c = look || { body: '#e9eaee', shade: '#cfd1d8', well: '#2a2c33', stick: '#41444d', dpad: '#3a3d45' };
-    let h = '<svg class="pp-art k-' + esc(kind || 'xbox') + '" viewBox="0 0 200 132" aria-hidden="true">' +
-      '<path d="' + body + '" fill="' + c.body + '"/>' +
-      '<path d="' + body + '" fill="none" stroke="' + c.shade + '" stroke-width="2.4" stroke-linejoin="round"/>';
-    if (kind === 'ps') {
-      // Two-tone middle, touch pad, light bar, the four shape buttons.
-      h += '<path d="M64 70c10-4 62-4 72 0l4 30H60z" fill="#1f2027"/>' +
-        '<rect x="74" y="24" width="52" height="32" rx="6" fill="#e6e7ec" stroke="#cfd0d7" stroke-width="1.4"/>' +
-        '<path d="M70 28v24M130 28v24" stroke="#4d8dff" stroke-width="2.6" stroke-linecap="round"/>' +
-        dpad(46, 48, c) + stick(80, 84, c) + stick(120, 84, c) +
-        diamond(154, 48, ['#f2f2f5', '#f2f2f5', '#f2f2f5', '#f2f2f5'], [
-          (x, y) => '<path d="M' + x + ' ' + (y - 3.2) + 'l3 5h-6z" fill="none" stroke="#2fb79a" stroke-width="1.3" stroke-linejoin="round"/>',
-          (x, y) => '<circle cx="' + x + '" cy="' + y + '" r="2.8" fill="none" stroke="#e5484d" stroke-width="1.3"/>',
-          (x, y) => '<path d="M' + (x - 2.5) + ' ' + (y - 2.5) + 'l5 5m0-5l-5 5" stroke="#4d8dff" stroke-width="1.3" stroke-linecap="round"/>',
-          (x, y) => '<rect x="' + (x - 2.5) + '" y="' + (y - 2.5) + '" width="5" height="5" fill="none" stroke="#d66bd0" stroke-width="1.3"/>'
-        ]).replace(/fill="#f2f2f5"\/>/g, 'fill="#f2f2f5" stroke="#c9cad1"/>') +
-        '<circle cx="100" cy="64" r="3.6" fill="#33353d"/>';
-    } else {
-      const cols = kind === 'xbox' || !look ? ['#f3c13a', '#e5484d', '#3fae3f', '#3d7bff'] : [c.stick, c.stick, c.stick, c.stick];
-      h += stick(54, 48, c) + dpad(80, 84, c) + stick(122, 84, c) + diamond(150, 48, cols) +
-        (kind === 'nin'
-          ? '<circle cx="110" cy="52" r="4" fill="' + c.stick + '"/><rect x="86" y="49" width="7" height="7" rx="1.5" fill="' + c.stick + '"/>'
-          : '<circle cx="100" cy="40" r="7" fill="' + (kind === 'xbox' || !look ? '#2a2c33' : c.stick) + '"/><circle cx="86" cy="54" r="3" fill="' + c.well + '"/><circle cx="114" cy="54" r="3" fill="' + c.well + '"/>');
-    }
-    return h + '</svg>';
-  }
-  // Switch-style lights under the drawing: player 1 lights one, player 2 two, and so on.
+  // Switch-style player lights: player 1 lights one, player 2 two, and so on.
   const padLights = (n) => '<span class="pp-leds">' + [0, 1, 2, 3].map((i) => '<i class="' + (i < n ? 'on' : '') + '"></i>').join('') + '</span>';
   // Re-render only the right side of Library/Settings (focus stays where it is).
   function refreshContent() {
@@ -1934,7 +1876,6 @@
         const pd = pads && slot != null ? pads.find((p) => p.slot === slot) : null;
         const info = slot != null ? slotInfo(slot) : null;
         return '<div class="pp' + (slot != null ? ' in' : '') + '"><div class="pp-n">Player ' + (i + 1) + '</div>' +
-          '<div class="pp-pic">' + padArt(info ? info.kind : null, !info) + '</div>' +
           (slot != null ? padLights(i + 1) + '<div class="pp-c pp-dev k-' + info.kind + '" data-slot="' + slot + '"><span class="pp-d"><b>' + esc(info.name) + '</b>' + (/^Controller \d/.test(info.name) ? '' : '<small>Controller ' + (slot + 1) + '</small>') + '</span>' + (pd ? batteryHTML(pd) : '') + '</div>'
             : '<div class="pp-c wait"><span>Press</span>' + glyph('A') + '<span>to join</span></div>') + '</div>';
       };

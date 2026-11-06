@@ -669,9 +669,9 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .home-tiles .row-inner > * { pointer-events: auto; }
 
 /* Who's playing? */
-.whoplays { width: 112rem; }
+.whoplays { width: 100rem; }
 .pp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.4rem; margin: 1.6rem 0 0.6rem; }
-.pp { border-radius: var(--r-card); background: var(--chip); padding: 2rem 1.6rem; min-height: 15rem; display: flex; flex-direction: column; gap: 1.2rem; border: 0.2rem solid transparent; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.pp { border-radius: var(--r-card); background: var(--chip); padding: 2rem 1.6rem; min-height: 15rem; display: flex; flex-direction: column; justify-content: space-between; gap: 1.2rem; border: 0.2rem solid transparent; transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
 .pp.in { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--chip)); animation: ppIn 260ms var(--ease) both; }
 @keyframes ppIn { from { transform: scale(0.94); } to { transform: none; } }
 .pp-n { font-size: 2.2rem; font-weight: 800; }
@@ -681,19 +681,14 @@ html.overlay-mode #prompts .glyph { color: #fff; border-color: #E7ECF1; }
 .pp-c .glyph { transform: scale(0.9); }
 .pp-c.pp-dev { align-items: center; min-height: 3.8rem; }
 .pp-d { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.2; }
-.pp-d b { font-weight: 700; font-size: 1.5rem; overflow-wrap: anywhere; }
-.pp-d small { font-size: 1.2rem; color: var(--sub); font-weight: 500; }
+.pp-d b { font-weight: 700; font-size: 1.7rem; overflow-wrap: anywhere; }
+.pp-d small { font-size: 1.3rem; color: var(--sub); font-weight: 500; }
 .pp-dev .bat { flex: none; }
-.pp-pic { display: flex; align-items: center; justify-content: center; height: 12rem; }
-.pp-art { width: 100%; max-width: 20rem; height: 100%; filter: drop-shadow(0 0.6rem 1.2rem rgba(0, 0, 0, 0.35)); }
-.pp-art.pp-free { color: var(--sub); opacity: 0.45; filter: none; }
-.pp.in .pp-art { animation: ppArt 420ms cubic-bezier(.2, 1.4, .4, 1) both; }
-@keyframes ppArt { from { transform: translateY(1.2rem) scale(0.8); opacity: 0; } to { transform: none; opacity: 1; } }
-.pp-leds { display: flex; gap: 0.6rem; justify-content: center; }
+.pp-leds { display: flex; gap: 0.6rem; margin-top: auto; }
 .pp-leds i { width: 1.6rem; height: 0.5rem; border-radius: 0.3rem; background: color-mix(in srgb, var(--text) 18%, transparent); }
 .pp-leds i.on { background: #4ade80; box-shadow: 0 0 0.8rem rgba(74, 222, 128, 0.7); }
-.pp .pp-c.wait { min-height: 3.8rem; justify-content: center; }
-.reduce-motion .pp.in .pp-art { animation: none; }
+.pp .pp-c.wait { min-height: 3.8rem; }
+
 .reduce-motion .pp.in { animation: none; }
 
 /* ---------- Gaming news (below Home: focus slides the page up) ---------- */
