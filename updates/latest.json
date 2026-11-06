@@ -1,6 +1,6 @@
 {
- "version": "1.18.2",
- "notes": "Mac: fixed the launcher switching full screen on and off in a loop (black flashing screen). New: Settings › Display › Full screen, to open the launcher in a normal window instead (also in the Mac menu bar: Couch Launcher › Full Screen).",
- "file": "CouchLauncher-update-1.18.2.zip",
- "size": 330015
+ "version": "1.18.3",
+ "notes": "Anti-cheat games (Fortnite, Valorant, Apex and others): the launcher now keeps its hands off them, so their anti-cheat won't kick you for a 'forbidden tool'. While one runs it isn't paused by the guide, the Share button doesn't press Medal's keys for you, the background controller reader is off and its window isn't moved.",
+ "file": "CouchLauncher-update-1.18.3.zip",
+ "size": 332255
 }

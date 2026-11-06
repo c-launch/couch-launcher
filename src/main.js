@@ -7,6 +7,7 @@ const scanners = require('./scanners');
 const library = require('./library');
 const { createControllerWatcher, loadXInput, readPads } = require('./hotkey');
 const { asGamepad } = require('./macpads');
+const anticheat = require('./anticheat');
 const { createPadMouse } = require('./padmouse');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
@@ -137,6 +138,11 @@ if (!app.requestSingleInstanceLock()) {
   });
   function pressMedal(kind) {
     if (!w32 || !lib) return false;
+    if (running && running.protected) {
+      // Keys pressed for you look like a macro tool to anti-cheat (BattlEye's "forbidden tool").
+      if (!running.medalHinted) { running.medalHinted = true; notify('Share clips are off in this game', 'Its anti-cheat kicks you for keys pressed by another program. Use Medal’s own clip key on the keyboard.'); }
+      return false;
+    }
     const key = kind === 'clip' ? (lib.settings.medalClipKey || 'F8') : lib.settings.medalShotKey;
     const k = require('./capture').parseKey(key);
     if (!k) {
@@ -156,7 +162,28 @@ if (!app.requestSingleInstanceLock()) {
   function rawPadsWanted() {
     if (!w32 || !lib || process.platform !== 'win32') return false;
     const s = lib.settings;
-    return s.medalShare !== false && !!s.xboxShareMap && (s.medalXbox || 'auto') !== 'combo';
+    return s.medalShare !== false && !!s.xboxShareMap && (s.medalXbox || 'auto') !== 'combo' && !(running && running.protected);
+  }
+  // Anti-cheat games (Fortnite, Valorant, Apex…): spotted by name, by their anti-cheat folders, or
+  // by the anti-cheat service that runs with them. Then the launcher keeps its hands off the game.
+  function watchProtection(r, g) {
+    const mark = (why) => {
+      if (running !== r || r.protected) return;
+      r.protected = why;
+      syncRawPads();
+      if (pauser.available) pauser.resumeAll();
+    };
+    if (anticheat.titleIsProtected(g && g.title)) mark('title');
+    const dirs = [r.dir, g && g.launch && g.launch.exe ? path.dirname(g.launch.exe) : null].filter(Boolean);
+    setTimeout(() => { for (const d of dirs) if (!r.protected && anticheat.dirIsProtected(d)) mark('folder'); }, 0);
+    if (process.platform !== 'win32') return;
+    let busy = false, tries = 0;
+    r.acTimer = setInterval(() => {
+      if (running !== r || r.protected || ++tries > 60) { clearInterval(r.acTimer); return; }
+      if (busy) return;
+      busy = true;
+      execFile('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 8000 }, (err, out) => { busy = false; if (!err && anticheat.processesShowProtection(out)) mark('service'); });
+    }, 5000);
   }
   function syncRawPads() {
     const on = rawPadsWanted();
@@ -179,11 +206,13 @@ if (!app.requestSingleInstanceLock()) {
   // Controller as a mouse in Apple Music / Spotify (setting, on by default).
   const padMouse = createPadMouse(loadXInput, () => !(lib && lib.settings && lib.settings.musicMouse === false));
   const w32 = createWin32();
+  if (w32) w32.isGentle = () => !!(running && running.protected);
 
   // Pause the game whenever the guide or the launcher is in front of it (setting, on by default).
   const wantPause = () => {
     const r = running;
     if (!r || !r.started || r.closing || !pauser.available) return false;
+    if (r.protected) return false; // anti-cheat games: never paused (their anti-cheat would kick you)
     if (lib && lib.settings && lib.settings.pauseGame === false) return false;
     return overlayShown() || !!(win && !win.isDestroyed() && win.isFocused());
   };
@@ -610,7 +639,7 @@ if (!app.requestSingleInstanceLock()) {
   // Games open on Windows' main monitor; if a different one is chosen in Settings › Display,
   // move the game's window there (works for windowed and borderless full-screen games).
   function moveGameToChosenMonitor(r) {
-    if (!w32 || !r.gameHwnd || !lib.settings.displayId) return;
+    if (!w32 || !r.gameHwnd || !lib.settings.displayId || r.protected) return;
     const d = targetDisplay();
     if (d.id === screen.getPrimaryDisplay().id) return;
     const px = process.platform === 'win32' && screen.dipToScreenRect ? screen.dipToScreenRect(null, d.bounds) : d.bounds;
@@ -843,6 +872,7 @@ if (!app.requestSingleInstanceLock()) {
       throw new Error('This game has no launch target');
     }
     controller.setGameRunning(true);
+    if (L.type !== 'emu') watchProtection(running, g);
     applyDisplay(running, g);
     if (g.source === 'roblox') running.forceClose = true; // Roblox ignores a normal close; nothing to save
     running.audioDirs = L.type === 'url' || L.type === 'appx' ? [L.dir] : L.type === 'emu' ? [path.dirname(lib.platforms[L.emu].exe)] : L.type === 'exe' ? [path.dirname(L.exe)] : [];
@@ -1652,7 +1682,7 @@ if (!app.requestSingleInstanceLock()) {
     presentApp([path.basename(cfg.exe).toLowerCase()], scanners.EMULATORS[id].name, 15000);
     return true;
   });
-  handle('game:status', () => (running ? { gameId: running.gameId, canClose: canClose(), seen: !!(running.child || running.seen) } : null));
+  handle('game:status', () => (running ? { gameId: running.gameId, canClose: canClose(), seen: !!(running.child || running.seen), protected: !!running.protected } : null));
   handle('game:close', (force) => closeRunning(!!force));
   handle('game:resume', () => {
     if (overlayShown()) { hideOverlay(true); return true; }

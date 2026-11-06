@@ -133,6 +133,7 @@
     x: '<path d="M6 6l12 12M18 6L6 18"/>',
     palette: '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-1.1-.9-1.4-.9-2.4 0-.9.7-1.4 1.6-1.4H17a4 4 0 0 0 4-4c0-4.8-4-8.5-9-8.5z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
+    shield: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
     trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6M10 17h4"/>',
     link: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
     key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/>',
@@ -2228,7 +2229,9 @@
         const cur = S.playing && byId(S.playing.id);
         if (cur) {
           h += '<div class="glabel">Now playing</div><div class="gnow">' + thumb(cur) + '<div class="gnow-t">' + esc(cur.title) +
-            (ach && ach.id === cur.id && ach.v ? '<small class="ach">' + icon('trophy') + ach.v.got + '/' + ach.v.total + ' achievements' + (ach.v.recent.length ? ' · latest: ' + esc(ach.v.recent[0]) : '') + '</small>' : '') + '</div></div>' +
+            (ach && ach.id === cur.id && ach.v ? '<small class="ach">' + icon('trophy') + ach.v.got + '/' + ach.v.total + ' achievements' + (ach.v.recent.length ? ' · latest: ' + esc(ach.v.recent[0]) : '') + '</small>' : '') +
+            // Anti-cheat games aren't paused (or touched at all) while the guide is open.
+            (status && status.protected ? '<small>' + icon('shield') + 'Anti-cheat game: it keeps running while you’re here</small>' : '') + '</div></div>' +
             item('g-resume', 'resume', 'Resume game', 'data-act="resume"') +
             (status && status.canClose ? item('g-close', 'x', 'Close game', 'data-act="close"', 'danger') : '') + '<div class="gsep"></div>';
         }

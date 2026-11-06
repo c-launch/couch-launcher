@@ -106,9 +106,11 @@ function createWin32() {
       focus: (h) => SetForegroundWindow(h),
       // Takes focus even from the background: briefly share input with the program that has focus,
       // take it, then stop sharing. No fake key presses.
+      // isGentle (set by the app): while an anti-cheat game runs, never share input with it.
+      isGentle: null,
       forceForeground(h) {
         const fg = GetForegroundWindow();
-        if (!fg || Number(fg) === h) { SetForegroundWindow(h); return; }
+        if (!fg || Number(fg) === h || (typeof this.isGentle === 'function' && this.isGentle())) { BringWindowToTop(h); SetForegroundWindow(h); return; }
         const pid = [0];
         const fgThread = GetWindowThreadProcessId(fg, pid);
         const me = GetCurrentThreadId();
