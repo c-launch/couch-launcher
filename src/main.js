@@ -626,6 +626,7 @@ if (!app.requestSingleInstanceLock()) {
       r.gameHwnd = game.hwnd;
       if (game.pid) r.gamePid = game.pid;
       moveGameToChosenMonitor(r);
+      if (!r.monitorWatched) { r.monitorWatched = true; watchGameMonitor(r); }
       w32.placeBelow(w32.hwndOf(win), game.hwnd);
       w32.focus(game.hwnd);
     } else if (MAC) {
@@ -659,6 +660,25 @@ if (!app.requestSingleInstanceLock()) {
     // Some games reposition themselves while they finish starting: check again.
     setTimeout(place, 1500);
     setTimeout(place, 5000);
+  }
+  // Did the game end up on the chosen monitor? (Full-screen games that grab Windows' main monitor
+  // can't be moved.) If not, the launcher offers to make the chosen one the main monitor for it.
+  function watchGameMonitor(r) {
+    if (!w32 || MAC || !lib.settings.displayId || r.layoutRestore) return;
+    const check = () => {
+      if (running !== r || r.layoutRestore) return;
+      const d = targetDisplay();
+      if (d.id === screen.getPrimaryDisplay().id) { r.wrongMonitor = false; return; }
+      let h = r.gameHwnd;
+      if (!h || !w32.exists(h)) { const fg = gameWindow(r); h = fg && fg.hwnd; }
+      if (!h) return;
+      const cur = w32.rect(h);
+      if (!cur || cur.width < 200 || cur.height < 150) return;
+      const px = toPx(d.bounds), cx = cur.x + cur.width / 2, cy = cur.y + cur.height / 2;
+      r.wrongMonitor = !(cx >= px.x && cx < px.x + px.width && cy >= px.y && cy < px.y + px.height);
+    };
+    setTimeout(check, 9000);
+    setTimeout(check, 25000);
   }
 
   // The window that has the screen now, if it isn't ours (and, for store games, belongs to the game).
@@ -701,7 +721,9 @@ if (!app.requestSingleInstanceLock()) {
     if (r.emu && g && g.launch && rsm().supported(r.emu) && lib.settings.saveStates !== false) { try { rsm().recordAfter(r.emu, (lib.platforms[r.emu] || {}).exe, r.gameId, g.launch, r.startedAt); } catch (_) { /* fine */ } }
     if (r.emu && typeof afterGameBackup === 'function') afterGameBackup(r.emu);
     bringBack(false);
-    send('game:exited', Object.assign({ gameId: r.gameId, seconds }, extra || {}));
+    // It played on the wrong monitor (and it isn't set to switch the main one): ask about it.
+    const wrongMonitor = !!(r.wrongMonitor && seconds >= 20 && g && !mainWhilePlaying(g) && !(g.display && g.display.main === false));
+    send('game:exited', Object.assign({ gameId: r.gameId, seconds, wrongMonitor }, extra || {}));
   }
 
   function startProcess(exe, args, cwd, gameId) {
@@ -1033,12 +1055,35 @@ if (!app.requestSingleInstanceLock()) {
       send('phone', { b });
       return { ok: true };
     },
+    // The PC's sound (the output in use), like the guide's volume.
+    volume: async () => { const a = await audio().state(); return { volume: a.volume, muted: a.muted, output: a.current ? a.current.label || a.current.name || '' : '' }; },
+    setVolume: async (q) => {
+      let a = null;
+      if (typeof q.mute === 'boolean') a = await audio().setMute(q.mute);
+      if (typeof q.v === 'number' || typeof q.step === 'number') {
+        let v = q.v;
+        if (typeof v !== 'number') { const cur = await audio().state(); v = Math.max(0, Math.min(100, (cur.volume < 0 ? 50 : cur.volume) + q.step)); }
+        a = await audio().setVolume(v);
+        if (a.muted && v > 0 && typeof q.mute !== 'boolean') a = await audio().setMute(false);
+      }
+      return { volume: a ? a.volume : -1, muted: !!(a && a.muted) };
+    },
     onText: (t, enter) => {
       const to = overlayShown() ? 'overlay' : 'win';
       if (to === 'overlay') sendOverlay('phone', { text: t, enter }); else send('phone', { text: t, enter });
       return { ok: true };
     },
     onLaunch: (id) => {
+      // Apps (Movies & TV, YouTube): opened like from the guide, so they work during a game too.
+      if (id === 'app:tv' || id === 'app:youtube') {
+        const target = id.slice(4);
+        if (tvPart && tvPart.playing && target !== 'tv') tvPart.stop('guide');
+        if (ytGuide) { ytGuide = false; if (yt) yt.hide(); }
+        hideOverlay();
+        bringBack(false);
+        send('remote', { action: 'goto', id: null, target, friend: null });
+        return { ok: true };
+      }
       const g = lib.games.find((x) => x.id === id);
       if (!g) return { ok: false, error: 'That game isn’t in your library' };
       if (running) return { ok: false, error: 'A game is already running. Close it from the guide first.' };
@@ -1160,8 +1205,10 @@ if (!app.requestSingleInstanceLock()) {
   // main display open on the chosen one, which becomes the main one until the game ends. What to put
   // back is saved in a file first, so a crash or power cut can't leave it switched.
   const layoutFile = () => path.join(app.getPath('userData'), 'display-layout.json');
+  // On for this game (its TV settings), or for every game (Settings › Display) unless turned off for it.
+  const mainWhilePlaying = (g) => (g && g.display && typeof g.display.main === 'boolean' ? g.display.main : !!(lib && lib.settings.mainWhilePlaying));
   function switchPrimaryFor(r, g) {
-    if (!dsp() || !r || !lib.settings.displayId || !(g && g.display && g.display.main)) return; // only games you turned it on for
+    if (!dsp() || !r || !lib.settings.displayId || !mainWhilePlaying(g)) return; // only where it's turned on
     try {
       const dev = displayDevice();
       if (!dev || (dev.x === 0 && dev.y === 0)) return; // already the main display

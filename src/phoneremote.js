@@ -44,7 +44,8 @@ const newToken = () => crypto.randomBytes(16).toString('hex');
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 // opts: token() -> code, onButton(b) -> result, onText(text, enter) -> result, onLaunch(id) -> result,
-// games() -> [{ id, title, platform, art }], state() -> { playing, guide }
+// games() -> [{ id, title, platform, art }], state() -> { playing, guide },
+// volume() -> { volume, muted }, setVolume({ v | step | mute }) -> { volume, muted }
 function createPhoneRemote(opts) {
   let server = null, port = 0;
   const pagePath = path.join(__dirname, 'phone.html');
@@ -73,7 +74,11 @@ function createPhoneRemote(opts) {
       return res.end(html);
     }
     if (req.method === 'GET' && what === '/state') return json(res, 200, opts.state());
+    if (req.method === 'GET' && what === '/volume') {
+      try { return json(res, 200, await opts.volume()); } catch (e) { return json(res, 200, { error: String(e && e.message || e) }); }
+    }
     if (req.method === 'GET' && what === '/games') return json(res, 200, opts.games().map((g) => ({ id: g.id, title: g.title, platform: g.platform || '', art: !!g.art })));
+    if (req.method === 'GET' && what === '/apps') return json(res, 200, [{ id: 'app:tv', title: 'Movies & TV' }, { id: 'app:youtube', title: 'YouTube' }]);
     if (req.method === 'GET' && what === '/art' && arg) {
       const g = opts.games().find((x) => x.id === arg);
       if (!g || !g.art) { res.writeHead(404); return res.end(); }
@@ -97,8 +102,16 @@ function createPhoneRemote(opts) {
         const t = typeof body.t === 'string' ? body.t.slice(0, 200) : '';
         return json(res, 200, (await opts.onText(t, !!body.enter)) || { ok: true });
       }
+      if (what === '/volume') {
+        const req2 = {};
+        if (typeof body.v === 'number' && isFinite(body.v)) req2.v = Math.max(0, Math.min(100, Math.round(body.v)));
+        if (typeof body.step === 'number' && isFinite(body.step)) req2.step = Math.max(-20, Math.min(20, Math.round(body.step)));
+        if (typeof body.mute === 'boolean') req2.mute = body.mute;
+        if (!Object.keys(req2).length) return json(res, 400, { error: 'Bad request' });
+        try { return json(res, 200, await opts.setVolume(req2)); } catch (e) { return json(res, 200, { error: String(e && e.message || e) }); }
+      }
       if (what === '/launch') {
-        if (typeof body.id !== 'string') return json(res, 400, { error: 'Bad request' });
+        if (typeof body.id !== 'string' || body.id.length > 120) return json(res, 400, { error: 'Bad request' });
         return json(res, 200, (await opts.onLaunch(body.id)) || { ok: true });
       }
     }

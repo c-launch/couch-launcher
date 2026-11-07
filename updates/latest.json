@@ -1,6 +1,6 @@
 {
- "version": "1.21.0",
- "notes": "New: Phone remote (Settings › Controllers). Turn it on and scan the code with your phone: a d-pad, A/B/X/Y, Guide, typing into text boxes on the TV, and your game list to start a game from. Works on your home Wi-Fi only, with a private link you can renew.",
- "file": "CouchLauncher-update-1.21.0.zip",
- "size": 362394
+ "version": "1.21.1",
+ "notes": "Phone remote: volume control (slider, up/down, mute) and Movies & TV and YouTube at the top of the Games tab. Games that open on the wrong monitor: after the game, the launcher offers to make your TV the main monitor whenever that game runs, and Settings › Display has an option to do it for every game.",
+ "file": "CouchLauncher-update-1.21.1.zip",
+ "size": 365416
 }

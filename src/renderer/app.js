@@ -992,6 +992,8 @@
         (IS_MAC ? '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">Games open on whatever monitor they choose; most use the main monitor, which you can change in System Settings › Displays.</p>'
           : '<p class="field-note" style="margin-top:2rem;font-size:1.5rem">A game still opens on another monitor? Some games, older ones especially, only open on Windows’ main monitor. In that game’s menu, choose <b>TV settings for this game › Make it the main monitor while playing</b>.</p>') +
         '<div class="sub-h">Window</div><div class="toggles" style="grid-template-columns:1fr">' +
+        (IS_MAC ? '' : '<button class="toggle-row" data-nav data-key="d-mainmon" data-zone="body" data-action="main-mon"><span><div>Games that open on the main monitor</div><div class="d">Some games always open on Windows’ main monitor. The launcher can move them, or make this screen the main monitor while you play (screens blink once at the start and end). Each game can also have its own choice in its TV settings.</div></span><span>' +
+          (s.mainWhilePlaying ? 'Make this the main monitor' : 'Move them here') + '</span></button>') +
         '<button class="toggle-row" data-nav data-key="d-idle" data-zone="body" data-action="idle-time"><span><div>Idle screen</div><div class="d">A slideshow of your games and the time when nothing’s been pressed for a while</div></span><span>' + (idleMinutes() ? 'After ' + idleMinutes() + ' min' : 'Off') + '</span></button>' +
         toggleHTML('d-full', 'Full screen', !S.info.windowed, 'Off: the launcher opens in a normal window you can move and resize. It restarts to switch.' + (IS_MAC ? ' (Also in the menu bar: Couch Launcher › Full Screen.)' : ''), 'full-toggle', '') + '</div>';
     }
@@ -2103,6 +2105,14 @@
       S.heroId = null;
       renderView(true, true);
     }
+    if (payload && payload.wrongMonitor && g) offerMainMonitor(g);
+  }
+  // A game played on Windows' main monitor instead of the chosen one: offer the fix for next time.
+  async function offerMainMonitor(g) {
+    await new Promise((r) => setTimeout(r, 700));
+    const ok = await confirmBox(g.title + ' opened on your other monitor', 'It wouldn’t move to this screen. Next time, the launcher can make this screen the main monitor while ' + g.title + ' runs, so it opens here (your screens blink once when it starts and once when it ends).', 'Do that for this game', false, { cancelLabel: 'No thanks', focusOk: true });
+    if (ok) { g.display = Object.assign({}, g.display || {}, { main: true }); save(); toast('Done. ' + g.title + ' will open on this screen'); }
+    else { g.display = Object.assign({}, g.display || {}, { main: false }); save(); }
   }
   function waitForExit(ms) {
     return new Promise((resolve) => {
@@ -3717,6 +3727,8 @@
     });
   }
 
+  // Is "make it the main monitor while playing" on for this game (its own choice, or all games')?
+  const mainFor = (g) => (g && g.display && typeof g.display.main === 'boolean' ? g.display.main : !!S.lib.settings.mainWhilePlaying);
   // Per-game resolution / refresh rate / HDR on the chosen display (put back when the game ends).
   const displayLabel = (d) => [d.main ? 'main monitor' : '', d.w ? d.w + '×' + d.h : '', d.hz ? d.hz + ' Hz' : '', d.hdr === 'on' ? 'HDR on' : d.hdr === 'off' ? 'HDR off' : ''].filter(Boolean).join(', ') || 'Normal';
   async function displaySettings(g) {
@@ -3728,7 +3740,7 @@
       const pick = await openMenu('TV settings · ' + g.title, [
         // For games that only open on Windows' main monitor: the launcher's monitor becomes the
         // main one while this game runs (the screens blink once at the start and once at the end).
-        { id: 'main', label: 'Make it the main monitor while playing: ' + (d.main ? 'On' : 'Off'), icon: 'monitor' },
+        { id: 'main', label: 'Make it the main monitor while playing: ' + (mainFor(g) ? 'On' : 'Off') + (typeof d.main === 'boolean' ? '' : ' (like all games)'), icon: 'monitor' },
         { id: 'res', label: 'Resolution: ' + (d.w ? d.w + '×' + d.h : 'Normal (' + info.current.w + '×' + info.current.h + ')'), icon: 'monitor' },
         { id: 'hz', label: 'Refresh rate: ' + (d.hz ? d.hz + ' Hz' : 'Normal (' + info.current.hz + ' Hz)'), icon: 'refresh' }
       ].concat(info.hdr && info.hdr.supported ? [{ id: 'hdr', label: 'HDR: ' + (d.hdr === 'on' ? 'On' : d.hdr === 'off' ? 'Off' : 'Normal (' + (info.hdr.enabled ? 'on' : 'off') + ')'), icon: 'palette' }] : [])
@@ -3737,11 +3749,12 @@
       const nd = Object.assign({}, d);
       if (pick === 'reset') { delete g.display; save(); toast('This game uses your normal display settings'); return; }
       if (pick === 'main') {
-        if (d.main) delete nd.main;
+        const all = !!S.lib.settings.mainWhilePlaying;
+        if (mainFor(g)) { if (all) nd.main = false; else delete nd.main; }
         else {
           const ok = await confirmBox('Open ' + g.title + ' on this monitor?', 'For games that only open on Windows’ main monitor. While it runs, the launcher’s monitor becomes the main one (your taskbar moves there too). Your screens blink once when the game starts and once when it ends.', 'Turn on', false);
           if (!ok) continue;
-          nd.main = true;
+          if (all) delete nd.main; else nd.main = true;
         }
       }
       if (pick === 'res') {
@@ -4013,6 +4026,16 @@
       }
       case 'theme': s.theme = el.dataset.id; s.accent = null; return themeChanged();
       case 'corners': s.corners = el.dataset.id; return themeChanged();
+      case 'main-mon': {
+        const r = await openMenu('Games that open on the main monitor', [
+          { id: 'move', label: 'Move them to this screen (works for most games)', icon: s.mainWhilePlaying ? 'monitor' : 'check' },
+          { id: 'main', label: 'Make this the main monitor while playing (every game)', icon: s.mainWhilePlaying ? 'check' : 'monitor' }
+        ]);
+        if (!r) return;
+        s.mainWhilePlaying = r === 'main'; save(); refreshContent();
+        toast(r === 'main' ? 'Every game: this screen becomes the main monitor while you play' : 'Games are moved to this screen');
+        return;
+      }
       case 'idle-time': {
         const opts = [2, 5, 10, 30, 0];
         const r = await openMenu('Idle screen', opts.map((m) => ({ id: String(m), label: m ? 'After ' + m + ' minutes' : 'Off', icon: m === idleMinutes() ? 'check' : (m ? 'moon' : 'x') })));

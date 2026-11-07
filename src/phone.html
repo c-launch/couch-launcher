@@ -50,12 +50,29 @@
   .pressed, button:active { transform: scale(.94); filter: brightness(1.25); }
   .shoulders { display: flex; gap: 10px; margin-top: 22px; }
   .shoulders button { flex: 1; height: 44px; border-radius: 12px; border: 0; background: var(--card2); color: var(--text); font: inherit; font-weight: 700; }
+  .vol { margin-top: 22px; background: var(--card); border-radius: 16px; padding: 12px 14px 14px; }
+  .vol-top { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--sub); font-weight: 600; margin-bottom: 10px; }
+  .vol-top b { color: var(--text); font-size: 14px; }
+  .vol-row { display: flex; align-items: center; gap: 10px; }
+  .vol-row button { width: 44px; height: 44px; flex: none; border-radius: 12px; border: 0; background: var(--card2); color: var(--text); display: flex; align-items: center; justify-content: center; }
+  .vol-row button svg { width: 22px; height: 22px; }
+  .vol-row button.on { background: var(--red); }
+  input[type=range] { flex: 1; -webkit-appearance: none; appearance: none; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--accent) var(--p, 50%), var(--card2) var(--p, 50%)); outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+  input[type=range]::-moz-range-thumb { width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 0; }
+  .vol.off { opacity: .45; pointer-events: none; }
   .hint { color: var(--sub); font-size: 12.5px; text-align: center; margin-top: 18px; }
 
   /* Games */
   .search { position: sticky; top: 0; background: var(--bg); padding: 4px 0 10px; z-index: 1; }
   input[type=search], textarea { width: 100%; background: var(--card); border: 1px solid var(--line); color: var(--text); font: inherit; font-size: 16px; padding: 12px 14px; border-radius: 12px; outline: none; }
   input[type=search]:focus, textarea:focus { border-color: var(--accent); }
+  .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .app { height: 64px; border: 0; border-radius: 14px; color: #fff; font: inherit; font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 10px; padding: 0 14px; text-align: left; }
+  .app svg { width: 26px; height: 26px; flex: none; }
+  .app.tv { background: linear-gradient(135deg, #5b3df5, #2f6fde); }
+  .app.yt { background: linear-gradient(135deg, #e5302a, #b3160f); }
+  .sub { color: var(--sub); font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin: 2px 2px 8px; }
   .games { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .game { border: 0; padding: 0; background: var(--card); border-radius: 12px; overflow: hidden; color: var(--text); text-align: left; font: inherit; }
   .game .art { aspect-ratio: 1; background: var(--card2) center / cover no-repeat; display: flex; align-items: flex-end; padding: 6px; font-size: 11px; font-weight: 700; color: var(--sub); }
@@ -105,11 +122,24 @@
     <div class="shoulders">
       <button data-b="LB">LB</button><button data-b="LT" data-repeat>LT</button><button data-b="RT" data-repeat>RT</button><button data-b="RB">RB</button>
     </div>
+    <div class="vol off" id="vol">
+      <div class="vol-top"><span id="vol-out">PC volume</span><b id="vol-n">–</b></div>
+      <div class="vol-row">
+        <button id="vol-mute" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path id="vol-wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+        <button id="vol-down" aria-label="Volume down"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+        <input type="range" id="vol-s" min="0" max="100" step="1" value="50" aria-label="Volume">
+        <button id="vol-up" aria-label="Volume up"><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></svg></button>
+      </div>
+    </div>
     <div class="hint">Moves around Couch Launcher and the guide. During a game, press Guide.</div>
   </section>
 
   <section class="tab" id="t-games">
     <div class="search"><input type="search" id="q" placeholder="Search your games" autocomplete="off" spellcheck="false"></div>
+    <div id="appsWrap"><div class="sub">Apps</div><div class="apps">
+      <button class="app tv" data-app="app:tv"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 3l4 3 4-3"/></svg>Movies &amp; TV</button>
+      <button class="app yt" data-app="app:youtube"><svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg>YouTube</button>
+    </div><div class="sub">Games</div></div>
     <div class="games" id="games"></div>
   </section>
 
@@ -181,7 +211,12 @@
     $('#games').innerHTML = list.length ? list.map((g) => '<button class="game" data-id="' + esc(g.id) + '"><div class="art"' + (g.art ? ' style="background-image:url(\'' + base + '/art/' + encodeURIComponent(g.id) + '\')"' : '') + '>' + (g.art ? '' : esc(g.platform || '')) + '</div><div class="t">' + esc(g.title) + '</div></button>').join('')
       : '<div class="empty">' + (q ? 'No games match.' : 'No games yet.') + '</div>';
   }
-  $('#q').addEventListener('input', draw);
+  $('#q').addEventListener('input', () => { $('#appsWrap').style.display = $('#q').value.trim() ? 'none' : ''; draw(); });
+  document.querySelectorAll('[data-app]').forEach((b) => b.addEventListener('click', async () => {
+    buzz();
+    const r = await post('/launch', { id: b.dataset.app });
+    if (r && r.ok) { toast('Opening ' + b.textContent.trim() + '…'); document.querySelector('[data-tab=remote]').click(); }
+  }));
   let pick = null;
   $('#games').addEventListener('click', (e) => {
     const b = e.target.closest('.game'); if (!b) return;
@@ -207,6 +242,33 @@
   $('#send').addEventListener('click', () => sendText(false));
   $('#enter').addEventListener('click', () => sendText(true));
 
+  // Volume (the PC's sound output)
+  let vol = { volume: -1, muted: false }, dragging = false, volT = 0;
+  function showVol(v) {
+    if (!v || v.error || typeof v.volume !== 'number' || v.volume < 0) { $('#vol').classList.add('off'); return; }
+    vol = v; $('#vol').classList.remove('off');
+    if (!dragging) $('#vol-s').value = v.volume;
+    $('#vol-s').style.setProperty('--p', (dragging ? $('#vol-s').value : v.volume) + '%');
+    $('#vol-n').textContent = v.muted ? 'Muted' : v.volume + '%';
+    if (v.output) $('#vol-out').textContent = v.output;
+    $('#vol-mute').classList.toggle('on', !!v.muted);
+    $('#vol-wave').style.display = v.muted ? 'none' : '';
+  }
+  async function volPost(body) { const r = await post('/volume', body); if (r && !r.error) showVol(Object.assign({}, vol, r)); }
+  async function loadVol() { try { const r = await fetch(base + '/volume', { cache: 'no-store' }); showVol(await r.json()); } catch (_) { /* offline */ } }
+  $('#vol-mute').addEventListener('click', () => { buzz(); volPost({ mute: !vol.muted }); });
+  $('#vol-down').addEventListener('click', () => { buzz(); volPost({ step: -5 }); });
+  $('#vol-up').addEventListener('click', () => { buzz(); volPost({ step: 5 }); });
+  const slider = $('#vol-s');
+  slider.addEventListener('input', () => {
+    dragging = true;
+    slider.style.setProperty('--p', slider.value + '%');
+    $('#vol-n').textContent = slider.value + '%';
+    clearTimeout(volT); volT = setTimeout(() => volPost({ v: Number(slider.value) }), 120);
+  });
+  slider.addEventListener('change', () => { clearTimeout(volT); dragging = false; volPost({ v: Number(slider.value) }); });
+  loadVol();
+
   // What's on the TV
   async function poll() {
     try {
@@ -216,8 +278,8 @@
     } catch (_) { setOnline(false, 'Can’t reach Couch Launcher. Is the PC on and on the same Wi-Fi?'); }
   }
   poll();
-  setInterval(() => { if (!document.hidden) poll(); }, 4000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  setInterval(() => { if (!document.hidden) { poll(); if (!dragging) loadVol(); } }, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); loadVol(); } });
 })();
 </script>
 </body>
