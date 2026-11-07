@@ -1,6 +1,6 @@
 {
- "version": "1.20.0",
- "notes": "New: Steady players in Ryujinx (Settings › Controllers). The launcher holds a virtual controller for each player during the game, so a controller dying mid-game no longer shuffles the players; when it's back on it takes its spot again. Needs the free ViGEmBus driver (installed from the same place, Windows asks once) and a one-time setup with Ryujinx. Off until you turn it on.",
- "file": "CouchLauncher-update-1.20.0.zip",
- "size": 349146
+ "version": "1.21.0",
+ "notes": "New: Phone remote (Settings › Controllers). Turn it on and scan the code with your phone: a d-pad, A/B/X/Y, Guide, typing into text boxes on the TV, and your game list to start a game from. Works on your home Wi-Fi only, with a private link you can renew.",
+ "file": "CouchLauncher-update-1.21.0.zip",
+ "size": 362394
 }

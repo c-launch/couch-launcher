@@ -1027,6 +1027,8 @@
         '<button class="toggle-row" data-nav data-key="c-players" data-zone="body" data-action="players-setup"><span><div>Players</div><div class="d">' + esc(playersLabel()) + '</div></span><span class="status ok">Set up</span></button>' +
         '<button class="toggle-row" data-nav data-key="c-pick" data-zone="body" data-action="pick-mode"><span><div>Players in emulator games</div><div class="d">Ryujinx, Dolphin and RPCS3 (Xbox-style controllers).</div></span><span class="status ok">' +
           ({ saved: 'Use my saved players', ask: 'Ask every time', auto: 'Ask every time', always: 'Ask every time', off: 'Leave as set in the emulator' }[S.lib.settings.pickPlayers || 'saved']) + '</span></button>' +
+        '<button class="toggle-row" data-nav data-key="c-phone" data-zone="body" data-action="phone-remote"><span><div>Phone remote</div><div class="d">Use your phone as a remote on your home Wi-Fi: move around, type into text boxes, start games, open the guide.</div></span><span class="status ok">' +
+          (S.lib.settings.phoneRemote ? 'On' : 'Off') + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="c-steady" data-zone="body" data-action="steady"><span><div>Steady players in Ryujinx</div><div class="d">The launcher holds a virtual controller for each player during the game, so a controller dying doesn’t shuffle the players. When it’s back on, it takes its spot again.</div></span><span class="status ok">' +
           (S.lib.settings.steadyPlayers ? 'On' : 'Off') + '</span></button>' +
         toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
@@ -1870,6 +1872,41 @@
     save();
     if (S.view === 'settings') refreshContent();
     toast(slots.length + (slots.length === 1 ? ' player' : ' players') + ' saved');
+  }
+  // Settings › Controllers › Phone remote: the QR code to scan, on / off, a new link.
+  async function phoneRemote() {
+    let info;
+    try { info = await api.phoneInfo(); } catch (e) { toast(e.message, true); return; }
+    const body = () => {
+      if (!info.on) return '<p class="hint">Turn it on, then scan the code with your phone’s camera. Your phone has to be on the same Wi-Fi as this PC. The first time, Windows may ask whether Couch Launcher can use the network: choose <b>Private networks</b> and Allow.</p>';
+      if (!info.url) return '<p class="hint">' + (info.running ? 'This PC doesn’t seem to be on a home network right now (no Wi-Fi or cable address found).' : 'The remote couldn’t start. Try turning it off and on.') + '</p>';
+      let qr = '';
+      try { qr = window.CouchQR.qrSVG(info.url); } catch (_) { qr = ''; }
+      return '<div class="phone-qr">' + qr + '<div class="phone-side"><p>Scan with your phone’s camera, or open this on your phone:</p><div class="phone-url">' + esc(info.url) + '</div>' +
+        '<p class="hint">Keep the page on your phone’s home screen for next time (Share › Add to Home Screen). Anyone with this link on your Wi-Fi can use it: make a new link to lock old ones out.</p></div></div>';
+    };
+    const html = () => '<div class="dialog phone-remote"><h2>Phone remote</h2>' + body() + '<div class="dialog-foot">' +
+      (info.on ? '<button class="btn big" data-nav data-key="pr-new" data-act="new">' + icon('refresh') + 'New link</button><button class="btn big" data-nav data-key="pr-off" data-act="off">Turn off</button>'
+        : '<button class="btn big primary" data-nav data-key="pr-on" data-act="on">Turn on</button>') +
+      '<button class="btn big" data-nav data-key="pr-close" data-act="close">Close</button></div></div>';
+    const layer = openLayer({
+      html: html(), focus: info.on ? 'pr-close' : 'pr-on',
+      onActivate: async (el) => {
+        const act = el.dataset.act;
+        if (act === 'close') return closeLayer(layer);
+        try {
+          if (act === 'on') info = await api.phoneSet(true);
+          else if (act === 'off') info = await api.phoneSet(false);
+          else if (act === 'new') { info = await api.phoneNewLink(); toast('New link made. Scan the new code on your phone'); }
+        } catch (e) { toast(e.message, true); return; }
+        S.lib.settings.phoneRemote = info.on;
+        layer.el.innerHTML = html();
+        setFocus($('[data-key="' + (info.on ? (act === 'new' ? 'pr-new' : 'pr-close') : 'pr-on') + '"]', layer.el) || $('[data-nav]', layer.el), { instant: true });
+      },
+      onBack: () => closeLayer(layer),
+      onClose: () => { if (S.view === 'settings') refreshContent(); },
+      prompts: () => [['A', 'Select'], ['B', 'Close']]
+    });
   }
   // Settings › Controllers › Steady players in Ryujinx.
   async function steadyMenu() {
@@ -3810,6 +3847,7 @@
       }
       case 'friend': return friendMenu(el.dataset.friend);
       case 'steady': return steadyMenu();
+      case 'phone-remote': return phoneRemote();
       case 'pick-mode': {
         const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
         if (m) { s.pickPlayers = m; save(); refreshContent(); }
@@ -4433,6 +4471,23 @@
   api.on('news', (n) => { if (n && Array.isArray(n.items)) { S.news = n; S.newsErr = null; paintNews(); } });
   api.on('deals', (v) => { if (v && Array.isArray(v.free)) { S.deals = v; dealsAt = Date.now(); paintDeals(); } });
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
+  // Phone remote presses (Settings › Controllers › Phone remote).
+  const PHONE_DIRS = { up: 'up', down: 'down', left: 'left', right: 'right' };
+  api.on('phone', (m) => {
+    if (!m || typeof m !== 'object') return;
+    if (m.launch) { if (!OVERLAY && byId(m.launch)) play(m.launch); return; }
+    if (typeof m.text === 'string') {
+      const top = topLayer();
+      const inp = top && top.className === 'osk-layer' ? $('.osk-input', top.el) : null;
+      if (!inp) { toast('Pick a text box on the TV first (like Search), then send your text', true); return; }
+      if (m.text) { inp.value = (inp.value + m.text).slice(0, 200); inp.dispatchEvent(new Event('input')); try { const n = inp.value.length; inp.setSelectionRange(n, n); } catch (_) { /* ignore */ } }
+      if (m.enter) button('MENU');
+      return;
+    }
+    if (!m.b) return;
+    if (S.input !== 'pad') setInput('pad');
+    if (PHONE_DIRS[m.b]) move(PHONE_DIRS[m.b]); else button(m.b);
+  });
   api.on('vpads', (st) => { S.vpadsOn = Array.isArray(st) && st.length > 0; if (S.onVpads) S.onVpads(st); });
   api.on('pads', (list) => {
     S.pads = Array.isArray(list) ? list : null;
@@ -4533,6 +4588,6 @@
     try { S.tvStatus = await api.tvStatus(); } catch (_) { S.tvStatus = S.tvStatus || { signedIn: false }; }
     if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) refreshContent();
   }
-  window.__couch = { S, move, button, setFocus, currentFocus, layers, TV, openIdle, closeIdle, go }; // used by tests
+  window.__couch = { S, move, button, setFocus, currentFocus, layers, TV, openIdle, closeIdle, go, osk, slotInfo }; // used by tests
   init().catch((e) => { document.body.innerHTML = '<pre style="color:#fff;padding:40px;font-size:18px">Couch Launcher couldn’t start:\n' + esc(e && e.stack || e) + '</pre>'; });
 })();

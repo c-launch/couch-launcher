@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Couch Remote</title>
+<style>
+  :root { --bg: #0f1115; --card: #1a1d24; --card2: #23272f; --line: #2e333d; --text: #f2f3f5; --sub: #9aa1ad; --accent: #f5a623; --green: #3fae3f; --red: #e5484d; --blue: #3d7bff; --yellow: #f3c13a; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 18px 8px; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 700; flex: 1; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--sub); flex: none; }
+  .dot.on { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, .7); }
+  .status { padding: 0 18px 10px; color: var(--sub); font-size: 13px; min-height: 28px; }
+  main { flex: 1; overflow: hidden; position: relative; }
+  .tab { position: absolute; inset: 0; overflow-y: auto; padding: 4px 16px 16px; display: none; }
+  .tab.on { display: block; }
+  nav { display: flex; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--line); background: var(--bg); }
+  nav button { flex: 1; background: none; border: 0; color: var(--sub); font: inherit; font-size: 12px; font-weight: 600; padding: 8px 0; border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  nav button svg { width: 22px; height: 22px; }
+  nav button.on { color: var(--text); background: var(--card); }
+  button { cursor: pointer; }
+  svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Remote */
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 6px 0 18px; }
+  .pill { flex: 1; height: 46px; border-radius: 23px; border: 0; background: var(--card2); color: var(--text); font: inherit; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .pill svg { width: 20px; height: 20px; }
+  .pill.home { flex: 1.3; background: var(--accent); color: #1a1205; }
+  .pads { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+  .dpad { position: relative; width: 46vw; max-width: 210px; aspect-ratio: 1; }
+  .dpad button { position: absolute; width: 36%; height: 36%; border: 0; background: var(--card2); color: var(--text); display: flex; align-items: center; justify-content: center; }
+  .dpad button svg { width: 26px; height: 26px; }
+  .dpad .up { left: 32%; top: 0; border-radius: 14px 14px 4px 4px; }
+  .dpad .down { left: 32%; bottom: 0; border-radius: 4px 4px 14px 14px; }
+  .dpad .left { top: 32%; left: 0; border-radius: 14px 4px 4px 14px; }
+  .dpad .right { top: 32%; right: 0; border-radius: 4px 14px 14px 4px; }
+  .dpad .mid { left: 32%; top: 32%; border-radius: 4px; background: var(--card); pointer-events: none; }
+  .face { position: relative; width: 42vw; max-width: 200px; aspect-ratio: 1; }
+  .face button { position: absolute; width: 38%; height: 38%; border-radius: 50%; border: 0; font: inherit; font-weight: 800; font-size: 22px; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .25); }
+  .face .y { left: 31%; top: 0; background: var(--yellow); color: #3a2b00; }
+  .face .a { left: 31%; bottom: 0; background: var(--green); }
+  .face .x { left: 0; top: 31%; background: var(--blue); }
+  .face .b { right: 0; top: 31%; background: var(--red); }
+  .pressed, button:active { transform: scale(.94); filter: brightness(1.25); }
+  .shoulders { display: flex; gap: 10px; margin-top: 22px; }
+  .shoulders button { flex: 1; height: 44px; border-radius: 12px; border: 0; background: var(--card2); color: var(--text); font: inherit; font-weight: 700; }
+  .hint { color: var(--sub); font-size: 12.5px; text-align: center; margin-top: 18px; }
+
+  /* Games */
+  .search { position: sticky; top: 0; background: var(--bg); padding: 4px 0 10px; z-index: 1; }
+  input[type=search], textarea { width: 100%; background: var(--card); border: 1px solid var(--line); color: var(--text); font: inherit; font-size: 16px; padding: 12px 14px; border-radius: 12px; outline: none; }
+  input[type=search]:focus, textarea:focus { border-color: var(--accent); }
+  .games { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .game { border: 0; padding: 0; background: var(--card); border-radius: 12px; overflow: hidden; color: var(--text); text-align: left; font: inherit; }
+  .game .art { aspect-ratio: 1; background: var(--card2) center / cover no-repeat; display: flex; align-items: flex-end; padding: 6px; font-size: 11px; font-weight: 700; color: var(--sub); }
+  .game .t { padding: 6px 8px 8px; font-size: 12px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .empty { color: var(--sub); text-align: center; padding: 40px 10px; }
+
+  /* Type */
+  textarea { min-height: 120px; resize: none; }
+  .actions { display: flex; gap: 10px; margin-top: 12px; }
+  .actions button { flex: 1; height: 48px; border-radius: 12px; border: 0; font: inherit; font-weight: 700; font-size: 15px; background: var(--card2); color: var(--text); }
+  .actions .go { background: var(--accent); color: #1a1205; }
+
+  .toast { position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px); background: #2b2f38; color: var(--text); padding: 10px 16px; border-radius: 12px; font-size: 13.5px; opacity: 0; transition: .2s; pointer-events: none; max-width: 88vw; text-align: center; }
+  .toast.on { opacity: 1; transform: translateX(-50%); }
+  .sheet { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); display: none; align-items: flex-end; z-index: 5; }
+  .sheet.on { display: flex; }
+  .sheet .box { width: 100%; background: var(--card); border-radius: 20px 20px 0 0; padding: 20px 18px calc(18px + env(safe-area-inset-bottom)); }
+  .sheet h2 { margin: 0 0 4px; font-size: 18px; }
+  .sheet p { margin: 0 0 16px; color: var(--sub); font-size: 13.5px; }
+</style>
+</head>
+<body>
+<header><span class="dot" id="dot"></span><h1>Couch Remote</h1></header>
+<div class="status" id="status">Connecting…</div>
+<main>
+  <section class="tab on" id="t-remote">
+    <div class="row">
+      <button class="pill" data-b="VIEW" aria-label="View"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="11" height="9" rx="2"/><rect x="9" y="10" width="11" height="9" rx="2"/></svg>View</button>
+      <button class="pill home" data-b="HOME" aria-label="Guide"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Guide</button>
+      <button class="pill" data-b="MENU" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>Menu</button>
+    </div>
+    <div class="pads">
+      <div class="dpad">
+        <button class="up" data-b="up" data-repeat aria-label="Up"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+        <button class="left" data-b="left" data-repeat aria-label="Left"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <span class="mid"></span>
+        <button class="right" data-b="right" data-repeat aria-label="Right"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        <button class="down" data-b="down" data-repeat aria-label="Down"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      </div>
+      <div class="face">
+        <button class="y" data-b="Y">Y</button>
+        <button class="x" data-b="X">X</button>
+        <button class="b" data-b="B">B</button>
+        <button class="a" data-b="A">A</button>
+      </div>
+    </div>
+    <div class="shoulders">
+      <button data-b="LB">LB</button><button data-b="LT" data-repeat>LT</button><button data-b="RT" data-repeat>RT</button><button data-b="RB">RB</button>
+    </div>
+    <div class="hint">Moves around Couch Launcher and the guide. During a game, press Guide.</div>
+  </section>
+
+  <section class="tab" id="t-games">
+    <div class="search"><input type="search" id="q" placeholder="Search your games" autocomplete="off" spellcheck="false"></div>
+    <div class="games" id="games"></div>
+  </section>
+
+  <section class="tab" id="t-type">
+    <p class="hint" style="text-align:left;margin:4px 0 12px">Pick a text box on the TV first (like Search). What you type here goes into it.</p>
+    <textarea id="text" placeholder="Type here" autocomplete="off" spellcheck="false"></textarea>
+    <div class="actions"><button id="send">Send text</button><button class="go" id="enter">Send + Done</button></div>
+  </section>
+</main>
+<nav>
+  <button class="on" data-tab="remote"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r=".6" fill="currentColor"/><circle cx="18" cy="13.5" r=".6" fill="currentColor"/></svg>Remote</button>
+  <button data-tab="games"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Games</button>
+  <button data-tab="type"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>Type</button>
+</nav>
+<div class="sheet" id="sheet"><div class="box"><h2 id="sh-t"></h2><p id="sh-p"></p><div class="actions"><button id="sh-no">Cancel</button><button class="go" id="sh-yes">Play</button></div></div></div>
+<div class="toast" id="toast"></div>
+<script>
+(function () {
+  'use strict';
+  const base = location.pathname.replace(/\/+$/, '');
+  const $ = (s) => document.querySelector(s);
+  let online = false, toastT = 0, games = null;
+  function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('on'), 2200); }
+  function setOnline(on, text) { online = on; $('#dot').classList.toggle('on', on); if (text !== undefined) $('#status').textContent = text; }
+  async function post(what, body) {
+    try {
+      const r = await fetch(base + what, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+      const j = await r.json().catch(() => ({}));
+      if (!online) poll();
+      if (j && j.note) toast(j.note);
+      if (j && j.error) toast(j.error);
+      return j;
+    } catch (_) { setOnline(false, 'Can’t reach Couch Launcher. Is the PC on and on the same Wi-Fi?'); return null; }
+  }
+  const buzz = () => { try { navigator.vibrate && navigator.vibrate(8); } catch (_) {} };
+
+  // Buttons: press on touch down; arrows repeat while held.
+  document.querySelectorAll('[data-b]').forEach((el) => {
+    let t1 = 0, t2 = 0;
+    const stopRepeat = () => { clearTimeout(t1); clearInterval(t2); el.classList.remove('pressed'); };
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      el.classList.add('pressed'); buzz();
+      const b = el.dataset.b;
+      post('/press', { b });
+      if (el.hasAttribute('data-repeat')) t1 = setTimeout(() => { t2 = setInterval(() => post('/press', { b }), 140); }, 420);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => el.addEventListener(ev, stopRepeat));
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
+
+  // Tabs
+  document.querySelectorAll('nav [data-tab]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('nav [data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.id === 't-' + b.dataset.tab));
+    if (b.dataset.tab === 'games') loadGames();
+  }));
+
+  // Games
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  async function loadGames() {
+    if (games) return draw();
+    try { const r = await fetch(base + '/games', { cache: 'no-store' }); games = await r.json(); } catch (_) { games = null; $('#games').innerHTML = '<div class="empty">Couldn’t load your games.</div>'; return; }
+    draw();
+  }
+  function draw() {
+    const q = $('#q').value.trim().toLowerCase();
+    const list = (games || []).filter((g) => !q || g.title.toLowerCase().includes(q));
+    $('#games').innerHTML = list.length ? list.map((g) => '<button class="game" data-id="' + esc(g.id) + '"><div class="art"' + (g.art ? ' style="background-image:url(\'' + base + '/art/' + encodeURIComponent(g.id) + '\')"' : '') + '>' + (g.art ? '' : esc(g.platform || '')) + '</div><div class="t">' + esc(g.title) + '</div></button>').join('')
+      : '<div class="empty">' + (q ? 'No games match.' : 'No games yet.') + '</div>';
+  }
+  $('#q').addEventListener('input', draw);
+  let pick = null;
+  $('#games').addEventListener('click', (e) => {
+    const b = e.target.closest('.game'); if (!b) return;
+    pick = (games || []).find((g) => g.id === b.dataset.id); if (!pick) return;
+    $('#sh-t').textContent = pick.title; $('#sh-p').textContent = 'Start it on the TV?';
+    $('#sheet').classList.add('on');
+  });
+  $('#sh-no').addEventListener('click', () => $('#sheet').classList.remove('on'));
+  $('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') $('#sheet').classList.remove('on'); });
+  $('#sh-yes').addEventListener('click', async () => {
+    $('#sheet').classList.remove('on');
+    if (!pick) return;
+    const r = await post('/launch', { id: pick.id });
+    if (r && r.ok) { toast('Starting ' + pick.title + '…'); document.querySelector('[data-tab=remote]').click(); }
+  });
+
+  // Typing
+  async function sendText(enter) {
+    const t = $('#text').value;
+    const r = await post('/text', { t, enter });
+    if (r && r.ok) { $('#text').value = ''; toast(enter ? 'Sent' : 'Sent. Send more, or press Done on the TV'); }
+  }
+  $('#send').addEventListener('click', () => sendText(false));
+  $('#enter').addEventListener('click', () => sendText(true));
+
+  // What's on the TV
+  async function poll() {
+    try {
+      const r = await fetch(base + '/state', { cache: 'no-store' });
+      const s = await r.json();
+      setOnline(true, s.playing ? 'Playing ' + s.playing + (s.guide ? ' · guide open' : '') : 'Connected to Couch Launcher');
+    } catch (_) { setOnline(false, 'Can’t reach Couch Launcher. Is the PC on and on the same Wi-Fi?'); }
+  }
+  poll();
+  setInterval(() => { if (!document.hidden) poll(); }, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+})();
+</script>
+</body>
+</html>

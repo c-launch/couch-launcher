@@ -1008,6 +1008,65 @@ if (!app.requestSingleInstanceLock()) {
     return r.players;
   });
   handle('vpads:stop', () => { stopSteady(); return true; });
+
+  // Phone remote (Settings › Controllers): a small web page your phone opens on the home network.
+  const phoneMod = require('./phoneremote');
+  const phone = phoneMod.createPhoneRemote({
+    token: () => {
+      if (!/^[0-9a-f]{32}$/.test(lib.settings.remoteToken || '')) { lib.settings.remoteToken = phoneMod.newToken(); persist(); }
+      return lib.settings.remoteToken;
+    },
+    state: () => {
+      const g = running && lib.games.find((x) => x.id === running.gameId);
+      return { playing: running ? (g ? g.title : 'a game') : null, guide: overlayShown() };
+    },
+    games: () => lib.games.filter((g) => !g.hidden).slice().sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))
+      .map((g) => ({ id: g.id, title: g.title, platform: (g.launch && (g.launch.emu || g.launch.type)) || '', art: (g.art && (g.art.tile || g.art.hero)) || null })),
+    onButton: (b) => {
+      if (b === 'HOME') { guidePressed(); return { ok: true }; }
+      if (overlayShown()) { sendOverlay('phone', { b }); return { ok: true }; }
+      if (tvPart && tvPart.playing) return { ok: true, note: 'Press Guide to control what’s playing' };
+      if (yt && yt.isShown() && yt.isFront && yt.isFront()) return { ok: true, note: 'Press Guide to control YouTube' };
+      if (running && (!win || win.isMinimized() || !win.isFocused())) return { ok: true, note: 'In a game: press Guide to open the guide' };
+      if (!win || win.isDestroyed()) return { ok: false, error: 'The launcher isn’t open' };
+      if (win.isMinimized()) win.restore();
+      send('phone', { b });
+      return { ok: true };
+    },
+    onText: (t, enter) => {
+      const to = overlayShown() ? 'overlay' : 'win';
+      if (to === 'overlay') sendOverlay('phone', { text: t, enter }); else send('phone', { text: t, enter });
+      return { ok: true };
+    },
+    onLaunch: (id) => {
+      const g = lib.games.find((x) => x.id === id);
+      if (!g) return { ok: false, error: 'That game isn’t in your library' };
+      if (running) return { ok: false, error: 'A game is already running. Close it from the guide first.' };
+      if (tvPart && tvPart.playing) tvPart.stop('phone');
+      if (yt && yt.isShown()) yt.hide();
+      hideOverlay();
+      bringBack(false);
+      send('phone', { launch: id });
+      return { ok: true };
+    }
+  });
+  function syncPhone() {
+    if (lib.settings.phoneRemote && !phone.running) phone.start().catch((e) => { console.warn('phone remote: ' + (e && e.message)); });
+    if (!lib.settings.phoneRemote && phone.running) phone.stop();
+  }
+  handle('phone:info', async () => {
+    if (lib.settings.phoneRemote && !phone.running) { try { await phone.start(); } catch (_) { /* answered below */ } }
+    return { on: !!lib.settings.phoneRemote, running: phone.running, url: phone.url(), address: phoneMod.lanAddress() };
+  });
+  handle('phone:set', async (on) => {
+    lib.settings.phoneRemote = !!on; persist();
+    if (on) await phone.start(); else phone.stop();
+    return { on: !!on, running: phone.running, url: phone.url(), address: phoneMod.lanAddress() };
+  });
+  handle('phone:newLink', () => {
+    lib.settings.remoteToken = phoneMod.newToken(); persist();
+    return { on: !!lib.settings.phoneRemote, running: phone.running, url: phone.url(), address: phoneMod.lanAddress() };
+  });
   // Teaching the launcher what Ryujinx calls the virtual controllers: while they're plugged in,
   // you pick one as Player 1 in Ryujinx and save; this reads it back.
   handle('vpads:learn', () => {
@@ -1292,7 +1351,7 @@ if (!app.requestSingleInstanceLock()) {
   // Settings the app core keeps itself (the screens' copy of them can be out of date): kept as
   // they are when the screens save. (Saving used to put an old empty mpv path back, so mpv had to
   // be chosen again after a restart.)
-  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone', 'xboxShareMap', 'vpadGuid', 'ryujinxRealGuid'];
+  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone', 'xboxShareMap', 'vpadGuid', 'ryujinxRealGuid', 'phoneRemote', 'remoteToken'];
   handle('lib:save', (data) => {
     const next = library.normalize(data);
     for (const k of CORE_SETTINGS) if (lib && lib.settings && lib.settings[k] !== undefined) next.settings[k] = lib.settings[k];
@@ -2196,6 +2255,7 @@ if (!app.requestSingleInstanceLock()) {
       placeWindows();
     });
     controller.start();
+    syncPhone();
     padMouse.start();
     startPadWatch();
     setTimeout(startAlerts, 15000);
