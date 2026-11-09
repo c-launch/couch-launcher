@@ -1123,3 +1123,16 @@ html.style-spotlight #app.view-home.has-art .bg-fade {
 html.style-shelf #app.view-home:not(.news-mode) #topbar .clock { grid-column: 3; }
 html.style-shelf #app.view-home .home-cards .card { justify-content: flex-start; text-align: left; }
 html.style-spotlight #app.view-home .home-tiles { top: 10.4rem; }
+/* Spotlight's top bar: flat, no pill. Sections on the left (the current one underlined), your
+   picture and the clock on the right. */
+html.style-spotlight #topbar { display: flex; align-items: center; gap: 2rem; }
+html.style-spotlight #topbar .navpill { order: 1; margin-left: -1rem; gap: 0.6rem; padding: 0; background: transparent !important; border-color: transparent !important; backdrop-filter: none !important; box-shadow: none !important; }
+html.style-spotlight #topbar .navbtn { width: 5.2rem; height: 5.2rem; border-radius: 1.2rem; color: color-mix(in srgb, var(--text) 70%, transparent); background: transparent; }
+html.style-spotlight #topbar .navbtn svg { width: 2.5rem; height: 2.5rem; }
+html.style-spotlight #topbar .navbtn.active { background: transparent; color: var(--text); }
+html.style-spotlight #topbar .navbtn.active::after { content: ""; position: absolute; left: 1.3rem; right: 1.3rem; bottom: 0.3rem; height: 0.3rem; border-radius: 99px; background: var(--text); }
+html.style-spotlight #topbar .navbtn.focused { background: var(--panel-hover); color: var(--text); }
+html.style-spotlight #topbar .me { order: 2; margin-left: auto; padding: 0.4rem; min-width: 0; }
+html.style-spotlight #topbar .me > div:not(.avatar) { display: none; }
+html.style-spotlight #topbar .clock { order: 3; min-width: 0; }
+html.style-spotlight #app.has-art #topbar .navbtn svg { filter: drop-shadow(0 0.1rem 0.6rem rgba(0,0,0,0.6)); }
