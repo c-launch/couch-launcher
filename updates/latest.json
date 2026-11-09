@@ -1,6 +1,6 @@
 {
- "version": "1.25.1",
- "notes": "Spotlight style: a flat top bar. Sections sit on the left with the current one underlined (no pill), and your picture and the clock are on the right.",
- "file": "CouchLauncher-update-1.25.1.zip",
- "size": 395753
+ "version": "1.26.0",
+ "notes": "Styles now reach the Library, Settings and the guide. Shelf: round tabs across the top instead of a side menu, rounder cards, and the guide as a floating sheet in the middle. Spotlight: a flat text side menu, settings as clean lines, and the guide as a full-height panel on the screen edge. Movies & TV keeps its own look.",
+ "file": "CouchLauncher-update-1.26.0.zip",
+ "size": 396729
 }
