@@ -1,6 +1,6 @@
 {
- "version": "1.27.0",
- "notes": "Spotlight style: the guide is rebuilt to run sideways. Games and apps are picture cards in a row, each group (music, sound, friends, system) is its own column, and it scrolls left and right. Home is a button on the guide's bottom bar next to the sections.",
- "file": "CouchLauncher-update-1.27.0.zip",
- "size": 397660
+ "version": "1.27.1",
+ "notes": "Fix: Cable TV setup could get stuck one show short with the progress bar flickering (when a single show couldn't be looked up). It now finishes, opens the guide, and tries that show again later on its own.",
+ "file": "CouchLauncher-update-1.27.1.zip",
+ "size": 397889
 }

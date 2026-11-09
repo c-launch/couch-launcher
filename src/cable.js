@@ -426,15 +426,25 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     resolving = Promise.all([worker(), worker(), worker(), worker()]).then(() => {
       days.clear(); merged = null;
       for (const e of eraList) e.setup = true;
+      state.retryAt = now();
       save();
       return { done, total: all.length };
     }).finally(() => { resolving = null; });
     return resolving;
   }
-  const eraReady = (id) => { load(); const e = state.eras[id]; return !!e && e.setup === true && e.channels.every((c) => c.shows.every((s) => resolved(s) || state.names[nameKey(s)] === false)); };
+  // Set up = its shows were looked up once. A show that couldn't be reached then (a network
+  // hiccup) doesn't hold the guide back: it's tried again quietly later.
+  const eraReady = (id) => { load(); const e = state.eras[id]; return !!e && e.setup === true; };
   const ready = () => mix().length > 0 && state.mix.every(eraReady);
   // Some shows want looking up again (a week old): done quietly while you watch.
-  const stale = () => chans().some((c) => c.shows.some((s) => { const r = resolved(s); return r && now() - (r.at || 0) > STALE_MS; }));
+  // Shows that failed are retried too, at most every ten minutes.
+  const stale = () => {
+    const retry = now() - (state.retryAt || 0) > 10 * 60e3;
+    return state.mix.some((id) => state.eras[id].channels.some((c) => c.shows.some((s) => {
+      const r = resolved(s);
+      return r ? now() - (r.at || 0) > STALE_MS : retry && state.names[nameKey(s)] !== false;
+    })));
+  };
 
   function showsOf(c) { return c.shows.map(resolved).filter(Boolean); }
   function schedule(c, start) {

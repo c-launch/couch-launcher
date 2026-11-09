@@ -481,7 +481,7 @@ window.CouchTV = function (k) {
       const el = $('.tv-cable-setup .n', T.layer.el);
       if (el && p) el.textContent = p.done + ' of ' + p.total + ' shows';
       const bar = $('.tv-cable-setup i', T.layer.el);
-      if (bar && p && p.total) bar.style.width = Math.round(p.done / p.total * 100) + '%';
+      if (bar && p && p.total) { T.cablePct = Math.max(T.cablePct || 0, Math.round(p.done / p.total * 100)); bar.style.width = T.cablePct + '%'; }
     });
   }
   function cablePage(sc, gen) {
@@ -510,9 +510,12 @@ window.CouchTV = function (k) {
     if (!g.ready) {
       if (quiet) return;
       box.innerHTML = '<div class="tv-cable-setup"><h2>Setting up the ' + esc(g.era) + '</h2><p>Finding the shows and their episodes (only the first time for each era, about a minute).</p><div class="tv-cable-prog"><i></i></div><div class="n">Starting…</div></div>';
-      if (!T.cableSetup) T.cableSetup = api.tvCableSetup().catch((e) => { toast(e.message, true); }).finally(() => { T.cableSetup = null; });
-      await T.cableSetup;
-      if (!stale(gen) && T.page === 'cable') drawGuide(sc, gen);
+      if (!T.cableSetup) { T.cablePct = 0; T.cableSetup = api.tvCableSetup().catch((e) => { toast(e.message, true); }).finally(() => { T.cableSetup = null; }); }
+      const res = await T.cableSetup;
+      if (stale(gen) || T.page !== 'cable') return;
+      // (Never loop: if it still isn't ready, say so instead of starting over.)
+      if (res && res.ready) drawGuide(sc, gen);
+      else box.innerHTML = empty('The shows couldn’t be looked up. Check your internet connection, then open Cable TV again.');
       return;
     }
     const had = currentFocus() && currentFocus().closest('.tv-cable') ? currentFocus().dataset.key : null;
