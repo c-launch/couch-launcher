@@ -1075,9 +1075,11 @@ html.reduce-motion .idle-pic.show { animation: none; }
 .tcard .sw.wire svg { width: 100%; height: 100%; fill: color-mix(in srgb, var(--text) 30%, transparent); }
 .tcard .sw.wire svg .t { fill: var(--accent); }
 
-/* Shelf: large tiles on a clean screen, the game's name above them, a round dock below. */
-html.style-shelf #app.view-home .bg-art { opacity: 0 !important; }
-html.style-shelf #app.view-home .bg-fade { opacity: 0; }
+/* Shelf: large tiles, the game's name above them, a round dock below. The picked game's art
+   fills the background, dimmed so the tiles and dock stay clear. */
+html.style-shelf #app.view-home.has-art .bg-fade { opacity: 1; background: color-mix(in srgb, var(--bg) 50%, transparent); backdrop-filter: blur(3px); }
+html.style-shelf #app.view-home.has-art .hero h1, html.style-shelf #app.view-home.has-art .hero .meta { text-shadow: 0 0.1rem 1.2rem rgba(0,0,0,0.6) !important; }
+html.style-shelf.light #app.view-home.has-art .hero h1, html.style-shelf.light #app.view-home.has-art .hero .meta { text-shadow: none !important; }
 html.style-shelf #app.view-home .hero { top: 12.4rem; left: 5.6rem; width: 110rem; flex-direction: row; align-items: baseline; gap: 1.6rem; }
 html.style-shelf #app.view-home .hero .eyebrow { display: none; }
 html.style-shelf #app.view-home .hero h1 { font-size: 3.2rem !important; font-weight: 700; letter-spacing: -0.01em; text-shadow: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70rem; }

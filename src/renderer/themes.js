@@ -69,7 +69,7 @@ window.THEMES = [
 // Styles change the layout of the Home screen and its dock; every feature stays.
 window.STYLES = [
   { id: 'classic', name: 'Classic', desc: 'Big title, games in a row, the dock up top' },
-  { id: 'shelf', name: 'Shelf', desc: 'Large game tiles on a clean screen, with a round dock under them' },
+  { id: 'shelf', name: 'Shelf', desc: 'Large game tiles with a round dock under them, over the picked game’s art' },
   { id: 'spotlight', name: 'Spotlight', desc: 'A small strip of games up top, and the picked game’s art filling the screen' }
 ];
 
