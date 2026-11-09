@@ -1409,7 +1409,7 @@ if (!app.requestSingleInstanceLock()) {
   // Settings the app core keeps itself (the screens' copy of them can be out of date): kept as
   // they are when the screens save. (Saving used to put an old empty mpv path back, so mpv had to
   // be chosen again after a restart.)
-  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone', 'xboxShareMap', 'vpadGuid', 'ryujinxRealGuid', 'phoneRemote', 'remoteToken'];
+  const CORE_SETTINGS = ['mpvPath', 'ytAgent', 'ytAgent2', 'emuAutoDone', 'xboxShareMap', 'vpadGuid', 'ryujinxRealGuid', 'phoneRemote', 'remoteToken', 'cableSubs'];
   handle('lib:save', (data) => {
     const next = library.normalize(data);
     for (const k of CORE_SETTINGS) if (lib && lib.settings && lib.settings[k] !== undefined) next.settings[k] = lib.settings[k];

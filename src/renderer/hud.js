@@ -29,6 +29,7 @@
       $('cb-bk').textContent = back ? c.name : 'Coming up next on ' + c.name;
       $('cb-bt').textContent = back ? c.show : c.next ? c.next.show : '';
       const sec = at ? Math.max(0, Math.round((at - c.now) / 1000)) : 0;
+      $('cb-why').textContent = back && c.why ? 'No commercials this break: ' + c.why : '';
       $('cb-bw').textContent = at ? (back ? 'continues ' : '') + (sec > 60 ? 'at ' + clock(at) : sec > 3 ? 'in ' + sec + ' seconds' : 'in a moment') : '';
     }
     // Bumper cards between the show and the commercials.
@@ -49,6 +50,16 @@
     $('cb-ep').textContent = c.episode || '';
     const pct = c.end > c.start ? Math.max(0, Math.min(100, (c.now - c.start) / (c.end - c.start) * 100)) : 0;
     $('cb-fill').style.width = pct + '%';
+    const m = $('cb-menu');
+    m.hidden = !c.menu;
+    if (c.menu) {
+      $('cb-menu-t').textContent = c.menu.title;
+      const items = c.menu.items || [];
+      const fi = Math.max(0, items.findIndex((x) => x.focused));
+      const start = Math.max(0, Math.min(fi - 4, items.length - 9));
+      $('cb-menu-list').innerHTML = items.slice(start, start + 9).map((it) => '<div class="mi' + (it.focused ? ' focus' : '') + '"><span class="ck">' + (it.selected ? '✓' : '') + '</span>' + esc(it.label) + '</div>').join('');
+      $('cb-menu-note').textContent = c.menu.note || '';
+    }
     $('cb-next').hidden = !c.next;
     if (c.next) { $('cb-nt').textContent = 'NEXT · ' + clock(c.next.start); $('cb-ns').textContent = c.next.show; }
   }

@@ -553,6 +553,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   }
   // The channel's commercial-break recordings on YouTube (looked up weekly).
   const adLoads = new Map();
+  let adWhy = '';
   function adsFor(channelId) {
     load();
     const c = channel(channelId);
@@ -563,7 +564,9 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     if (adLoads.has(key)) return adLoads.get(key);
     const p = (async () => {
       const found = [];
-      for (const q of c.ads) { try { found.push(...await ytdlp.search(q, 20)); } catch (_) { /* next search */ } }
+      let err = null;
+      for (const q of c.ads) { try { found.push(...await ytdlp.search(q, 20)); } catch (e) { err = e; /* next search */ } }
+      adWhy = found.length ? '' : err ? String(err.message || err) : 'YouTube found nothing';
       const list = adVideos(found, c.adWord || '', c.id === 'disney' ? 'xd' : null).slice(0, 80);
       if (list.length || !have) { state.ads[key] = { at: now(), list }; save(); }
       return list.length ? list : (have ? have.list : []);
@@ -634,7 +637,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   const setEra = (id) => setEras([id]);
   function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { fs.writeFileSync(file, JSON.stringify(state)); } catch (_) { /* fine */ } } }
 
-  return { ensure, ready, stale, guide, at, alternates, substitute, markBad, isBad, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
+  return { get adWhy() { return adWhy; }, ensure, ready, stale, guide, at, alternates, substitute, markBad, isBad, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
 }
 
 module.exports = { createCable, daySchedule, dayStart, parseRuntime, eraEpisodes, compactEpisodes, inEra, pickMatch, hash32, slotMs, breakPlan, locate, adVideos, DEFAULT_CHANNELS, ERAS };

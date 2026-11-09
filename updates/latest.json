@@ -1,6 +1,6 @@
 {
- "version": "1.27.3",
- "notes": "Cable TV: when an episode can't be played (no stream, a dead one, or the debrid service's 'failed' notice), another episode goes on in its place instead of a black screen.",
- "file": "CouchLauncher-update-1.27.3.zip",
- "size": 399415
+ "version": "1.27.4",
+ "notes": "Cable TV: a Captions list (Y) to pick a language or turn captions off, kept for every channel; captions in another language no longer turn on by themselves. Debrid notice videos ('file was removed', 'download failed') are skipped for the next stream or another episode. Commercials: yt-dlp updates itself when YouTube stops answering, and a break with no commercials says why.",
+ "file": "CouchLauncher-update-1.27.4.zip",
+ "size": 401968
 }

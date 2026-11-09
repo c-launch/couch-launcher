@@ -37,11 +37,25 @@ function createYtdlp(binDir) {
   }
   function run(args, timeout) {
     return new Promise((resolve, reject) => {
-      execFile(exe, args, { windowsHide: true, timeout: timeout || 60000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
-        if (err) reject(new Error(String(err.message || err).split('\n')[0].slice(0, 200)));
-        else resolve(String(stdout || ''));
+      execFile(exe, args, { windowsHide: true, timeout: timeout || 60000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+        if (err) {
+          // yt-dlp's own reason ("ERROR: …") when it gave one, else why it couldn't run.
+          const why = String(stderr || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => /^ERROR:/i.test(l)).pop();
+          const msg = why ? why.replace(/^ERROR:\s*/i, '').replace(/^\[[^\]]*\]\s*[\w-]{11}:\s*/, '') : err.killed ? 'YouTube took too long to answer' : err.code === 'ENOENT' ? 'yt-dlp is missing' : typeof err.code === 'string' ? 'yt-dlp couldn’t start (' + err.code + ')' : 'yt-dlp stopped with an error';
+          reject(new Error(msg.slice(0, 160)));
+        } else resolve(String(stdout || ''));
       });
     });
+  }
+  // YouTube changes often and an old yt-dlp stops working: it updates itself (at most every six
+  // hours) when a video can't be opened.
+  let updatedAt = 0, updating = null;
+  function update() {
+    if (updating) return updating;
+    if (Date.now() - updatedAt < 6 * 3600e3) return Promise.resolve(false);
+    updatedAt = Date.now();
+    updating = run(['-U'], 180000).then(() => true, () => false).finally(() => { updating = null; });
+    return updating;
   }
   // YouTube search: [{ id, title, duration }] (without opening each video, so it's quick).
   async function search(query, n) {
@@ -55,12 +69,17 @@ function createYtdlp(binDir) {
   async function directUrl(id) {
     if (!/^[\w-]{11}$/.test(id)) throw new Error('Bad video id');
     await install();
-    const out = await run(['-g', '--no-warnings', '--no-playlist', '-f', 'best[height<=720][acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]/best', 'https://www.youtube.com/watch?v=' + id], 60000);
+    const args = ['-g', '--no-warnings', '--no-playlist', '-f', 'best[height<=720][acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]/best', 'https://www.youtube.com/watch?v=' + id];
+    let out;
+    try { out = await run(args, 60000); } catch (e) {
+      if (!(await update())) throw e;
+      out = await run(args, 60000);
+    }
     const url = out.split(/\r?\n/).map((l) => l.trim()).find((l) => /^https:\/\//.test(l));
     if (!url) throw new Error('No playable link');
     return url;
   }
-  return { install, search, directUrl, get installed() { return have(); }, exe };
+  return { install, search, directUrl, update, get installed() { return have(); }, exe };
 }
 
 module.exports = { createYtdlp };

@@ -285,9 +285,19 @@ function setupTv(ctx) {
     c.ep = (async () => {
       const find = (video) => within(30000, (async () => {
         const r = await tv().streams('series', video.id);
-        const stream = bestStream([].concat(...r.groups.map((g) => g.streams)), quality());
-        if (!stream) throw new Error('No stream found for this episode');
-        return { stream, url: await streamUrl(stream, video) };
+        let list = [].concat(...r.groups.map((g) => g.streams));
+        // The best stream, or the next ones when that turns out to be a debrid notice
+        // ("file was removed…", "download failed…") instead of the episode.
+        for (let n = 0; n < 3; n++) {
+          const stream = bestStream(list, quality());
+          if (!stream) break;
+          list = list.filter((x) => x !== stream);
+          let url;
+          try { url = await streamUrl(stream, video); } catch (e) { if (n === 0 && !list.some((x) => x.playable)) throw e; continue; }
+          if (stream.url && await isNotice(url, stream.headers)) continue;
+          return { stream, url };
+        }
+        throw new Error('No stream found for this episode');
       })());
       let err = null;
       if (!cable().isBad(prog.video.id)) {
@@ -349,7 +359,7 @@ function setupTv(ctx) {
           // No commercials (off, or none found): a card until the break is over.
           if (s.mpv && s.mpv.alive) s.mpv.pause(true);
           c.lastKind = 'filler';
-          s.controls.part('filler', backAt);
+          s.controls.part('filler', backAt, settings().cableAds === false ? '' : adWhy);
           return;
         }
         await loadInto(s, ad.url, chName + ' · Commercials', ad.start, partTok);
@@ -390,6 +400,27 @@ function setupTv(ctx) {
       s.controls.playing();
     }, show ? 30000 : 20000);
   }
+  // Debrid addons answer a link they can't serve by sending the player to a ready-made notice
+  // video ("file was removed from debrid service", "download failed", "failed to…"). Seen from
+  // where the link leads: a file with such a name. (If that can't be checked, the link is used.)
+  const NOTICE = /(fail|remov|error|block|limit|downloading|infring|unavailable|not[_-]?found|expired|denied|no[_-]?video)[^/]*\.(mp4|mkv|webm)$/i;
+  async function isNotice(url, headers) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 12000);
+    try {
+      let at = url;
+      for (let hop = 0; hop < 4; hop++) {
+        const res = await fetch(at, { method: 'GET', redirect: 'manual', headers: Object.assign({ Range: 'bytes=0-0' }, headers || {}), signal: ctl.signal });
+        const to = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+        if (!to) return false;
+        const next = new URL(to, at);
+        if (!/^https?:$/.test(next.protocol)) return false;
+        if (NOTICE.test(next.pathname)) return true;
+        at = next.href;
+      }
+      return false;
+    } catch (_) { return false; } finally { clearTimeout(timer); ctl.abort(); }
+  }
   // The episode on now turned out unplayable: it's remembered as bad and another one goes on in
   // its place (three times at most per time slot, so it can't go round in circles).
   function cableSwap(s, prog) {
@@ -402,16 +433,17 @@ function setupTv(ctx) {
     return true;
   }
   // A commercial break: a random stretch of an old commercial-break recording from YouTube.
+  let adWhy = ''; // why the last commercial couldn't be had (said on the break card)
   async function prepareAd(channelId, need) {
     const list = await cable().adsFor(channelId);
-    if (!list.length) return null;
+    if (!list.length) { adWhy = cable().adWhy || 'none were found on YouTube'; return null; }
     const long = list.filter((v) => v.duration >= need + 20);
     const pool = long.length ? long : list;
     for (let tries = 0; tries < 3; tries++) {
       const v = pool[Math.floor(Math.random() * pool.length)];
       const room = v.duration - need - 10;
       const start = room > 10 ? 10 + Math.floor(Math.random() * room) : 0;
-      try { return { channelId, id: v.id, url: await ytdlp().directUrl(v.id), start }; } catch (_) { /* try another */ }
+      try { const url = await ytdlp().directUrl(v.id); adWhy = ''; return { channelId, id: v.id, url, start }; } catch (e) { adWhy = String(e.message || e); /* try another */ }
     }
     return null;
   }
@@ -420,13 +452,37 @@ function setupTv(ctx) {
     const ready = c.nextAd && c.nextAd.channelId === c.channelId ? c.nextAd : null;
     c.nextAd = null;
     if (ready) return ready;
-    try { return await prepareAd(c.channelId, need); } catch (_) { return null; }
+    try { return await prepareAd(c.channelId, need); } catch (e) { adWhy = String(e.message || e); return null; }
   }
   function onCableAct(s, a, x) {
     if (session !== s) return;
     if (a === 'chan') return cableLoad(s, cable().neighbor(s.cable.channelId, x > 0 ? 1 : -1));
     if (a === 'exit') return end('back');
+    if (a === 'sub') {
+      // Captions picked from the list: kept for every channel and episode from now on.
+      const t = x == null ? null : ((s.subsNow || []).find((k) => k.id === x) || null);
+      settings().cableSubs = t ? { lang: String(t.lang || '').toLowerCase().slice(0, 12), label: String(t.label || '').slice(0, 80) } : 'off';
+      saveSettings();
+      if (s.mpv && s.mpv.alive) s.mpv.setSub(t ? t.id : null);
+    }
     return null;
+  }
+  // Cable TV's captions: your pick from the list (a language, or off), else the Subtitles
+  // setting. A track in another language is never shown just because the file marks it as default.
+  function cableSubs(s, t) {
+    s.subsNow = t.subs;
+    const pick = settings().cableSubs;
+    const sel = t.subs.find((x) => x.selected) || null;
+    let want = null;
+    if (s.cable.lastKind === 'show' && pick !== 'off') {
+      const lang = pick && pick.lang ? pick.lang : pick ? '' : (settings().tvSubLang || 'en');
+      if (lang && lang !== 'off') {
+        const codes = (Object.values(SUBLANG).find((v) => v.split(',').includes(lang)) || SUBLANG[lang] || lang).split(',');
+        const same = t.subs.filter((x) => codes.includes(String(x.lang).toLowerCase()));
+        want = (pick && same.find((x) => x.label === pick.label)) || (sel && same.includes(sel) ? sel : same[0]) || null;
+      } else if (pick && pick.label) want = t.subs.find((x) => x.label === pick.label) || null;
+    }
+    if (want ? !want.selected : !!sel) s.mpv.setSub(want ? want.id : null);
   }
   function wire(s) {
     const { mpv } = s;
@@ -458,6 +514,7 @@ function setupTv(ctx) {
     mpv.on('tracks', (t) => {
       if (session !== s) return;
       s.controls.setTracks(t);
+      if (s.cable) { cableSubs(s, t); return; }
       // Subtitles from addons arrive after the video starts: turn on your language if nothing is on.
       const pref = settings().tvSubLang || 'en';
       if (!s.subPicked && pref !== 'off' && t.subs.length && !t.subs.some((x) => x.selected)) {
