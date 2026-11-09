@@ -1,6 +1,6 @@
 {
- "version": "1.27.2",
- "notes": "Shelf style: the picked game's art shows in the background again (dimmed so the tiles and dock stay clear).",
- "file": "CouchLauncher-update-1.27.2.zip",
- "size": 397900
+ "version": "1.27.3",
+ "notes": "Cable TV: when an episode can't be played (no stream, a dead one, or the debrid service's 'failed' notice), another episode goes on in its place instead of a black screen.",
+ "file": "CouchLauncher-update-1.27.3.zip",
+ "size": 399415
 }

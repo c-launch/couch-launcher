@@ -235,6 +235,7 @@ function setupTv(ctx) {
   }
   const clock = (t) => { const d = new Date(t); let h = d.getHours(); const m = d.getMinutes(); const pm = h >= 12; h = h % 12 || 12; return h + ':' + String(m).padStart(2, '0') + (pm ? ' PM' : ' AM'); };
   const where = (c) => locate(c.plan, (Date.now() - c.prog.start) / 1000);
+  const within = (ms, p) => new Promise((resolve, reject) => { const t = setTimeout(() => reject(new Error('That took too long')), ms); p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); }); });
   // Every quarter second: on to the next part (act / break) or program when it's time, and get
   // the next break's commercial and the next program's episode ready ahead of time.
   function cableTick(s) {
@@ -279,11 +280,34 @@ function setupTv(ctx) {
     s.meta = { id: prog.showId, type: 'series', name: prog.show, poster: prog.poster || null, videos: [] };
     s.video = prog.video; s.videoId = prog.video.id; s.pos = 0; s.dur = 0; s.subPicked = false;
     // The episode, found in the background (a commercial break can play meanwhile).
+    // If it can't be found, another one goes on in its place: more of the same show, then the
+    // channel's other shows.
     c.ep = (async () => {
-      const r = await tv().streams('series', prog.video.id);
-      const stream = bestStream([].concat(...r.groups.map((g) => g.streams)), quality());
-      if (!stream) throw new Error('No stream found for this episode');
-      return { stream, url: await streamUrl(stream, prog.video) };
+      const find = (video) => within(30000, (async () => {
+        const r = await tv().streams('series', video.id);
+        const stream = bestStream([].concat(...r.groups.map((g) => g.streams)), quality());
+        if (!stream) throw new Error('No stream found for this episode');
+        return { stream, url: await streamUrl(stream, video) };
+      })());
+      let err = null;
+      if (!cable().isBad(prog.video.id)) {
+        try { return await find(prog.video); } catch (e) { err = e; cable().markBad(prog.video.id); }
+      }
+      for (const alt of cable().alternates(channelId, prog, 6)) {
+        if (session !== s || token !== c.token) break;
+        let got;
+        try { got = await find(alt.video); } catch (_) { cable().markBad(alt.video.id); continue; }
+        if (session !== s || token !== c.token) break;
+        const np = cable().substitute(channelId, prog, alt);
+        if (np) {
+          Object.assign(prog, np);
+          s.meta = { id: prog.showId, type: 'series', name: prog.show, poster: prog.poster || null, videos: [] };
+          s.video = prog.video; s.videoId = prog.video.id;
+          c.plan = cable().plan(prog);
+        }
+        return got;
+      }
+      throw err || new Error('No stream found for this episode');
     })();
     c.ep.catch(() => {});
     playPart(s, where(c), token);
@@ -355,8 +379,27 @@ function setupTv(ctx) {
       s.mpv.pause(false);
     }
     // Black until the picture actually moves.
-    s.cable.waitPlay = partTok;
-    setTimeout(() => { if (session === s && s.cable.waitPlay === partTok) { s.cable.waitPlay = null; s.controls.playing(); } }, 20000);
+    const c = s.cable, show = c.lastKind === 'show', prog = c.prog;
+    c.waitPlay = partTok;
+    setTimeout(() => {
+      if (session !== s || c.waitPlay !== partTok) return;
+      c.waitPlay = null;
+      // An episode that never started (a dead stream): another one goes on instead, twice at most
+      // per time slot.
+      if (show && prog && c.prog === prog && !s.inGuide && !(s.pos > 0) && cableSwap(s, prog)) return;
+      s.controls.playing();
+    }, show ? 30000 : 20000);
+  }
+  // The episode on now turned out unplayable: it's remembered as bad and another one goes on in
+  // its place (three times at most per time slot, so it can't go round in circles).
+  function cableSwap(s, prog) {
+    const c = s.cable;
+    if (c.failSlot !== prog.start) { c.failSlot = prog.start; c.fails = 0; }
+    if (c.fails >= 3) return false;
+    c.fails++;
+    cable().markBad(prog.video.id);
+    cableLoad(s, c.channelId);
+    return true;
   }
   // A commercial break: a random stretch of an old commercial-break recording from YouTube.
   async function prepareAd(channelId, need) {
@@ -397,6 +440,13 @@ function setupTv(ctx) {
         // The picture is moving, so the black screen can go.
         if (s.cable.waitPlay && pos > 0) { s.cable.waitPlay = null; s.controls.playing(); }
         // The episode's real length: the breaks are placed by it (and it's kept for next time).
+        // Far too short to be the episode: it's the short notice a debrid service plays when it
+        // couldn't get the video ("failed to…"). Another episode goes on instead.
+        const cp = s.cable.prog;
+        if (s.cable.lastKind === 'show' && dur > 0 && cp && !s.cable.learned && !s.cable.busy && dur < Math.min(300, cp.runtimeMin * 60 * 0.4)) {
+          if (cableSwap(s, cp)) return;
+          s.cable.learned = true;
+        }
         if (s.cable.lastKind === 'show' && dur > 60 && !s.cable.learned && s.cable.prog) {
           s.cable.learned = true;
           if (cable().learnDuration(s.cable.prog.video.id, dur)) s.cable.plan = cable().plan(s.cable.prog);

@@ -458,16 +458,53 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     }
     return d;
   }
-  const decorate = (p) => {
-    const s = state.shows[p.showId] || {};
-    return { start: p.start, end: p.end, showId: p.showId, show: s.name || '', poster: s.poster || null, background: s.background || null, video: p.video, runtimeMin: s.runtimeMin || DEFAULT_RUNTIME };
+  // Episodes that couldn't be played (no stream, or a dead one), and what went on instead in that
+  // time slot. Kept only while the launcher runs: it may well work another day.
+  const bad = new Map(), swaps = new Map();
+  const BAD_MS = 6 * 3600e3;
+  const isBad = (videoId) => { const at = bad.get(videoId); if (at && now() - at > BAD_MS) { bad.delete(videoId); return false; } return !!at; };
+  function markBad(videoId) { if (!videoId) return; bad.set(videoId, now()); if (bad.size > 500) bad.delete(bad.keys().next().value); }
+  const decorate = (p, c) => {
+    const sw = c ? swaps.get(mixKey() + '|' + c.id + '|' + p.start) : null;
+    const showId = sw ? sw.showId : p.showId;
+    const s = state.shows[showId] || {};
+    return { start: p.start, end: p.end, showId, show: s.name || '', poster: s.poster || null, background: s.background || null, video: sw ? sw.video : p.video, runtimeMin: s.runtimeMin || DEFAULT_RUNTIME };
   };
+  // Other episodes to put on when a program's episode can't be played: more of the same show
+  // first, then the channel's other shows (ones that fit the time slot first).
+  function alternates(channelId, prog, n) {
+    const c = channel(channelId);
+    if (!c || !prog) return [];
+    const eraList = c.from || state.mix;
+    const r = rng(hash32(channelId + '|' + prog.start + '|alt'));
+    const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    const ok = (v) => v && v.id && v.id !== prog.video.id && !isBad(v.id);
+    const shows = showsOf(c).map((x) => ({ id: x.id, runtimeMin: x.runtimeMin || DEFAULT_RUNTIME, episodes: shuffle(inEra(x.episodes, eraList).filter(ok)) })).filter((x) => x.episodes.length);
+    const same = shows.find((x) => x.id === prog.showId);
+    const fits = (x) => x.runtimeMin <= (prog.runtimeMin || DEFAULT_RUNTIME) + 2;
+    const others = shuffle(shows.filter((x) => x.id !== prog.showId));
+    const out = [];
+    const add = (x, v) => { if (v) out.push({ showId: x.id, video: v }); };
+    if (same) for (const v of same.episodes.slice(0, 3)) add(same, v);
+    for (const x of others.filter(fits)) add(x, x.episodes[0]);
+    for (const x of others.filter((y) => !fits(y))) add(x, x.episodes[0]);
+    if (same) for (const v of same.episodes.slice(3, 6)) add(same, v);
+    return out.slice(0, Math.max(1, n || 6));
+  }
+  // That episode goes on in this program's slot instead (the guide shows it too).
+  function substitute(channelId, prog, alt) {
+    if (!prog || !alt || !alt.video) return null;
+    swaps.set(mixKey() + '|' + channelId + '|' + prog.start, { showId: alt.showId, video: alt.video });
+    if (swaps.size > 200) swaps.delete(swaps.keys().next().value);
+    const c = channel(channelId);
+    return decorate({ start: prog.start, end: prog.end, showId: prog.showId, video: prog.video }, c);
+  }
   // Programs on a channel between two times.
   function programs(c, from, to) {
     const out = [];
     for (let d = dayStart(from); d < to; d += 24 * 3600e3) {
       const ds = dayStart(d + 3600e3); // (daylight saving: find the real 6 AM)
-      for (const p of schedule(c, ds)) if (p.end > from && p.start < to) out.push(decorate(p));
+      for (const p of schedule(c, ds)) if (p.end > from && p.start < to) out.push(decorate(p, c));
     }
     return out;
   }
@@ -597,7 +634,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   const setEra = (id) => setEras([id]);
   function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { fs.writeFileSync(file, JSON.stringify(state)); } catch (_) { /* fine */ } } }
 
-  return { ensure, ready, stale, guide, at, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
+  return { ensure, ready, stale, guide, at, alternates, substitute, markBad, isBad, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
 }
 
 module.exports = { createCable, daySchedule, dayStart, parseRuntime, eraEpisodes, compactEpisodes, inEra, pickMatch, hash32, slotMs, breakPlan, locate, adVideos, DEFAULT_CHANNELS, ERAS };
