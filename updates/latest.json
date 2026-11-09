@@ -1,6 +1,6 @@
 {
- "version": "1.26.1",
- "notes": "Spotlight style: the guide now sits bottom middle. Its section icons run along the bottom edge and the section's contents show on a card above them.",
- "file": "CouchLauncher-update-1.26.1.zip",
- "size": 396828
+ "version": "1.27.0",
+ "notes": "Spotlight style: the guide is rebuilt to run sideways. Games and apps are picture cards in a row, each group (music, sound, friends, system) is its own column, and it scrolls left and right. Home is a button on the guide's bottom bar next to the sections.",
+ "file": "CouchLauncher-update-1.27.0.zip",
+ "size": 397660
 }

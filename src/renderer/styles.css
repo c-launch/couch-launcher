@@ -1185,7 +1185,7 @@ html.style-spotlight #view .toggle-row.focused, html.style-spotlight #view .prow
    the section holds on a card above them. */
 html.style-spotlight .layer.guide-layer { justify-content: center; align-items: flex-end;
   background: linear-gradient(to top, color-mix(in srgb, var(--bg) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 38%, transparent 78%) !important; backdrop-filter: none !important; }
-html.style-spotlight .guide { flex-direction: column-reverse; margin: 0 0 2.2rem; width: 68rem; height: auto; max-height: 84vh; padding: 0; gap: 1.2rem;
+html.style-spotlight .guide { flex-direction: column-reverse; margin: 0 0 2.2rem; width: calc(100vw - 9.6rem); height: auto; max-height: 84vh; padding: 0; gap: 1.2rem;
   background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important; backdrop-filter: none !important; animation-name: guideRise; }
 html.style-spotlight .layer.guide-layer.closing .guide { animation-name: guideSink; }
 html.style-spotlight .gtabs { justify-content: center; gap: 1.8rem; border-bottom: 0; padding: 0.4rem 0 0; }
@@ -1196,3 +1196,20 @@ html.style-spotlight .gbody { flex-grow: 0; margin: 0; padding: 1.4rem; border-r
 html.style-spotlight .guide .mitem { border-radius: 0.8rem; }
 html.style-spotlight .guide .mitem.focused { background: var(--panel-hover); color: var(--text); box-shadow: inset 0.4rem 0 0 var(--text); }
 html.style-spotlight .guide .mitem.danger.focused { background: #B33A4E; color: #fff; box-shadow: none; }
+
+/* Spotlight's guide runs sideways: each group is a column on the card, games and apps are
+   picture cards, and the row scrolls left and right. */
+html.style-spotlight .gbody { flex-direction: column; flex-wrap: wrap; align-content: flex-start; height: 35rem; overflow-x: auto; overflow-y: hidden; gap: 0.4rem 1.4rem; padding: 1.8rem; scroll-padding: 0 6rem; }
+html.style-spotlight .gbody > * { width: 34rem; flex-shrink: 0; box-sizing: border-box; }
+html.style-spotlight .gbody > .gsep { flex: 0 0 100%; width: 1px; height: auto; margin: 0 0.6rem; background: var(--field-border); }
+html.style-spotlight .gbody > .mitem.gitem2 { flex: 0 0 100%; width: 20rem; height: auto; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 1.2rem; padding: 1rem 1rem 1.2rem; border-radius: 1.4rem; font-size: 1.7rem; text-align: left; }
+html.style-spotlight .gbody > .mitem.gitem2 .mthumb { width: 100%; height: auto; aspect-ratio: 1; border-radius: 1rem; flex: none; }
+html.style-spotlight .gbody > .mitem.gitem2 span:last-child { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
+html.style-spotlight .gbody > .mitem.gitem2.focused { box-shadow: none; outline-color: var(--text); outline-offset: -0.3rem !important; background: var(--panel-hover); }
+html.style-spotlight .gbody > .glabel:has(+ .gitem2), html.style-spotlight .gbody > .glabel:has(+ .gclips) { display: none; }
+html.style-spotlight .gbody > .gclips { flex: 0 0 100%; width: auto; display: flex; gap: 1.4rem; padding: 0; }
+html.style-spotlight .gbody > .gclips .gclip { width: 34rem; }
+html.style-spotlight .gbody { background: color-mix(in srgb, var(--bg) 92%, transparent); }
+html.style-spotlight .gbody > .mitem[data-top] { width: 17rem; }
+html.style-spotlight .gbody > .gmusic { width: 40rem; }
+html.style-spotlight .gtab-gap { width: 1px; height: 2.8rem; align-self: center; background: var(--field-border); }

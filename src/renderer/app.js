@@ -1337,6 +1337,15 @@
       // Items pinned under the music card (Home): going there shows the whole card again.
       if (el.hasAttribute('data-top') && sc.scrollTop > 0) dy = -sc.scrollTop;
       if (Math.abs(dy) > 1) sc.scrollBy({ top: dy, behavior });
+      // A guide laid out sideways (the Spotlight style): bring the item in from the side too.
+      if (sc.classList.contains('gbody') && sc.scrollWidth > sc.clientWidth + 1) {
+        const pad = 6 * rem;
+        let dx = 0;
+        if (r.left < c.left + pad) dx = r.left - (c.left + pad);
+        else if (r.right > c.right - pad) dx = r.right - (c.right - pad);
+        if (dx < 0 && sc.scrollLeft + dx < 8 * rem) dx = -sc.scrollLeft;
+        if (Math.abs(dx) > 1) sc.scrollBy({ left: dx, behavior });
+      }
     }
   }
 
@@ -1446,6 +1455,21 @@
     }
     const next = findNext(cur, dir, els);
     if (next) { setFocus(next); return true; }
+    // The sideways guide (Spotlight style): at the end of a row of controls, left / right carry
+    // on to the nearest thing in the next column.
+    if ((dir === 'left' || dir === 'right') && cur.closest('.gbody') && document.documentElement.classList.contains('style-spotlight')) {
+      const c = rectOf(cur);
+      let best = null, bestD = Infinity;
+      for (const e of els) {
+        if (e === cur || !e.closest('.gbody')) continue;
+        const r = rectOf(e);
+        const gap = dir === 'right' ? r.l - c.r : c.l - r.r;
+        if (gap < -1) continue;
+        const d = gap * 3 + Math.abs(r.cy - c.cy);
+        if (d < bestD) { bestD = d; best = e; }
+      }
+      if (best) { setFocus(best); return true; }
+    }
     return false;
   }
   function page(dir) { for (let i = 0; i < 4; i++) if (!move(dir)) break; }
@@ -2426,9 +2450,11 @@
     }
     const item = (key, ic, label, attrs, cls) => '<button class="mitem' + (cls ? ' ' + cls : '') + '" data-nav data-key="' + key + '" data-zone="gbody" ' + attrs + '>' + icon(ic) + '<span>' + label + '</span></button>';
     const thumb = (g) => '<span class="mthumb" style="background-color:' + tileColor(g) + (g.art && g.art.tile ? ';background-image:url(&quot;' + esc(fileUrl(g.art.tile)) + '&quot;)' : '') + '"></span>';
+    const spot = () => document.documentElement.classList.contains('style-spotlight');
     function body() {
       if (tab === 'games') {
-        let h = item('g-home', 'home', 'Home', 'data-act="home" data-top') + '<div class="gsep"></div>';
+        // (In the Spotlight style Home is a button on the guide's bottom bar instead.)
+        let h = spot() ? '' : item('g-home', 'home', 'Home', 'data-act="home" data-top') + '<div class="gsep"></div>';
         // Watching something (Movies & TV): it's paused while the guide is open.
         const tvn = OVERLAY && S.tvNow;
         if (tvn) {
@@ -2499,7 +2525,8 @@
     }
     function html() {
       const t = TABS_G.find((x) => x[0] === tab);
-      return '<aside class="guide"><div class="gtabs">' + TABS_G.map(([k, ic, label]) =>
+      return '<aside class="guide"><div class="gtabs">' +
+        (spot() ? '<button class="gtab ghome" data-nav data-key="g-home" data-zone="gtabs" data-lock="gtabs" data-act="home" aria-label="Home">' + icon('home') + '</button><span class="gtab-gap"></span>' : '') + TABS_G.map(([k, ic, label]) =>
         '<button class="gtab' + (k === tab ? ' sel' : '') + '" data-nav data-key="tab-' + k + '" data-zone="gtabs" data-lock="gtabs" data-act="tab" data-tab="' + k + '" aria-label="' + label + '">' +
         (k === 'system' ? avatarHTML('gtab-av') : icon(ic)) + '</button>').join('') +
         '</div><div class="gtitle">' + t[2] + '</div><div class="gbody">' + body() + '</div></aside>';
