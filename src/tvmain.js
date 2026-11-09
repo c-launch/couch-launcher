@@ -111,15 +111,17 @@ function setupTv(ctx) {
   });
   // The eras (2000s, 2010s, 2020s): which are set up, and picking one (it's set up when picked).
   handle('tv:cableEras', () => cable().eras());
-  handle('tv:cableSetEra', (id) => {
+  handle('tv:cableSetEras', (ids) => {
     if (session && session.cable) throw new Error('Stop watching first');
-    return cable().setEra(String(id || ''));
+    return cable().setEras((Array.isArray(ids) ? ids : [ids]).map(String).slice(0, 3));
   });
   handle('tv:cableTune', (id) => tune(String(id || '')));
-  handle('tv:cableLineup', () => cable().lineup());
-  handle('tv:cableAdd', (ch, meta) => cable().addShow(String(ch || ''), { id: String((meta && meta.id) || ''), name: String((meta && meta.name) || '').slice(0, 200) }));
-  handle('tv:cableRemove', (ch, i) => cable().removeShow(String(ch || ''), Number(i) | 0));
-  handle('tv:cableReset', (ch) => cable().resetChannel(String(ch || '')));
+  // (era: whose line-up, when eras are merged.)
+  const eraArg = (e) => (e ? String(e) : null);
+  handle('tv:cableLineup', (era) => ({ mix: cable().mix(), channels: cable().lineup(eraArg(era)) }));
+  handle('tv:cableAdd', (ch, meta, era) => cable().addShow(String(ch || ''), { id: String((meta && meta.id) || ''), name: String((meta && meta.name) || '').slice(0, 200) }, eraArg(era)));
+  handle('tv:cableRemove', (ch, i, era) => cable().removeShow(String(ch || ''), Number(i) | 0, eraArg(era)));
+  handle('tv:cableReset', (ch, era) => cable().resetChannel(String(ch || ''), eraArg(era)));
 
   function cleanMeta(m) {
     m = m || {};

@@ -171,12 +171,14 @@ function compactEpisodes(videos) {
   });
 }
 // The episodes an era airs: the ones from its years when there are a few, else all of them.
+// (era: an era's id, or several for merged eras: episodes from any of their years.)
 function inEra(episodes, era) {
-  const e = typeof era === 'string' ? ERAS[era] : era || ERA;
+  const list = (Array.isArray(era) ? era : [era]).map((x) => (typeof x === 'string' ? ERAS[x] : x || ERA)).filter(Boolean);
   const all = episodes || [];
-  const hit = all.filter((v) => v.r != null && v.r >= e.from && v.r <= e.to);
+  const hit = all.filter((v) => v.r != null && list.some((e) => v.r >= e.from && v.r <= e.to));
   return hit.length >= 3 ? hit : all;
 }
+const ERA_ORDER = ['2000s', '2010s', '2020s'];
 function eraEpisodes(videos, era) {
   return inEra(compactEpisodes(videos), era).map((v) => ({ id: v.id, season: v.season, episode: v.episode, title: v.title }));
 }
@@ -305,13 +307,16 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     if (state.v !== 2) {
       // From before eras: that line-up is the 2010s one. Shows are looked up again (for the
       // dates their episodes aired), old commercial lists are dropped.
-      if (Array.isArray(state.channels)) { state.eras['2010s'] = { channels: state.channels, setup: true }; state.era = '2010s'; }
+      if (Array.isArray(state.channels)) { state.eras['2010s'] = { channels: state.channels, setup: true }; state.mix = ['2010s']; }
       delete state.channels;
       for (const k of Object.keys(state.shows)) state.shows[k].at = 0;
       state.ads = {};
       state.v = 2;
     }
-    if (state.era && !ERAS[state.era]) state.era = null;
+    if (state.era && !state.mix) state.mix = [state.era];
+    delete state.era;
+    state.mix = (Array.isArray(state.mix) ? state.mix : []).filter((id) => ERAS[id] && state.eras[id]);
+    state.mix = ERA_ORDER.filter((id) => state.mix.includes(id));
     for (const [id, e] of Object.entries(state.eras)) {
       if (!ERAS[id] || !e || !Array.isArray(e.channels)) { delete state.eras[id]; continue; }
       const defs = ERAS[id].channels;
@@ -328,9 +333,48 @@ function createCable({ tv, file, now, ytdlp, ads }) {
       try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(state)); fs.renameSync(file + '.tmp', file); } catch (_) { /* next time */ }
     }, 300);
   }
-  // The era being watched, and its channels.
-  const eraId = () => { load(); return state.era || null; };
-  const chans = () => { load(); return state.era && state.eras[state.era] ? state.eras[state.era].channels : []; };
+  // The eras being watched (one, or several merged), and their channels. Merged: a channel in
+  // more than one era (Nickelodeon) has all their shows; one only in some (Toon Disney, Disney
+  // XD) is its own channel (numbered after the others if its number is taken).
+  const mix = () => { load(); return state.mix; };
+  const mixKey = () => mix().join('+');
+  const eraId = () => (mix().length ? mix().join(' + ') : null);
+  let merged = null, mergedKey = null;
+  function chans() {
+    load();
+    const ids = state.mix;
+    if (!ids.length) return [];
+    if (ids.length === 1) return state.eras[ids[0]].channels;
+    const key = ids.join('+') + '|' + ids.map((id) => JSON.stringify(state.eras[id].channels.map((c) => [c.id, c.shows.length, c.shows.map((x) => x.id || x.name).join()]))).join('|');
+    if (merged && mergedKey === key) return merged;
+    const out = [];
+    const taken = new Set();
+    for (const id of ids) {
+      for (const c of state.eras[id].channels) {
+        let m = out.find((x) => x.id === c.id);
+        if (!m) {
+          let number = c.number;
+          while (taken.has(number)) number++;
+          taken.add(number);
+          m = { id: c.id, number, name: c.name, color: c.color, adWord: [], ads: [], shows: [], from: [] };
+          out.push(m);
+        }
+        m.from.push(id);
+        for (const w of [].concat(c.adWord || [])) if (!m.adWord.includes(w)) m.adWord.push(w);
+        for (const q of c.ads || []) if (!m.ads.includes(q)) m.ads.push(q);
+        for (const sh of c.shows) {
+          const sid = idOf(sh);
+          if (!m.shows.some((x) => (sid && idOf(x) === sid) || nameKey(x) === nameKey(sh))) m.shows.push(sh);
+        }
+      }
+    }
+    // The 2000s-only channel keeps its number; ones that clash move to the first free numbers.
+    for (const m of out) { if (out.filter((x) => x.number === m.number).length > 1) { let n = m.number; while (out.some((x) => x.number === n)) n++; m.number = n; } }
+    out.sort((a, b) => a.number - b.number);
+    merged = out; mergedKey = key;
+    return out;
+  }
+  const eraChans = (id) => { load(); return state.eras[id] ? state.eras[id].channels : []; };
   const nameKey = (s) => norm(s.name) + '|' + (s.year || '');
   const idOf = (s) => s.id || state.names[nameKey(s)] || null;
   const resolved = (s) => { const id = idOf(s); return id && state.shows[id] ? state.shows[id] : null; };
@@ -362,12 +406,13 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   function ensure(progress) {
     load();
     if (resolving) return resolving;
-    if (!state.era) return Promise.resolve({ done: 0, total: 0 });
-    const era = state.eras[state.era];
+    if (!state.mix.length) return Promise.resolve({ done: 0, total: 0 });
+    const eraList = state.mix.map((id) => state.eras[id]);
     const all = [];
-    for (const c of era.channels) for (const s of c.shows) all.push(s);
+    const seen = new Set();
+    for (const era of eraList) for (const c of era.channels) for (const s of c.shows) { const k = idOf(s) || nameKey(s); if (!seen.has(k)) { seen.add(k); all.push(s); } }
     const todo = all.filter((s) => { const r = resolved(s); return !r || now() - (r.at || 0) > STALE_MS; });
-    if (!todo.length) { if (!era.setup) { era.setup = true; save(); } return Promise.resolve({ done: all.length, total: all.length }); }
+    if (!todo.length) { if (eraList.some((e) => !e.setup)) { for (const e of eraList) e.setup = true; save(); } return Promise.resolve({ done: all.length, total: all.length }); }
     let done = all.length - todo.length;
     const queue = todo.slice();
     const worker = async () => {
@@ -379,25 +424,25 @@ function createCable({ tv, file, now, ytdlp, ads }) {
       }
     };
     resolving = Promise.all([worker(), worker(), worker(), worker()]).then(() => {
-      days.clear();
-      era.setup = true;
+      days.clear(); merged = null;
+      for (const e of eraList) e.setup = true;
       save();
       return { done, total: all.length };
     }).finally(() => { resolving = null; });
     return resolving;
   }
   const eraReady = (id) => { load(); const e = state.eras[id]; return !!e && e.setup === true && e.channels.every((c) => c.shows.every((s) => resolved(s) || state.names[nameKey(s)] === false)); };
-  const ready = () => !!state && !!eraId() && eraReady(state.era);
+  const ready = () => mix().length > 0 && state.mix.every(eraReady);
   // Some shows want looking up again (a week old): done quietly while you watch.
   const stale = () => chans().some((c) => c.shows.some((s) => { const r = resolved(s); return r && now() - (r.at || 0) > STALE_MS; }));
 
   function showsOf(c) { return c.shows.map(resolved).filter(Boolean); }
   function schedule(c, start) {
-    const k = state.era + '|' + c.id + '|' + start + '|' + adsOn();
+    const k = mixKey() + '|' + c.id + '|' + start + '|' + adsOn();
     let d = days.get(k);
     if (!d) {
-      const era = ERAS[state.era];
-      d = daySchedule(state.era + ':' + c.id, showsOf(c).map((x) => ({ id: x.id, runtimeMin: x.runtimeMin, episodes: inEra(x.episodes, era) })), start, adsOn());
+      const eraList = c.from || state.mix;
+      d = daySchedule(mixKey() + ':' + c.id, showsOf(c).map((x) => ({ id: x.id, runtimeMin: x.runtimeMin, episodes: inEra(x.episodes, eraList) })), start, adsOn());
       days.set(k, d);
       if (days.size > 40) days.delete(days.keys().next().value);
     }
@@ -465,7 +510,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     load();
     const c = channel(channelId);
     if (!c || !ytdlp || !Array.isArray(c.ads) || !c.ads.length) return Promise.resolve([]);
-    const key = state.era + '|' + channelId;
+    const key = mixKey() + '|' + channelId;
     const have = state.ads[key];
     if (have && now() - (have.at || 0) < STALE_MS && have.list.length) return Promise.resolve(have.list);
     if (adLoads.has(key)) return adLoads.get(key);
@@ -481,13 +526,18 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   }
 
   // ---- editing the line-up
-  function lineup() {
-    return chans().map((c) => Object.assign(brief(c), {
+  // (era: which era's line-up; merged eras are edited one era at a time.)
+  const editEra = (era) => { load(); const id = era && state.eras[era] ? era : state.mix[0]; if (!id) throw new Error('Pick an era first'); return id; };
+  const eraChannel = (era, channelId) => eraChans(editEra(era)).find((c) => c.id === channelId) || null;
+  function lineup(era) {
+    const id = editEra(era);
+    return eraChans(id).map((c) => Object.assign(brief(c), {
+      era: id,
       list: c.shows.map((s) => { const r = resolved(s); return { name: r ? r.name : s.name, id: idOf(s), poster: r ? r.poster : null, found: !!r, missing: state.names[nameKey(s)] === false }; })
     }));
   }
-  async function addShow(channelId, meta) {
-    const c = channel(channelId);
+  async function addShow(channelId, meta, era) {
+    const c = eraChannel(era, channelId);
     if (!c) throw new Error('No such channel');
     const id = String(meta && meta.id || '');
     if (!/^tt\d+$/.test(id)) throw new Error('That show can’t be added (it needs an IMDb id)');
@@ -495,45 +545,49 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     const entry = state.shows[id] && now() - (state.shows[id].at || 0) < STALE_MS ? state.shows[id] : await loadShow(id);
     if (!entry.episodes.length) throw new Error('No episodes found for that show');
     c.shows.push({ name: entry.name || String(meta.name || ''), id });
-    days.clear(); save();
-    return lineup();
+    days.clear(); merged = null; save();
+    return lineup(era);
   }
-  function removeShow(channelId, index) {
-    const c = channel(channelId);
+  function removeShow(channelId, index, era) {
+    const c = eraChannel(era, channelId);
     if (!c || !c.shows[index]) throw new Error('Not found');
     c.shows.splice(index, 1);
-    days.clear(); save();
-    return lineup();
+    days.clear(); merged = null; save();
+    return lineup(era);
   }
-  function resetChannel(channelId) {
-    const c = channel(channelId), d = state.era ? ERAS[state.era].channels.find((x) => x.id === channelId) : null;
+  function resetChannel(channelId, era) {
+    const id = editEra(era);
+    const c = eraChannel(id, channelId), d = ERAS[id].channels.find((x) => x.id === channelId);
     if (!c || !d) throw new Error('Not found');
     c.shows = JSON.parse(JSON.stringify(d.shows));
-    days.clear(); save();
-    return lineup();
+    days.clear(); merged = null; save();
+    return lineup(id);
   }
   // ---- eras
   // Every era: whether it's set up yet (its shows looked up), and a taste of what's on.
   function eras() {
     load();
     return Object.entries(ERAS).map(([id, e]) => ({
-      id, name: e.name, current: state.era === id, setup: eraReady(id),
+      id, name: e.name, current: state.mix.includes(id), setup: eraReady(id),
       channels: (state.eras[id] ? state.eras[id].channels : e.channels).map((c) => c.name),
       sample: e.channels.map((c) => c.shows[0] && c.shows[0].name).concat(e.channels.map((c) => c.shows[1] && c.shows[1].name)).filter(Boolean).slice(0, 8),
       shows: (state.eras[id] ? state.eras[id].channels : e.channels).reduce((n, c) => n + c.shows.length, 0)
     }));
   }
-  function setEra(id) {
+  // Which eras to watch: one, or several merged.
+  function setEras(ids) {
     load();
-    if (!ERAS[id]) throw new Error('No such era');
-    if (!state.eras[id]) state.eras[id] = { channels: JSON.parse(JSON.stringify(ERAS[id].channels)), setup: false };
-    state.era = id;
-    days.clear(); save();
+    const list = ERA_ORDER.filter((id) => (Array.isArray(ids) ? ids : [ids]).includes(id));
+    if (!list.length) throw new Error('Pick at least one era');
+    for (const id of list) if (!state.eras[id]) state.eras[id] = { channels: JSON.parse(JSON.stringify(ERAS[id].channels)), setup: false };
+    state.mix = list;
+    days.clear(); merged = null; save();
     return eras();
   }
+  const setEra = (id) => setEras([id]);
   function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { fs.writeFileSync(file, JSON.stringify(state)); } catch (_) { /* fine */ } } }
 
-  return { ensure, ready, stale, guide, at, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, era: eraId, get resolving() { return !!resolving; } };
+  return { ensure, ready, stale, guide, at, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
 }
 
 module.exports = { createCable, daySchedule, dayStart, parseRuntime, eraEpisodes, compactEpisodes, inEra, pickMatch, hash32, slotMs, breakPlan, locate, adVideos, DEFAULT_CHANNELS, ERAS };

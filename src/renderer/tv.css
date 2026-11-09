@@ -305,3 +305,13 @@
 .tv-era.focused { background: var(--tv-focus-bg); color: var(--tv-focus-text); transform: scale(1.03); box-shadow: var(--tv-shadow); }
 .tv-era.focused .tv-era-sh, .tv-era.focused .tv-era-n { color: inherit; opacity: .75; }
 .tv-era.focused .tv-era-st { background: rgba(0,0,0,.12); }
+
+.tv-era { position: relative; }
+.tv-era-tick { position: absolute; top: 2.4rem; right: 2.4rem; width: 4rem; height: 4rem; border-radius: 50%; border: .3rem solid var(--tv-chip); display: flex; align-items: center; justify-content: center; }
+.tv-era.on .tv-era-tick { background: var(--tv-text); border-color: var(--tv-text); color: var(--tv-bg, #000); }
+.tv-era.on.focused .tv-era-tick { background: var(--tv-focus-text); border-color: var(--tv-focus-text); color: var(--tv-focus-bg); }
+.tv-era-tick svg { width: 2.4rem; height: 2.4rem; }
+.tv-era.on { box-shadow: inset 0 0 0 .3rem var(--tv-text); }
+.tv-eras-go { margin-top: 3rem; min-height: 6rem; }
+.tv-eras-none { font-size: 1.8rem; color: var(--tv-faint); margin: 1.6rem 0; }
+.tv-cedit-eras { display: flex; align-items: center; gap: 1.2rem; margin-top: 1.6rem; font-size: 1.7rem; color: var(--tv-sub); }

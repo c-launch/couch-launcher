@@ -82,7 +82,7 @@ window.CouchTV = function (k) {
   const isOpen = () => !!(T.layer && k.layers.includes(T.layer));
   const scroller = () => $('.tv-scroll', T.layer.el);
   function nav() {
-    const top = T.page === 'show' || T.page === 'cat' || T.page === 'cableedit' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
+    const top = T.page === 'show' || T.page === 'cat' || T.page === 'cableedit' || T.page === 'cableeras' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
     $('.tv-nav', T.layer.el).innerHTML = SECTIONS.map(([id, label]) => '<button class="tv-tab' + (top === id ? ' on' : '') + '" data-nav data-key="tvn-' + id + '" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="' + id + '">' + label + '</button>').join('') +
       '<button class="tv-tab ic' + (top === 'search' ? ' on' : '') + '" data-nav data-key="tvn-search" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="search" aria-label="Search">' + icon('search') + '</button>';
     // The highlight behind the current section slides over to the new one.
@@ -161,7 +161,7 @@ window.CouchTV = function (k) {
     const sc = scroller();
     sc.className = 'tv-scroll page-' + T.page;
     $('.tv', T.layer.el).classList.toggle('on-show', T.page === 'show');
-    const fn = { home: homePage, cable: cablePage, cableedit: cableEditPage, movie: () => browsePage('movie'), series: () => browsePage('series'), library: libraryPage, addons: addonsPage, search: searchPage, show: showPage, cat: catPage }[T.page] || homePage;
+    const fn = { home: homePage, cable: cablePage, cableedit: cableEditPage, cableeras: cableErasPage, movie: () => browsePage('movie'), series: () => browsePage('series'), library: libraryPage, addons: addonsPage, search: searchPage, show: showPage, cat: catPage }[T.page] || homePage;
     sc.innerHTML = '';
     fn(sc, gen);
     sc.scrollTop = scrollTop || 0;
@@ -542,25 +542,56 @@ window.CouchTV = function (k) {
     } else place(had);
     cableInfo(currentFocus());
   }
-  // Which era: big cards for the 2000s, 2010s and 2020s. Picking one sets it up (its shows are
-  // looked up, about a minute); the others wait until they're picked.
+  // Which eras: big cards for the 2000s, 2010s and 2020s. Pick one, or several to merge them
+  // (their shows share the channels). Eras not watched before are set up when picked (their
+  // shows looked up, about a minute); the others aren't touched.
   async function eraPicker(sc, gen, box) {
     let eras;
     try { eras = await api.tvCableEras(); } catch (e) { box.innerHTML = empty(esc(e.message)); return; }
     if (stale(gen)) return;
+    T.eras = eras;
     const first = !eras.some((e) => e.setup);
-    box.innerHTML = '<div class="tv-eras-intro"><h2>' + (first ? 'Pick an era to start with' : 'Pick an era') + '</h2><p>' +
-      (first ? 'Only that era’s shows are looked up now (about a minute). You can add the others any time from the guide.' : 'Eras you haven’t watched yet take about a minute to set up the first time.') + '</p></div>' +
-      '<div class="tv-eras">' + eras.map((e) => '<button class="tv-era' + (e.current ? ' on' : '') + '" data-nav data-key="era-' + e.id + '" data-zone="eras" data-lock="eras" data-act="cable-pick-era" data-era="' + e.id + '">' +
-        '<b>' + esc(e.name) + '</b><span class="tv-era-st">' + (e.setup ? 'Ready' : 'Set up when picked') + '</span>' +
-        '<span class="tv-era-ch">' + esc(e.channels.join(' · ')) + '</span><span class="tv-era-sh">' + esc(e.sample.join(', ')) + '…</span><span class="tv-era-n">' + e.shows + ' shows</span></button>').join('') + '</div>';
-    const cur = eras.find((e) => e.current) || eras.find((e) => e.id === '2010s');
+    if (!T.eraSel) { const cur = eras.filter((e) => e.current).map((e) => e.id); T.eraSel = new Set(cur.length ? cur : ['2010s']); }
+    box.innerHTML = '<div class="tv-eras-intro"><h2>' + (first ? 'Pick an era to start with' : 'Pick your eras') + '</h2><p>' +
+      'Pick one, or more to mix them: their shows share the channels. ' + (first ? 'Only the eras you pick are looked up now (about a minute each).' : 'Eras you haven’t watched yet take about a minute to set up.') + '</p></div>' +
+      '<div class="tv-eras"></div><div class="tv-eras-go"></div>';
+    drawEraCards(box);
+    const cur = eras.find((e) => T.eraSel.has(e.id)) || eras[1];
     setFocus($('[data-key="era-' + cur.id + '"]', box), { instant: true });
   }
-  async function pickEra(id) {
-    try { await api.tvCableSetEra(id); } catch (e) { toast(e.message, true); return; }
+  function drawEraCards(box, focusKey) {
+    const eras = T.eras || [];
+    $('.tv-eras', box).innerHTML = eras.map((e) => {
+      const on = T.eraSel.has(e.id);
+      return '<button class="tv-era' + (on ? ' on' : '') + '" data-nav data-key="era-' + e.id + '" data-zone="eras" data-lock="eras" data-act="cable-pick-era" data-era="' + e.id + '" aria-pressed="' + on + '">' +
+        '<span class="tv-era-tick">' + (on ? icon('check') : '') + '</span><b>' + esc(e.name) + '</b><span class="tv-era-st">' + (e.setup ? 'Ready' : 'About a minute to set up') + '</span>' +
+        '<span class="tv-era-ch">' + esc(e.channels.join(' · ')) + '</span><span class="tv-era-sh">' + esc(e.sample.join(', ')) + '…</span><span class="tv-era-n">' + e.shows + ' shows</span></button>';
+    }).join('');
+    const sel = eras.filter((e) => T.eraSel.has(e.id)).map((e) => e.name);
+    $('.tv-eras-go', box).innerHTML = sel.length
+      ? '<button class="tv-btn primary" data-nav data-key="era-go" data-zone="erago" data-act="cable-eras-go">' + icon('play') + '<span>Watch ' + esc(sel.length > 1 ? sel.join(' + ') + ' together' : 'the ' + sel[0]) + '</span></button>'
+      : '<p class="tv-eras-none">Pick at least one era</p>';
+    if (focusKey) place(focusKey);
+  }
+  function toggleEra(id) {
+    if (T.eraSel.has(id)) T.eraSel.delete(id); else T.eraSel.add(id);
+    const box = T.layer && $('.tv-cable', T.layer.el);
+    if (box) drawEraCards(box, 'era-' + id);
+  }
+  async function watchEras() {
+    const ids = [...(T.eraSel || [])];
+    if (!ids.length) return;
+    try { await api.tvCableSetEras(ids); } catch (e) { toast(e.message, true); return; }
     T.cableKeepHead = false;
+    T.eraSel = null;
+    if (T.page !== 'cable') { T.page = 'cable'; T.stack = []; }
     render();
+  }
+  // The era page from the guide's Era button.
+  function cableErasPage(sc, gen) {
+    T.eraSel = null;
+    sc.innerHTML = '<div class="tv-head" data-block="top"><h1>Eras</h1></div><div class="tv-cable"><div class="tv-loading">Loading…</div></div>';
+    eraPicker(sc, gen, $('.tv-cable', sc));
   }
   // The box under the guide: what the focused program is.
   function cableInfo(el) {
@@ -588,7 +619,16 @@ window.CouchTV = function (k) {
   // Edit channels: each channel's shows; remove one, add any show, or go back to the default list.
   function cableEditPage(sc, gen) {
     sc.innerHTML = '<div class="tv-head" data-block="top"><h1>Edit channels</h1><div class="tv-chips"></div></div><div class="tv-cedit"><div class="tv-loading">Loading…</div></div>';
-    api.tvCableLineup().then((list) => { if (!stale(gen)) drawLineup(sc, list); }).catch((e) => { if (!stale(gen)) $('.tv-cedit', sc).innerHTML = empty(esc(e.message)); });
+    loadLineup(sc, gen, T.editEra);
+  }
+  // Merged eras are edited one era at a time (a row of era buttons picks which).
+  function loadLineup(sc, gen, era, focusKey) {
+    api.tvCableLineup(era).then((r) => {
+      if (gen != null && stale(gen)) return;
+      T.lineMix = r.mix || [];
+      T.editEra = r.channels[0] ? r.channels[0].era : null;
+      drawLineup(sc, r.channels, focusKey);
+    }).catch((e) => { if (gen == null || !stale(gen)) $('.tv-cedit', sc).innerHTML = empty(esc(e.message)); });
   }
   function drawLineup(sc, list, focusKey) {
     T.lineup = list;
@@ -596,11 +636,16 @@ window.CouchTV = function (k) {
     if (!cur) return;
     T.cableEdit = cur.id;
     S.zoneMemory.chips = 'ce-' + cur.id;
+    const eraRow = (T.lineMix || []).length > 1 ? '<div class="tv-cedit-eras"><span>Editing the</span>' + T.lineMix.map((id) => '<button class="tv-chip' + (id === T.editEra ? ' on' : '') + '" data-nav data-key="cee-' + id + '" data-zone="ceeras" data-lock="ceeras" data-act="cable-edit-era" data-era="' + id + '">' + id + '</button>').join('') + '</div>' : '';
     $('.tv-chips', sc).innerHTML = list.map((c) => '<button class="tv-chip' + (c.id === cur.id ? ' on' : '') + '" data-nav data-key="ce-' + c.id + '" data-zone="chips" data-lock="chips" data-act="cable-ch" data-ch="' + esc(c.id) + '">' + c.number + ' ' + esc(c.name) + '</button>').join('');
+    const head = $('.tv-head', sc);
+    const old = $('.tv-cedit-eras', head);
+    if (old) old.remove();
+    if (eraRow) head.insertAdjacentHTML('beforeend', eraRow);
     const cards = cur.list.map((x, i) => '<button class="tv-poster tv-cshow' + (x.found ? '' : ' missing') + '" data-nav data-key="cs-' + i + '" data-zone="grid" data-act="cable-show" data-i="' + i + '" aria-label="' + esc(x.name) + '">' +
       (x.poster ? '<img src="' + esc(x.poster) + '" alt="" loading="lazy">' : '') + '<span class="tv-pname">' + esc(x.name) + '</span>' + (x.found ? '' : '<span class="tv-cmiss">' + (x.missing ? 'Not found' : 'Not looked up yet') + '</span>') + '</button>').join('');
     $('.tv-cedit', sc).innerHTML = '<div class="tv-cedit-btns"><button class="tv-btn primary" data-nav data-key="ce-add" data-zone="cebtns" data-act="cable-add">' + icon('plus') + '<span>Add a show</span></button>' +
-      '<button class="tv-btn" data-nav data-key="ce-reset" data-zone="cebtns" data-act="cable-reset">Default shows</button><span class="tv-cedit-n">' + cur.list.length + ' shows on ' + esc(cur.name) + '</span></div><div class="tv-grid">' + cards + '</div>';
+      '<button class="tv-btn" data-nav data-key="ce-reset" data-zone="cebtns" data-act="cable-reset">Default shows</button><span class="tv-cedit-n">' + cur.list.length + ' shows on ' + esc(cur.name) + ((T.lineMix || []).length > 1 ? ' in the ' + esc(T.editEra) : '') + '</span></div><div class="tv-grid">' + cards + '</div>';
     place(focusKey || (currentFocus() && currentFocus().closest('.tv-scroll') && $('[data-key="' + cssEsc(currentFocus().dataset.key) + '"]', sc) ? currentFocus().dataset.key : 'ce-' + cur.id));
   }
   async function cableAddShow() {
@@ -616,7 +661,7 @@ window.CouchTV = function (k) {
     if (!pick) return;
     const it = items.find((x) => x.id === pick);
     const wait = toast('Adding ' + it.name + '…');
-    try { const list = await api.tvCableAdd(ch.id, it); toast(it.name + ' is on ' + ch.name + ' now'); drawLineup(scroller(), list, 'cs-' + (list.find((c) => c.id === ch.id).list.length - 1)); }
+    try { const list = await api.tvCableAdd(ch.id, it, T.editEra); toast(it.name + ' is on ' + ch.name + ' now'); drawLineup(scroller(), list, 'cs-' + (list.find((c) => c.id === ch.id).list.length - 1)); }
     catch (e) { toast(e.message, true); }
     finally { if (wait && wait.remove) wait.remove(); }
   }
@@ -626,7 +671,7 @@ window.CouchTV = function (k) {
     if (!x) return;
     const pick = await openMenu(x.name, [{ id: 'remove', label: 'Remove from ' + ch.name, icon: 'x' }]);
     if (pick !== 'remove') return;
-    try { const list = await api.tvCableRemove(ch.id, i); drawLineup(scroller(), list, 'cs-' + Math.max(0, Math.min(i, list.find((c) => c.id === ch.id).list.length - 1))); toast('Removed ' + x.name); }
+    try { const list = await api.tvCableRemove(ch.id, i, T.editEra); drawLineup(scroller(), list, 'cs-' + Math.max(0, Math.min(i, list.find((c) => c.id === ch.id).list.length - 1))); toast('Removed ' + x.name); }
     catch (e) { toast(e.message, true); }
   }
 
@@ -1060,19 +1105,15 @@ window.CouchTV = function (k) {
       case 'search': return askSearch();
       case 'cable-tune': return tuneIn(el.dataset.ch);
       case 'cable-edit': return push('cableedit');
-      case 'cable-pick-era': return pickEra(el.dataset.era);
-      case 'cable-era': {
-        let eras;
-        try { eras = await api.tvCableEras(); } catch (e) { toast(e.message, true); return; }
-        const pick = await openMenu('Era', eras.map((e) => ({ id: e.id, label: e.name + (e.current ? ' (watching)' : e.setup ? '' : ' (about a minute to set up)'), icon: e.current ? 'check' : 'tv' })));
-        if (pick && !(eras.find((e) => e.id === pick) || {}).current) pickEra(pick);
-        return;
-      }
+      case 'cable-pick-era': return toggleEra(el.dataset.era);
+      case 'cable-eras-go': return watchEras();
+      case 'cable-era': return push('cableeras');
+      case 'cable-edit-era': T.editEra = el.dataset.era; return loadLineup(scroller(), null, T.editEra, el.dataset.key);
       case 'cable-ads': {
         const on = S.lib.settings.cableAds === false;
         S.lib.settings.cableAds = on; save();
         T.cableKeepHead = true;
-        toast(on ? 'Commercials on: real 2010s commercial breaks, and shows in 30-minute slots' : 'Commercials off: just the shows, back to back');
+        toast(on ? 'Commercials on: real commercial breaks from the time, and shows in 30-minute slots' : 'Commercials off: just the shows, back to back');
         return render('cb-ads');
       }
       case 'cable-ch': T.cableEdit = el.dataset.ch; return drawLineup(scroller(), T.lineup || [], el.dataset.key);
@@ -1081,7 +1122,7 @@ window.CouchTV = function (k) {
       case 'cable-reset': {
         const ch = (T.lineup || []).find((c) => c.id === T.cableEdit);
         if (!ch || !(await confirmBox('Go back to the default shows?', 'Shows you added to ' + ch.name + ' are taken off, and ones you removed come back.', 'Default shows', true))) return;
-        try { const list = await api.tvCableReset(ch.id); drawLineup(scroller(), list, 'ce-reset'); api.tvCableSetup().catch(() => {}); } catch (e) { toast(e.message, true); }
+        try { const list = await api.tvCableReset(ch.id, T.editEra); drawLineup(scroller(), list, 'ce-reset'); api.tvCableSetup().catch(() => {}); } catch (e) { toast(e.message, true); }
         return;
       }
       case 'addon': return addonMenu(r);
@@ -1178,7 +1219,7 @@ window.CouchTV = function (k) {
   }
   function prompts(el) {
     const a = el && el.dataset.act;
-    const list = [['A', a === 'item' ? 'Open' : a === 'episode' || a === 'resume' || a === 'stream' ? 'Play' : a === 'cable-tune' ? 'Watch' : 'Select']];
+    const list = [['A', a === 'item' ? 'Open' : a === 'episode' || a === 'resume' || a === 'stream' ? 'Play' : a === 'cable-tune' ? 'Watch' : a === 'cable-pick-era' ? (el.getAttribute('aria-pressed') === 'true' ? 'Unpick' : 'Pick') : 'Select']];
     if (a === 'cable-show') list.push(['X', 'Remove']);
     if (a === 'episode') list.push(['X', 'Watched']);
     else if (a === 'item' || a === 'resume') list.push(['X', 'Library']);

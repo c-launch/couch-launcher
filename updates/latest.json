@@ -1,6 +1,6 @@
 {
- "version": "1.23.0",
- "notes": "Cable TV eras: the 2000s (Nickelodeon, Disney Channel, Toon Disney, Cartoon Network, PBS Kids) and the 2020s join the 2010s, each with era-right shows, episodes from those years and commercials from the time. The first time, you pick the era to start with and only that one is set up; switch eras any time from the top of the guide.",
- "file": "CouchLauncher-update-1.23.0.zip",
- "size": 391576
+ "version": "1.24.0",
+ "notes": "Cable TV: mix eras. Pick more than one era (say the 2000s and the 2010s) and their shows share the channels: Nickelodeon gets both eras' shows, and channels from one era only (Toon Disney, Disney XD) are their own channels. Pick eras from the Era button at the top of the guide; edit each era's shows separately.",
+ "file": "CouchLauncher-update-1.24.0.zip",
+ "size": 393505
 }
