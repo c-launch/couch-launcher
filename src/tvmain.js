@@ -97,7 +97,7 @@ function setupTv(ctx) {
   // Looks up the channels' shows the first time (a minute or so), telling the screen how far it got.
   handle('tv:cableSetup', async () => {
     // yt-dlp for the commercials, fetched alongside (no waiting on it).
-    if (settings().cableAds !== false) ytdlp().install().catch(() => {});
+    if (settings().cableAds !== false) ytdlp().install().then(() => ytdlp().runtime()).catch(() => {});
     const r = await cable().ensure((done, total) => send('tv:cableProgress', { done, total }));
     return Object.assign({ ready: cable().ready() }, r);
   });
@@ -219,6 +219,7 @@ function setupTv(ctx) {
     if (!cable().channel(channelId)) throw new Error('No such channel');
     const exe = mpvPath();
     if (!exe) throw new Error('NO_MPV');
+    if (settings().cableAds !== false) ytdlp().install().then(() => ytdlp().runtime()).catch(() => {});
     let s = session && session.cable ? session : null;
     if (!s) {
       if (session) end('switch');

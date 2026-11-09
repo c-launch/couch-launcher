@@ -1,6 +1,6 @@
 {
- "version": "1.27.4",
- "notes": "Cable TV: a Captions list (Y) to pick a language or turn captions off, kept for every channel; captions in another language no longer turn on by themselves. Debrid notice videos ('file was removed', 'download failed') are skipped for the next stream or another episode. Commercials: yt-dlp updates itself when YouTube stops answering, and a break with no commercials says why.",
- "file": "CouchLauncher-update-1.27.4.zip",
- "size": 401968
+ "version": "1.27.5",
+ "notes": "Cable TV commercials: YouTube now needs a JavaScript engine beside yt-dlp, so the launcher gets Deno once (about 45 MB download) into its own folder; yt-dlp also updates itself from its nightly build when a video won't open.",
+ "file": "CouchLauncher-update-1.27.5.zip",
+ "size": 402864
 }
