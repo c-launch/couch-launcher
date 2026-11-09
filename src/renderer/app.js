@@ -4292,7 +4292,9 @@
     let pads;
     try { pads = Array.from(navigator.getGamepads() || []); } catch (_) { return; }
     noteDirect(pads, now);
-    if (ext && (!document.hasFocus() || !pads.some((p) => p && p.connected))) pads = extPads;
+    // The app core only sends it while this window isn't really in front: then it's the one to use
+    // (Chromium may still think it has the focus and give stale, unchanging readings).
+    if (ext) pads = extPads;
     // A real controller (standard layout) is there: ignore other devices (wheels, pedals, remotes).
     const standard = pads.some((p) => p && p.connected && p.mapping === 'standard');
     const live = new Set();

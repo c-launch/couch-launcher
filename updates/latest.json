@@ -1,6 +1,6 @@
 {
- "version": "1.21.1",
- "notes": "Phone remote: volume control (slider, up/down, mute) and Movies & TV and YouTube at the top of the Games tab. Games that open on the wrong monitor: after the game, the launcher offers to make your TV the main monitor whenever that game runs, and Settings › Display has an option to do it for every game.",
- "file": "CouchLauncher-update-1.21.1.zip",
- "size": 365416
+ "version": "1.21.2",
+ "notes": "Fix: in games that keep the screen while the guide opens (GTA V, anti-cheat games), the guide no longer flickers and gets stuck. The launcher notices within a second, steps the game aside and opens the guide where the controller works; Resume brings the game back. The controller also reaches the guide whenever Windows didn't give it the focus.",
+ "file": "CouchLauncher-update-1.21.2.zip",
+ "size": 365657
 }

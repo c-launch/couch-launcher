@@ -117,9 +117,16 @@ if (!app.requestSingleInstanceLock()) {
   for (const k of ['openExternal', 'openPath']) {
     try { const orig = shell[k].bind(shell); shell[k] = (...args) => { wantFront = false; return orig(...args); }; } catch (_) { /* left as is */ }
   }
+  // Is the guide really the window in front? Electron can think it has the focus while Windows
+  // kept it with the game (a full-screen game, or an anti-cheat game we don't push aside).
+  function overlayInFront() {
+    if (!overlay || overlay.isDestroyed() || !overlay.isFocused()) return false;
+    if (!w32) return true;
+    try { const fg = w32.foreground(); return !!fg && fg.hwnd === w32.hwndOf(overlay); } catch (_) { return true; }
+  }
   function feedPads(gp) {
     if (overlayShown()) {
-      if (MAC || !overlay.isFocused()) sendOverlay('pad:ext', gp);
+      if (MAC || !overlayInFront()) sendOverlay('pad:ext', gp);
       return;
     }
     if (!wantFront || !win || win.isDestroyed() || !win.isVisible() || win.isMinimized() || win.isFocused()) return;
@@ -363,14 +370,18 @@ if (!app.requestSingleInstanceLock()) {
   }
   // Some games in exclusive full screen take the screen right back, so the guide flickers and
   // goes away. If that happens, use the launcher's own screen for this game from now on.
+  // Windows decides who's in front, not Electron: a game can keep the screen while Electron still
+  // thinks the guide has the focus (GTA V does, and anti-cheat games, which we don't push aside).
+  // Then the guide flickers and can't be controlled, so the game steps aside instead.
   function checkOverlayKept(r) {
-    setTimeout(() => {
-      if (running !== r || !overlayShown() || !overlay || overlay.isDestroyed()) return;
+    const check = () => {
+      if (running !== r || r.exclusive || !overlayShown() || !overlay || overlay.isDestroyed()) return;
       let fg = null;
       try { fg = w32 && w32.foreground(); } catch (_) { fg = null; }
-      const lost = !overlay.isFocused() && fg && fg.pid !== process.pid;
-      if (lost) guideInLauncher(r);
-    }, 700);
+      if (fg && fg.pid !== process.pid) guideInLauncher(r);
+    };
+    setTimeout(check, 400);
+    setTimeout(check, 1000);
   }
 
   // Stores opened from the launcher, closed when you press the Xbox button to come back.
