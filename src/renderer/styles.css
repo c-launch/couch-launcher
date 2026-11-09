@@ -1181,9 +1181,18 @@ html.style-spotlight #view .gitem .tile { border-radius: calc(var(--r-tile) * 0.
 html.style-spotlight #view .gitem .tile.focused { outline-width: 0.3rem; outline-offset: 0.3rem; }
 html.style-spotlight #view .toggle-row, html.style-spotlight #view .prow { background: transparent; border-color: transparent; border-bottom: 1px solid var(--field-border); border-radius: 0; backdrop-filter: none; box-shadow: none; }
 html.style-spotlight #view .toggle-row.focused, html.style-spotlight #view .prow.focused { background: var(--panel-hover); border-radius: 0.8rem; border-bottom-color: transparent; }
-html.style-spotlight .guide { margin: 0; width: 54rem; border-radius: 0; border-width: 0 1px 0 0; padding: 4rem 2.4rem 3rem; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(28px); box-shadow: 2rem 0 6rem rgba(0,0,0,0.4); }
-html.style-spotlight .gtabs { justify-content: flex-start; gap: 0.8rem; }
+/* The guide sits bottom middle: its section icons in a row along the bottom edge, and what
+   the section holds on a card above them. */
+html.style-spotlight .layer.guide-layer { justify-content: center; align-items: flex-end;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 38%, transparent 78%) !important; backdrop-filter: none !important; }
+html.style-spotlight .guide { flex-direction: column-reverse; margin: 0 0 2.2rem; width: 68rem; height: auto; max-height: 84vh; padding: 0; gap: 1.2rem;
+  background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important; backdrop-filter: none !important; animation-name: guideRise; }
+html.style-spotlight .layer.guide-layer.closing .guide { animation-name: guideSink; }
+html.style-spotlight .gtabs { justify-content: center; gap: 1.8rem; border-bottom: 0; padding: 0.4rem 0 0; }
+html.style-spotlight .gtab { width: 6rem; height: 5.6rem; }
 html.style-spotlight .gtab.sel { box-shadow: inset 0 -0.3rem 0 var(--text); }
+html.style-spotlight .gtitle { display: none; }
+html.style-spotlight .gbody { flex-grow: 0; margin: 0; padding: 1.4rem; border-radius: 1.8rem; background: color-mix(in srgb, var(--bg) 78%, transparent); border: 1px solid var(--border); backdrop-filter: blur(28px); box-shadow: 0 2rem 6rem rgba(0,0,0,0.5); min-height: 0; }
 html.style-spotlight .guide .mitem { border-radius: 0.8rem; }
 html.style-spotlight .guide .mitem.focused { background: var(--panel-hover); color: var(--text); box-shadow: inset 0.4rem 0 0 var(--text); }
 html.style-spotlight .guide .mitem.danger.focused { background: #B33A4E; color: #fff; box-shadow: none; }
