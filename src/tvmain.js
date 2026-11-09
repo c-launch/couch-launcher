@@ -290,8 +290,8 @@ function setupTv(ctx) {
     c.segI = loc.i; c.lastKind = part.kind; c.busy = true;
     try {
       if (part.kind === 'show') {
-        // Coming back from commercials: the channel's "now back to" card covers the switch.
-        if (from === 'ad' || from === 'filler') s.controls.card('back', prog.show, 2600);
+        // Coming back from commercials: a straight cut (a moment of black, like real TV).
+        if (from === 'ad' || from === 'filler') s.controls.cut();
         else s.controls.status('Finding ' + prog.show + '…');
         const ep = await c.ep;
         if (stale()) return;
@@ -304,9 +304,8 @@ function setupTv(ctx) {
         loadSubs(s);
       } else {
         const backAt = part.end ? 0 : Date.now() + loc.left * 1000;
-        // Into the break: "we'll be right back" (not when you just tuned in to one).
-        if (from === 'show' && !part.end) s.controls.card('brb', prog.show, 2600);
-        else if (from === 'show' && part.end) s.controls.card('next', c.info.next && c.info.next[0] ? c.info.next[0].show : '', 2600);
+        // Into the break: a straight cut, like real TV.
+        if (from === 'show') s.controls.cut();
         const ad = settings().cableAds === false ? null : await pickAd(s, loc.left);
         if (stale()) return;
         const l2 = where(c);

@@ -26,10 +26,10 @@
       // A break with no commercials: back to the show after it, or what's next.
       const back = c.part === 'filler' && c.backAt;
       const at = back ? c.backAt : c.next ? c.next.start : 0;
-      $('cb-bk').textContent = back ? c.name + ' · We’ll be right back' : 'Coming up next on ' + c.name;
+      $('cb-bk').textContent = back ? c.name : 'Coming up next on ' + c.name;
       $('cb-bt').textContent = back ? c.show : c.next ? c.next.show : '';
       const sec = at ? Math.max(0, Math.round((at - c.now) / 1000)) : 0;
-      $('cb-bw').textContent = at ? (sec > 60 ? 'at ' + clock(at) : sec > 3 ? 'in ' + sec + ' seconds' : 'in a moment') : '';
+      $('cb-bw').textContent = at ? (back ? 'continues ' : '') + (sec > 60 ? 'at ' + clock(at) : sec > 3 ? 'in ' + sec + ' seconds' : 'in a moment') : '';
     }
     // Bumper cards between the show and the commercials.
     const card = $('cb-card');

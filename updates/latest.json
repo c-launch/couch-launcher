@@ -1,6 +1,6 @@
 {
- "version": "1.22.0",
- "notes": "New: Cable TV in Movies & TV. Nickelodeon, Disney Channel, Disney XD and Cartoon Network airing 2010s shows all day on a real schedule: tune in mid-episode, flip channels with up/down, a cable-box guide, and real 2010s commercial breaks from YouTube between acts (can be turned off). Edit each channel's shows from the guide.",
- "file": "CouchLauncher-update-1.22.0.zip",
- "size": 386935
+ "version": "1.22.1",
+ "notes": "Cable TV: new PBS Kids channel (Arthur, Wild Kratts, Curious George, Dinosaur Train, Odd Squad and more, with PBS Kids promos between shows). Going into and out of commercials is now a straight cut, like real TV, with no card.",
+ "file": "CouchLauncher-update-1.22.1.zip",
+ "size": 387251
 }

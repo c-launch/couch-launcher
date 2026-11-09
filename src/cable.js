@@ -43,6 +43,14 @@ const DEFAULT_CHANNELS = [
       show('Steven Universe', 2013), show('Uncle Grandpa', 2013), show('Clarence', 2014), show('We Bare Bears', 2015), show('Teen Titans Go!', 2013),
       show('Chowder', 2007), show('The Marvelous Misadventures of Flapjack', 2008), show('Generator Rex', 2010), show('Johnny Test', 2005), show('Craig of the Creek', 2018),
       show('Sym-Bionic Titan', 2010), show('Mighty Magiswords', 2016)]
+  },
+  {
+    id: 'pbs', number: 35, name: 'PBS Kids', color: '#ffb703', adWord: 'pbs',
+    ads: ['PBS Kids interstitials 2012', 'PBS Kids promos 2011', 'PBS Kids Go bumpers 2010', 'PBS Kids interstitials 2014'],
+    shows: [show('Arthur', 1996), show('Curious George', 2006), show('Wild Kratts', 2011), show('Dinosaur Train', 2009), show('Super Why!', 2007),
+      show('Peg + Cat', 2013), show('Daniel Tiger\'s Neighborhood', 2012), show('Odd Squad', 2014), show('WordGirl', 2007), show('Martha Speaks', 2008),
+      show('The Cat in the Hat Knows a Lot About That!', 2010), show('Sid the Science Kid', 2008), show('Caillou', 1997), show('Nature Cat', 2015),
+      show('Ready Jet Go!', 2016), show('Cyberchase', 2002), show('The Electric Company', 2009), show('Fetch! with Ruff Ruffman', 2006), show('Splash and Bubbles', 2016)]
   }
 ];
 
@@ -147,7 +155,7 @@ function adVideos(entries, word, notWord) {
     seen.add(e.id);
     const t = String(e.title || '').toLowerCase();
     if (!(e.duration >= 60 && e.duration <= 7200)) return false;
-    if (!/commercial|ads\b|advert|break|bumper|promo/.test(t)) return false;
+    if (!/commercial|ads\b|advert|break|bumper|promo|interstitial|funding/.test(t)) return false;
     if (w && !t.includes(w)) return false;
     if (nw && t.includes(nw)) return false;
     return true;
@@ -203,6 +211,8 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     if (!state.names || typeof state.names !== 'object') state.names = {};
     if (!state.durs || typeof state.durs !== 'object') state.durs = {};
     if (!state.ads || typeof state.ads !== 'object') state.ads = {};
+    // Channels added since (PBS Kids): put them in.
+    for (const d of DEFAULT_CHANNELS) if (!state.channels.some((c) => c.id === d.id)) state.channels.push(JSON.parse(JSON.stringify(d)));
     // Channels from before commercials: give them their searches.
     for (const c of state.channels) { const d = DEFAULT_CHANNELS.find((x) => x.id === c.id); if (d && !c.ads) { c.ads = d.ads.slice(); c.adWord = d.adWord; } }
     return state;

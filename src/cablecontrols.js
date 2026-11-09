@@ -11,13 +11,13 @@ function createCableControls({ act, render, now }) {
   now = now || Date.now;
   // part: what's on screen: 'show', 'ad' (commercials) or 'filler' (a break with no commercials
   // found: a card). card: a channel bumper ("We'll be right back", "Now back to …") for a moment.
-  const st = { info: null, bannerUntil: 0, blank: true, status: '', brk: false, pos: 0, part: 'show', backAt: 0, card: null };
+  const st = { info: null, bannerUntil: 0, blank: true, quiet: false, status: '', brk: false, pos: 0, part: 'show', backAt: 0, card: null };
   let prev = 0, held = null;
 
   function view() {
     const t = now(), i = st.info;
     const c = i ? i.channel : null, cur = i ? i.now : null;
-    const banner = st.bannerUntil > t || st.blank;
+    const banner = st.bannerUntil > t || (st.blank && !st.quiet);
     return {
       visible: true,
       cable: {
@@ -71,15 +71,17 @@ function createCableControls({ act, render, now }) {
   return {
     input, tick, view, BIT,
     // A channel was picked (or the program changed): show the banner, black until it plays.
-    tuning(info) { st.info = info; st.blank = true; st.brk = false; st.status = ''; st.bannerUntil = now() + BANNER_MS; draw(); },
+    tuning(info) { st.info = info; st.blank = true; st.quiet = false; st.brk = false; st.status = ''; st.bannerUntil = now() + BANNER_MS; draw(); },
+    // Between the show and the commercials: just black for a moment, nothing on it.
+    cut() { st.blank = true; st.quiet = true; st.brk = false; st.status = ''; st.bannerUntil = 0; draw(); },
     // The program is playing now.
-    playing(info) { if (info) st.info = info; st.blank = false; st.brk = false; st.status = ''; draw(); },
+    playing(info) { if (info) st.info = info; st.blank = false; st.quiet = false; st.brk = false; st.status = ''; draw(); },
     // Said on the black screen (searching, nothing found…).
     status(text) { st.status = String(text || ''); draw(); },
     // The episode ended before its time slot did: "coming up next" until the next one.
     onBreak(info) { if (info) st.info = info; st.brk = true; draw(); },
     // Show or commercials now (backAt: when the show comes back, for the banner).
-    part(kind, backAt) { st.part = kind; st.backAt = backAt || 0; st.brk = false; if (kind === 'filler') st.blank = false; draw(); },
+    part(kind, backAt) { st.part = kind; st.backAt = backAt || 0; st.brk = false; if (kind === 'filler') { st.blank = false; st.quiet = false; } draw(); },
     // A channel bumper for a moment, covering the switch between show and commercials.
     card(kind, text, ms) { st.card = { kind, text: String(text || ''), until: now() + (ms || 3000) }; draw(); },
     get state() { return st; },
