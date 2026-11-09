@@ -4,7 +4,7 @@
    Search, a show/movie page with seasons and episodes, and the stream picker. */
 window.CouchTV = function (k) {
   const { api, S, $, $$, esc, icon, toast, openLayer, closeLayer, setFocus, currentFocus, cssEsc, openMenu, confirmBox, osk, browse, reduce, save } = k;
-  const SECTIONS = [['home', 'Home'], ['movie', 'Movies'], ['series', 'Series'], ['library', 'Library'], ['addons', 'Addons']];
+  const SECTIONS = [['home', 'Home'], ['cable', 'Cable TV'], ['movie', 'Movies'], ['series', 'Series'], ['library', 'Library'], ['addons', 'Addons']];
   const T = { layer: null, page: 'home', stack: [], refs: [], status: null, catalogs: null, board: null, lib: null, heroI: 0, heroTimer: null, gen: 0, grid: null, show: null, busy: false };
   const mode = () => (S.lib.settings.tvMode === 'light' ? 'light' : 'dark');
   const behavior = () => (reduce() ? 'auto' : 'smooth');
@@ -29,7 +29,7 @@ window.CouchTV = function (k) {
       onMove: () => { if (T.intro) { endIntro(); return true; } return false; },
       onBack: back,
       onFocus: focused,
-      onClose: () => { clearInterval(T.heroTimer); endZooms(); if (T.navWatch) T.navWatch.disconnect(); T.navInd = null; T.layer = null; },
+      onClose: () => { clearInterval(T.heroTimer); clearInterval(T.cableTimer); endZooms(); if (T.navWatch) T.navWatch.disconnect(); T.navInd = null; T.layer = null; },
       prompts: prompts
     });
     // Pictures that don't load: try the poster instead (wide art), else show the title.
@@ -82,7 +82,7 @@ window.CouchTV = function (k) {
   const isOpen = () => !!(T.layer && k.layers.includes(T.layer));
   const scroller = () => $('.tv-scroll', T.layer.el);
   function nav() {
-    const top = T.page === 'show' || T.page === 'cat' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
+    const top = T.page === 'show' || T.page === 'cat' || T.page === 'cableedit' ? (T.stack[0] && T.stack[0].page) || 'home' : T.page;
     $('.tv-nav', T.layer.el).innerHTML = SECTIONS.map(([id, label]) => '<button class="tv-tab' + (top === id ? ' on' : '') + '" data-nav data-key="tvn-' + id + '" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="' + id + '">' + label + '</button>').join('') +
       '<button class="tv-tab ic' + (top === 'search' ? ' on' : '') + '" data-nav data-key="tvn-search" data-lock="tvnav" data-zone="tvnav" data-act="section" data-to="search" aria-label="Search">' + icon('search') + '</button>';
     // The highlight behind the current section slides over to the new one.
@@ -161,7 +161,7 @@ window.CouchTV = function (k) {
     const sc = scroller();
     sc.className = 'tv-scroll page-' + T.page;
     $('.tv', T.layer.el).classList.toggle('on-show', T.page === 'show');
-    const fn = { home: homePage, movie: () => browsePage('movie'), series: () => browsePage('series'), library: libraryPage, addons: addonsPage, search: searchPage, show: showPage, cat: catPage }[T.page] || homePage;
+    const fn = { home: homePage, cable: cablePage, cableedit: cableEditPage, movie: () => browsePage('movie'), series: () => browsePage('series'), library: libraryPage, addons: addonsPage, search: searchPage, show: showPage, cat: catPage }[T.page] || homePage;
     sc.innerHTML = '';
     fn(sc, gen);
     sc.scrollTop = scrollTop || 0;
@@ -468,6 +468,141 @@ window.CouchTV = function (k) {
     });
   }
 
+  // ---------------------------------------------------------------- Cable TV
+  // A cable box guide: channels down the side, the next few hours across. Pick a channel (or
+  // anything on it) and it tunes in to what's airing right now.
+  const HALF = 30 * 60e3, SPAN = 3 * HALF; // the grid shows an hour and a half
+  const clock = (t) => { const d = new Date(t); let h = d.getHours(); const m = d.getMinutes(); const pm = h >= 12; h = h % 12 || 12; return h + ':' + String(m).padStart(2, '0') + (pm ? ' PM' : ' AM'); };
+  const epShort = (v) => (v && v.season ? 'S' + v.season + ' E' + v.episode + (v.title ? ' · ' + v.title : '') : '');
+  if (api.on && !T.cableHooked) {
+    T.cableHooked = true;
+    api.on('tv:cableProgress', (p) => {
+      if (!isOpen() || T.page !== 'cable') return;
+      const el = $('.tv-cable-setup .n', T.layer.el);
+      if (el && p) el.textContent = p.done + ' of ' + p.total + ' shows';
+      const bar = $('.tv-cable-setup i', T.layer.el);
+      if (bar && p && p.total) bar.style.width = Math.round(p.done / p.total * 100) + '%';
+    });
+  }
+  function cablePage(sc, gen) {
+    sc.innerHTML = '<div class="tv-head tv-cable-head" data-block="top"><h1>Cable TV</h1><div class="tv-cable-sub"><span class="tv-cable-clock"></span>' +
+      '<button class="tv-chip" data-nav data-key="cb-ads" data-zone="cbtop" data-lock="cbtop" data-act="cable-ads">Commercials: ' + (S.lib.settings.cableAds === false ? 'Off' : 'On') + '</button>' +
+      '<button class="tv-chip" data-nav data-key="cb-edit" data-zone="cbtop" data-lock="cbtop" data-act="cable-edit">' + icon('gear') + ' Edit channels</button></div></div><div class="tv-cable"><div class="tv-loading">Loading the guide…</div></div>';
+    drawGuide(sc, gen);
+    clearInterval(T.cableTimer);
+    T.cableTimer = setInterval(() => { if (stale(gen) || T.page !== 'cable') { clearInterval(T.cableTimer); return; } drawGuide(sc, gen, true); }, 30000);
+  }
+  async function drawGuide(sc, gen, quiet) {
+    const t0 = Math.floor(Date.now() / HALF) * HALF;
+    let g;
+    try { g = await api.tvCableGuide(t0, t0 + SPAN); } catch (e) { if (!stale(gen)) $('.tv-cable', sc).innerHTML = empty('Couldn’t load the guide. ' + esc(e.message)); return; }
+    if (stale(gen)) return;
+    const clockEl = $('.tv-cable-clock', sc);
+    if (clockEl) clockEl.textContent = clock(Date.now());
+    const box = $('.tv-cable', sc);
+    if (!g.ready) {
+      if (quiet) return;
+      box.innerHTML = '<div class="tv-cable-setup"><h2>Setting up your channels</h2><p>Finding the shows and their episodes (only the first time, about a minute).</p><div class="tv-cable-prog"><i></i></div><div class="n">Starting…</div></div>';
+      if (!T.cableSetup) T.cableSetup = api.tvCableSetup().catch((e) => { toast(e.message, true); }).finally(() => { T.cableSetup = null; });
+      await T.cableSetup;
+      if (!stale(gen) && T.page === 'cable') drawGuide(sc, gen);
+      return;
+    }
+    const had = currentFocus() && currentFocus().closest('.tv-cable') ? currentFocus().dataset.key : null;
+    const pct = (t) => Math.max(0, Math.min(100, (t - t0) / SPAN * 100));
+    const now = g.now;
+    const times = [0, 1, 2].map((i) => '<span style="left:' + (i / 3 * 100) + '%">' + clock(t0 + i * HALF) + '</span>').join('');
+    const rows = g.channels.slice().sort((a, b) => a.number - b.number).map((c) => {
+      const progs = c.programs.map((p, i) => {
+        const l = pct(p.start), r = pct(p.end), on = p.start <= now && p.end > now;
+        if (r - l < 0.5) return '';
+        return '<button class="tv-prog-cell' + (on ? ' now' : '') + '" style="left:' + l + '%;width:' + (r - l) + '%" data-nav data-key="cp-' + c.id + '-' + p.start + '" data-zone="cr-' + c.id + '" data-lock="cr-' + c.id + '" data-act="cable-tune" data-ch="' + esc(c.id) + '" data-ref="' + ref(Object.assign({ ch: c }, p)) + '">' +
+          '<b>' + esc(p.show) + '</b><span>' + esc(on ? clock(p.start) + ' – ' + clock(p.end) : clock(p.start)) + '</span></button>';
+      }).join('');
+      return '<div class="tv-crow" style="--ch:' + esc(c.color) + '"><button class="tv-cch" data-nav data-key="cc-' + c.id + '" data-zone="cr-' + c.id + '" data-lock="cr-' + c.id + '" data-act="cable-tune" data-ch="' + esc(c.id) + '"><b>' + c.number + '</b><span>' + esc(c.name) + '</span></button>' +
+        '<div class="tv-cprogs">' + (progs || '<div class="tv-cnone">' + (c.found ? 'Nothing found' : 'Shows not found yet') + '</div>') + '</div></div>';
+    }).join('');
+    box.innerHTML = '<div class="tv-cgrid"><div class="tv-ctimes"><div></div><div class="tv-ctimes-in">' + times + '<i class="tv-cnow" style="left:' + pct(now) + '%"></i></div></div>' + rows + '</div>' +
+      '<div class="tv-cinfo"></div>';
+    const inHead = T.cableKeepHead && currentFocus() && currentFocus().closest('.tv-cable-head');
+    T.cableKeepHead = false;
+    if (had && $('[data-key="' + cssEsc(had) + '"]', box)) place(had);
+    else if (inHead) { /* the focus stays up top (Commercials / Edit channels) */ }
+    else if (!quiet) {
+      const last = S.lib.settings.cableLast;
+      const first = (last && $('.tv-prog-cell.now[data-ch="' + cssEsc(last) + '"]', box)) || $('.tv-prog-cell.now', box) || $('.tv-cch', box);
+      if (first) setFocus(first, { instant: true });
+    } else place(had);
+    cableInfo(currentFocus());
+  }
+  // The box under the guide: what the focused program is.
+  function cableInfo(el) {
+    const box = T.layer && $('.tv-cinfo', T.layer.el);
+    if (!box) return;
+    const p = el && el.dataset.act === 'cable-tune' ? got(el) : null;
+    if (!p || !p.show) { box.innerHTML = el && el.classList.contains('tv-cch') ? '<p class="tv-cinfo-hint">Press A to watch channel ' + esc(el.textContent.replace(/\D+.*$/, '')) + '</p>' : ''; return; }
+    const on = p.start <= Date.now() && p.end > Date.now();
+    box.innerHTML = (p.poster ? '<img src="' + esc(p.poster) + '" alt="">' : '') + '<div><div class="tv-cinfo-k">' + esc(p.ch.number + ' · ' + p.ch.name + ' · ' + (on ? 'On now, until ' + clock(p.end) : clock(p.start) + ' – ' + clock(p.end))) + '</div>' +
+      '<h3>' + esc(p.show) + '</h3><p>' + esc(epShort(p.video)) + '</p><p class="tv-cinfo-hint">' + (on ? 'Press A to watch' : 'Press A to watch what’s on ' + esc(p.ch.name) + ' now') + '</p></div>';
+  }
+  async function tuneIn(chId) {
+    if (T.busy) return;
+    T.busy = true;
+    S.lib.settings.cableLast = chId; save();
+    const t0 = Date.now();
+    try {
+      await api.tvCableTune(chId);
+      if (!(T.endedAt >= t0)) { S.tvPlaying = true; S.tvPlayingAt = 0; }
+    } catch (e) {
+      if (/NO_MPV/.test(e.message)) { T.busy = false; if (await mpvSetup()) return tuneIn(chId); return; }
+      toast(e.message, true);
+    } finally { T.busy = false; }
+  }
+  // Edit channels: each channel's shows; remove one, add any show, or go back to the default list.
+  function cableEditPage(sc, gen) {
+    sc.innerHTML = '<div class="tv-head" data-block="top"><h1>Edit channels</h1><div class="tv-chips"></div></div><div class="tv-cedit"><div class="tv-loading">Loading…</div></div>';
+    api.tvCableLineup().then((list) => { if (!stale(gen)) drawLineup(sc, list); }).catch((e) => { if (!stale(gen)) $('.tv-cedit', sc).innerHTML = empty(esc(e.message)); });
+  }
+  function drawLineup(sc, list, focusKey) {
+    T.lineup = list;
+    const cur = list.find((c) => c.id === T.cableEdit) || list[0];
+    if (!cur) return;
+    T.cableEdit = cur.id;
+    S.zoneMemory.chips = 'ce-' + cur.id;
+    $('.tv-chips', sc).innerHTML = list.map((c) => '<button class="tv-chip' + (c.id === cur.id ? ' on' : '') + '" data-nav data-key="ce-' + c.id + '" data-zone="chips" data-lock="chips" data-act="cable-ch" data-ch="' + esc(c.id) + '">' + c.number + ' ' + esc(c.name) + '</button>').join('');
+    const cards = cur.list.map((x, i) => '<button class="tv-poster tv-cshow' + (x.found ? '' : ' missing') + '" data-nav data-key="cs-' + i + '" data-zone="grid" data-act="cable-show" data-i="' + i + '" aria-label="' + esc(x.name) + '">' +
+      (x.poster ? '<img src="' + esc(x.poster) + '" alt="" loading="lazy">' : '') + '<span class="tv-pname">' + esc(x.name) + '</span>' + (x.found ? '' : '<span class="tv-cmiss">' + (x.missing ? 'Not found' : 'Not looked up yet') + '</span>') + '</button>').join('');
+    $('.tv-cedit', sc).innerHTML = '<div class="tv-cedit-btns"><button class="tv-btn primary" data-nav data-key="ce-add" data-zone="cebtns" data-act="cable-add">' + icon('plus') + '<span>Add a show</span></button>' +
+      '<button class="tv-btn" data-nav data-key="ce-reset" data-zone="cebtns" data-act="cable-reset">Default shows</button><span class="tv-cedit-n">' + cur.list.length + ' shows on ' + esc(cur.name) + '</span></div><div class="tv-grid">' + cards + '</div>';
+    place(focusKey || (currentFocus() && currentFocus().closest('.tv-scroll') && $('[data-key="' + cssEsc(currentFocus().dataset.key) + '"]', sc) ? currentFocus().dataset.key : 'ce-' + cur.id));
+  }
+  async function cableAddShow() {
+    const ch = (T.lineup || []).find((c) => c.id === T.cableEdit);
+    if (!ch) return;
+    const q = await osk('Add a show to ' + ch.name, '', 'Show name');
+    if (!q) return;
+    let rows = [];
+    try { rows = await api.tvSearch(q); } catch (e) { toast(e.message, true); return; }
+    const items = [].concat(...rows.filter((r) => r.type === 'series').map((r) => r.items)).filter((x, i, a) => /^tt\d+$/.test(x.id) && a.findIndex((y) => y.id === x.id) === i).slice(0, 12);
+    if (!items.length) { toast('No shows found for “' + q + '”', true); return; }
+    const pick = await openMenu('Add to ' + ch.name, items.map((x) => ({ id: x.id, label: x.name + (x.releaseInfo ? ' (' + x.releaseInfo + ')' : ''), icon: 'plus' })));
+    if (!pick) return;
+    const it = items.find((x) => x.id === pick);
+    const wait = toast('Adding ' + it.name + '…');
+    try { const list = await api.tvCableAdd(ch.id, it); toast(it.name + ' is on ' + ch.name + ' now'); drawLineup(scroller(), list, 'cs-' + (list.find((c) => c.id === ch.id).list.length - 1)); }
+    catch (e) { toast(e.message, true); }
+    finally { if (wait && wait.remove) wait.remove(); }
+  }
+  async function cableShowMenu(i) {
+    const ch = (T.lineup || []).find((c) => c.id === T.cableEdit);
+    const x = ch && ch.list[i];
+    if (!x) return;
+    const pick = await openMenu(x.name, [{ id: 'remove', label: 'Remove from ' + ch.name, icon: 'x' }]);
+    if (pick !== 'remove') return;
+    try { const list = await api.tvCableRemove(ch.id, i); drawLineup(scroller(), list, 'cs-' + Math.max(0, Math.min(i, list.find((c) => c.id === ch.id).list.length - 1))); toast('Removed ' + x.name); }
+    catch (e) { toast(e.message, true); }
+  }
+
   // ---------------------------------------------------------------- Search
   function searchPage(sc, gen) {
     const q = T.query || '';
@@ -725,6 +860,13 @@ window.CouchTV = function (k) {
     T.endedAt = Date.now();
     if (payload && payload.error) toast(payload.error, true);
     if (!isOpen()) return;
+    // Back from Cable TV: the guide, on the channel you were watching.
+    if (payload && payload.cable) {
+      S.lib.settings.cableLast = payload.cable;
+      if (T.page !== 'cable') { T.page = 'cable'; T.stack = []; }
+      render();
+      return;
+    }
     library(true).then(() => {
       if (!isOpen() || k.topLayer() !== T.layer) return;
       const key = currentFocus() && currentFocus().dataset.key;
@@ -889,6 +1031,24 @@ window.CouchTV = function (k) {
       }
       case 'libfilter': T.libFilter = el.dataset.f; return render(el.dataset.key);
       case 'search': return askSearch();
+      case 'cable-tune': return tuneIn(el.dataset.ch);
+      case 'cable-edit': return push('cableedit');
+      case 'cable-ads': {
+        const on = S.lib.settings.cableAds === false;
+        S.lib.settings.cableAds = on; save();
+        T.cableKeepHead = true;
+        toast(on ? 'Commercials on: real 2010s commercial breaks, and shows in 30-minute slots' : 'Commercials off: just the shows, back to back');
+        return render('cb-ads');
+      }
+      case 'cable-ch': T.cableEdit = el.dataset.ch; return drawLineup(scroller(), T.lineup || [], el.dataset.key);
+      case 'cable-add': return cableAddShow();
+      case 'cable-show': return cableShowMenu(Number(el.dataset.i));
+      case 'cable-reset': {
+        const ch = (T.lineup || []).find((c) => c.id === T.cableEdit);
+        if (!ch || !(await confirmBox('Go back to the default shows?', 'Shows you added to ' + ch.name + ' are taken off, and ones you removed come back.', 'Default shows', true))) return;
+        try { const list = await api.tvCableReset(ch.id); drawLineup(scroller(), list, 'ce-reset'); api.tvCableSetup().catch(() => {}); } catch (e) { toast(e.message, true); }
+        return;
+      }
       case 'addon': return addonMenu(r);
       case 'ad-discover': try { await api.tvDiscover(); toast('Opened stremio-addons.net on your PC. Copy an addon’s link there, then press Paste addon link.'); } catch (e) { toast(e.message, true); } return;
       case 'ad-paste': return installAddon(() => api.tvAddonClipboard());
@@ -926,6 +1086,7 @@ window.CouchTV = function (k) {
       return true;
     }
     if (b === 'Y') { askSearch(); return true; }
+    if (b === 'X' && T.page === 'cableedit' && el && el.dataset.act === 'cable-show') { cableShowMenu(Number(el.dataset.i)); return true; }
     if (b === 'X') {
       if (el && el.dataset.act === 'episode') {
         const v = got(el), sh = T.show, on = !sh.watched[v.id];
@@ -966,6 +1127,7 @@ window.CouchTV = function (k) {
     if (el.dataset.gi != null && T.grid && Number(el.dataset.gi) > T.grid.items.length - 16) loadMore(T.gen);
     // Show the poster's backdrop behind Movies and Series pages.
     if ((T.page === 'movie' || T.page === 'series' || T.page === 'search' || T.page === 'cat') && el.dataset.act === 'item') { const p = got(el); if (p) backdrop(p.background || metahub('background', p.id)); }
+    if (T.page === 'cable') cableInfo(el);
     hints(el);
   }
   // Rows scroll sideways to keep the focused card inside the page margins.
@@ -981,7 +1143,8 @@ window.CouchTV = function (k) {
   }
   function prompts(el) {
     const a = el && el.dataset.act;
-    const list = [['A', a === 'item' ? 'Open' : a === 'episode' || a === 'resume' || a === 'stream' ? 'Play' : 'Select']];
+    const list = [['A', a === 'item' ? 'Open' : a === 'episode' || a === 'resume' || a === 'stream' ? 'Play' : a === 'cable-tune' ? 'Watch' : 'Select']];
+    if (a === 'cable-show') list.push(['X', 'Remove']);
     if (a === 'episode') list.push(['X', 'Watched']);
     else if (a === 'item' || a === 'resume') list.push(['X', 'Library']);
     list.push(['Y', 'Search'], ['B', T.stack.length || T.page !== 'home' ? 'Back' : 'Close']);

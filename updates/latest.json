@@ -1,6 +1,6 @@
 {
- "version": "1.21.2",
- "notes": "Fix: in games that keep the screen while the guide opens (GTA V, anti-cheat games), the guide no longer flickers and gets stuck. The launcher notices within a second, steps the game aside and opens the guide where the controller works; Resume brings the game back. The controller also reaches the guide whenever Windows didn't give it the focus.",
- "file": "CouchLauncher-update-1.21.2.zip",
- "size": 365657
+ "version": "1.22.0",
+ "notes": "New: Cable TV in Movies & TV. Nickelodeon, Disney Channel, Disney XD and Cartoon Network airing 2010s shows all day on a real schedule: tune in mid-episode, flip channels with up/down, a cable-box guide, and real 2010s commercial breaks from YouTube between acts (can be turned off). Edit each channel's shows from the guide.",
+ "file": "CouchLauncher-update-1.22.0.zip",
+ "size": 386935
 }

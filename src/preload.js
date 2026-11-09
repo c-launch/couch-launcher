@@ -159,8 +159,15 @@ contextBridge.exposeInMainWorld('launcher', {
   tvInstallMpv: () => call('tv:installMpv'),
   tvSetMpv: (p) => call('tv:setMpv', p ? String(p) : ''),
   tvPlay: (req) => call('tv:play', req),
+  tvCableSetup: () => call('tv:cableSetup'),
+  tvCableGuide: (from, to) => call('tv:cableGuide', Number(from) || 0, Number(to) || 0),
+  tvCableTune: (id) => call('tv:cableTune', String(id || '')),
+  tvCableLineup: () => call('tv:cableLineup'),
+  tvCableAdd: (ch, meta) => call('tv:cableAdd', String(ch || ''), { id: String((meta && meta.id) || ''), name: String((meta && meta.name) || '') }),
+  tvCableRemove: (ch, i) => call('tv:cableRemove', String(ch || ''), Number(i) | 0),
+  tvCableReset: (ch) => call('tv:cableReset', String(ch || '')),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'vpads', 'phone', 'news', 'deals', 'tv:ended', 'hud'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'vpads', 'phone', 'news', 'deals', 'tv:ended', 'hud', 'tv:cableProgress'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }
