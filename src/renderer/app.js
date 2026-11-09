@@ -956,7 +956,17 @@
       return h;
     }
     if (tab === 'themes') {
-      let h = '<div class="sect-h"><div><h2>Themes</h2><p>Changes apply right away, everywhere.</p></div></div><div class="theme-grid">';
+      const cur = window.STYLES.some((x) => x.id === s.uiStyle) ? s.uiStyle : 'classic';
+      const wire = {
+        classic: '<rect x="42" y="6" width="36" height="7" rx="3.5"/><rect x="8" y="24" width="50" height="8" rx="2" class="t"/><rect x="8" y="44" width="26" height="20" rx="2"/><rect x="38" y="48" width="16" height="16" rx="2"/><rect x="58" y="48" width="16" height="16" rx="2"/><rect x="78" y="48" width="16" height="16" rx="2"/><rect x="98" y="48" width="16" height="16" rx="2"/>',
+        shelf: '<rect x="8" y="14" width="30" height="30" rx="3"/><rect x="42" y="14" width="30" height="30" rx="3"/><rect x="76" y="14" width="30" height="30" rx="3"/><rect x="110" y="14" width="10" height="30" rx="3"/>' + [34, 46, 58, 70, 82].map((x) => '<circle cx="' + x + '" cy="58" r="4.5"/>').join(''),
+        spotlight: '<rect x="42" y="5" width="36" height="6" rx="3"/>' + [8, 21, 34, 47, 60].map((x, i) => '<rect x="' + x + '" y="' + (i ? 17 : 15) + '" width="' + (i ? 10 : 13) + '" height="' + (i ? 10 : 13) + '" rx="2"/>').join('') + '<rect x="8" y="42" width="56" height="9" rx="2" class="t"/><rect x="8" y="56" width="26" height="10" rx="2"/><rect x="38" y="56" width="26" height="10" rx="2"/><rect x="68" y="56" width="26" height="10" rx="2"/>'
+      };
+      let h = '<div class="sect-h"><div><h2>Style</h2><p>How the Home screen is laid out. Everything works the same in each.</p></div></div><div class="theme-grid style-grid">' +
+        window.STYLES.map((x) => '<button class="tcard' + (cur === x.id ? ' sel' : '') + '" data-nav data-key="st-' + x.id + '" data-zone="body" data-action="ui-style" data-id="' + x.id + '">' +
+          '<div class="sw wire"><svg viewBox="0 0 120 72" aria-hidden="true">' + wire[x.id] + '</svg></div>' +
+          '<div class="n">' + esc(x.name) + (cur === x.id ? '<span class="check">' + icon('check') + '</span>' : '') + '</div><div class="d">' + esc(x.desc) + '</div></button>').join('') + '</div>';
+      h += '<div class="sect-h" style="margin-top:3.2rem"><div><h2>Themes</h2><p>Changes apply right away, everywhere.</p></div></div><div class="theme-grid">';
       for (const t of window.THEMES) {
         const sel = s.theme === t.id;
         h += '<button class="tcard' + (sel ? ' sel' : '') + '" data-nav data-key="th-' + t.id + '" data-zone="body" data-action="theme" data-id="' + t.id + '">' +
@@ -1414,6 +1424,25 @@
     if (dir === 'up' && cur.closest('.home-news')) {
       const inner = findNext(cur, dir, els.filter((e) => e.closest('.home-news')));
       if (inner) { setFocus(inner); return true; }
+    }
+    // The Shelf style has the dock between the games and the cards: it's the next stop from
+    // either, wherever on the row you are.
+    if (!top && S.view === 'home' && document.documentElement.classList.contains('style-shelf') && !$('#app').classList.contains('news-mode')) {
+      const z = cur.dataset.zone;
+      if ((dir === 'down' && z === 'tiles') || (dir === 'up' && z === 'cards')) {
+        const dock = els.filter((e) => e.closest('.navpill'));
+        const to = dock.find((e) => e.dataset.key === S.zoneMemory.dock) || dock.find((e) => e.classList.contains('active')) || dock[0];
+        if (to) { setFocus(to); return true; }
+      }
+      if (cur.closest('.navpill')) {
+        S.zoneMemory.dock = cur.dataset.key;
+        if (dir === 'up' || dir === 'down') {
+          const zone = dir === 'up' ? 'tiles' : 'cards';
+          const row = els.filter((e) => e.dataset.zone === zone);
+          const to = row.find((e) => e.dataset.key === S.zoneMemory[zone]) || row[0];
+          if (to) { setFocus(to); return true; }
+        }
+      }
     }
     const next = findNext(cur, dir, els);
     if (next) { setFocus(next); return true; }
@@ -4026,6 +4055,7 @@
       }
       case 'theme': s.theme = el.dataset.id; s.accent = null; return themeChanged();
       case 'corners': s.corners = el.dataset.id; return themeChanged();
+      case 'ui-style': s.uiStyle = el.dataset.id; return themeChanged();
       case 'main-mon': {
         const r = await openMenu('Games that open on the main monitor', [
           { id: 'move', label: 'Move them to this screen (works for most games)', icon: s.mainWhilePlaying ? 'monitor' : 'check' },

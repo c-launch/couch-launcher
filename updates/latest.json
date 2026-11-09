@@ -1,6 +1,6 @@
 {
- "version": "1.24.0",
- "notes": "Cable TV: mix eras. Pick more than one era (say the 2000s and the 2010s) and their shows share the channels: Nickelodeon gets both eras' shows, and channels from one era only (Toon Disney, Disney XD) are their own channels. Pick eras from the Era button at the top of the guide; edit each era's shows separately.",
- "file": "CouchLauncher-update-1.24.0.zip",
- "size": 393505
+ "version": "1.25.0",
+ "notes": "New: Styles (Settings › Themes › Style). Two new Home layouts next to Classic: Shelf (large game tiles on a clean screen with a round dock under them) and Spotlight (a small strip of games up top with the picked game's art filling the screen). Every feature and theme works in each.",
+ "file": "CouchLauncher-update-1.25.0.zip",
+ "size": 395570
 }

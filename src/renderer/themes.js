@@ -66,6 +66,13 @@ window.THEMES = [
   }
 ];
 
+// Styles change the layout of the Home screen and its dock; every feature stays.
+window.STYLES = [
+  { id: 'classic', name: 'Classic', desc: 'Big title, games in a row, the dock up top' },
+  { id: 'shelf', name: 'Shelf', desc: 'Large game tiles on a clean screen, with a round dock under them' },
+  { id: 'spotlight', name: 'Spotlight', desc: 'A small strip of games up top, and the picked game’s art filling the screen' }
+];
+
 window.CORNERS = [
   { id: 'rounded', name: 'Rounded', tile: '8px', card: '10px', pill: '999px', box: '10px' },
   { id: 'squircle', name: 'Squircle', tile: '22px', card: '20px', pill: '14px', box: '20px' },
@@ -105,6 +112,9 @@ window.applyTheme = function (settings, animate) {
   for (const k of Object.keys(vars)) root.style.setProperty(k, vars[k]);
   root.classList.toggle('light', !!t.light);
   root.classList.toggle('macos-look', !!(t.mac || window.IS_MAC));
+  // Styles: the same launcher laid out differently (Settings › Themes › Style).
+  const style = window.STYLES.some((x) => x.id === settings.uiStyle) ? settings.uiStyle : 'classic';
+  for (const x of window.STYLES) root.classList.toggle('style-' + x.id, x.id === style);
   root.classList.toggle('reduce-motion', !!settings.reduceMotion);
   return t;
 };
