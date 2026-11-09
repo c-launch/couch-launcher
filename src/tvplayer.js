@@ -185,14 +185,15 @@ function createEngine(opts) {
 
 // ---------------------------------------------------------------- one mpv session
 // Events: 'time' {pos, dur}, 'pause' bool, 'tracks' {subs, audio}, 'buffering' bool,
-//         'eof', 'exit' {code}.
+//         'eof', 'exit' {code}, 'failed' (a file couldn't be opened; only heard of with o.idle,
+//         where the player stays open instead of closing).
 function startMpv(exe, o) {
   const ev = new EventEmitter();
   // Windows: a named pipe. Mac / Linux: a socket file in the temp folder.
   const pipe = process.platform === 'win32' ? '\\\\.\\pipe\\couch-mpv-' + process.pid + '-' + Date.now().toString(36) : path.join(require('os').tmpdir(), 'couch-mpv-' + process.pid + '-' + Date.now().toString(36) + '.sock');
   const lang = (o.subLang || '').toLowerCase();
   const args = [
-    '--input-ipc-server=' + pipe, '--force-window=immediate', '--keep-open=always', '--idle=no',
+    '--input-ipc-server=' + pipe, '--force-window=immediate', '--keep-open=always', '--idle=' + (o.idle ? 'yes' : 'no'),
     '--no-border', '--osc=no', '--osd-bar=no', '--cursor-autohide=always', '--hwdec=auto-safe',
     '--title=Couch Launcher Player', '--force-media-title=' + String(o.title || 'Movies & TV').replace(/[\r\n]/g, ' '),
     '--ytdl=no', '--cache=yes', '--demuxer-max-bytes=400MiB', '--demuxer-readahead-secs=60', '--network-timeout=40',
@@ -240,6 +241,7 @@ function startMpv(exe, o) {
   function onMsg(line) {
     let m; try { m = JSON.parse(line); } catch (_) { return; }
     if (m.request_id && pending.has(m.request_id)) { const p = pending.get(m.request_id); pending.delete(m.request_id); if (m.error && m.error !== 'success') p.reject(new Error(m.error)); else p.resolve(m.data); return; }
+    if (m.event === 'end-file' && m.reason === 'error') { ev.emit('failed', String(m.file_error || '')); return; }
     if (m.event !== 'property-change') return;
     switch (m.name) {
       case 'time-pos': if (typeof m.data === 'number') { state.pos = m.data; ev.emit('time', { pos: state.pos, dur: state.dur }); } break;

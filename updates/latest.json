@@ -1,6 +1,6 @@
 {
- "version": "1.27.5",
- "notes": "Cable TV commercials: YouTube now needs a JavaScript engine beside yt-dlp, so the launcher gets Deno once (about 45 MB download) into its own folder; yt-dlp also updates itself from its nightly build when a video won't open.",
- "file": "CouchLauncher-update-1.27.5.zip",
- "size": 402864
+ "version": "1.27.6",
+ "notes": "Cable TV: a link that can't be opened no longer closes the channel. The player stays open and another episode (or another commercial) goes on.",
+ "file": "CouchLauncher-update-1.27.6.zip",
+ "size": 403123
 }

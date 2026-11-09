@@ -380,7 +380,7 @@ function setupTv(ctx) {
   // Opens a file in the player at a spot (starting the player the first time).
   async function loadInto(s, url, title, at, partTok) {
     if (!s.mpv || !s.mpv.alive) {
-      s.mpv = tvp.startMpv(s.exe, { url, title, startAt: at, rect: toPx(targetDisplay().bounds), subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: (s.stream && s.stream.headers) || null });
+      s.mpv = tvp.startMpv(s.exe, { url, title, startAt: at, rect: toPx(targetDisplay().bounds), subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: (s.stream && s.stream.headers) || null, idle: true });
       if (s.stopPlace) s.stopPlace();
       s.stopPlace = presentApp(['mpv.exe'], 'Couch Launcher Player', 15000);
       wire(s);
@@ -541,6 +541,27 @@ function setupTv(ctx) {
           c.plan = c.plan.slice(0, loc.i).concat([{ kind: 'show', from: loc.part.from, to: loc.part.from + loc.into }, { kind: 'ad', len: Math.max(1, Math.round((c.prog.end - Date.now()) / 1000)), end: true }]);
         }
         c.segI = -1;
+      }
+    });
+    // Cable TV: a file that couldn't be opened (a dead link). The player stays open; another
+    // episode goes on, or another commercial (then the plain break card).
+    mpv.on('failed', () => {
+      if (session !== s || !s.cable) return;
+      const c = s.cable, prog = c.prog;
+      if (!prog) return;
+      c.waitPlay = null;
+      if (c.lastKind === 'show') {
+        if (cableSwap(s, prog)) return;
+        s.controls.tuning(c.info);
+        const n = c.info && c.info.next && c.info.next[0];
+        s.controls.status('This episode couldn’t be played' + (n ? '. Next: ' + n.show + ' at ' + clock(n.start) : ''));
+      } else if (c.lastKind === 'ad') {
+        const key = prog.start + ':' + c.segI;
+        if (c.adFailKey !== key) { c.adFailKey = key; c.adFails = 0; }
+        if (c.adFails++ < 2) { c.nextAd = null; c.segI = -1; return; }
+        const loc = where(c);
+        c.lastKind = 'filler';
+        s.controls.part('filler', loc && !loc.part.end ? Date.now() + loc.left * 1000 : 0, 'the commercial couldn’t be played');
       }
     });
     mpv.on('exit', () => { if (session === s) end('closed'); });
