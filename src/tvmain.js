@@ -104,7 +104,16 @@ function setupTv(ctx) {
   handle('tv:cableGuide', (from, to) => {
     const f = Number(from) || Date.now();
     const t = Math.min(f + 12 * 3600e3, Number(to) || f + 3 * 3600e3);
-    return { ready: cable().ready(), busy: cable().resolving, channels: cable().guide(f, t), now: Date.now() };
+    const ready = cable().ready();
+    // Week-old shows are looked up again quietly (new episodes, air dates).
+    if (ready && !cable().resolving && cable().stale()) cable().ensure().catch(() => {});
+    return { era: cable().era(), ready, busy: cable().resolving, channels: ready ? cable().guide(f, t) : [], now: Date.now() };
+  });
+  // The eras (2000s, 2010s, 2020s): which are set up, and picking one (it's set up when picked).
+  handle('tv:cableEras', () => cable().eras());
+  handle('tv:cableSetEra', (id) => {
+    if (session && session.cable) throw new Error('Stop watching first');
+    return cable().setEra(String(id || ''));
   });
   handle('tv:cableTune', (id) => tune(String(id || '')));
   handle('tv:cableLineup', () => cable().lineup());

@@ -54,7 +54,86 @@ const DEFAULT_CHANNELS = [
   }
 ];
 
-const ERA = { from: Date.UTC(2009, 5, 1), to: Date.UTC(2019, 11, 31, 23, 59) }; // the 2010s, roughly
+// Commercial-break searches for a channel: "<name> commercial break <year>" over a few years.
+const adQ = (name, years, words) => years.map((y, i) => name + ' ' + (words || ['commercial break', 'commercials'])[i % (words || [1, 2]).length] + ' ' + y);
+const ERA_2000S = [
+  {
+    id: 'nick', number: 31, name: 'Nickelodeon', color: '#ff7a1a', adWord: 'nick', ads: adQ('Nickelodeon', [2003, 2005, 2007, 2008]),
+    shows: [show('SpongeBob SquarePants', 1999), show('The Fairly OddParents', 2001), show('The Adventures of Jimmy Neutron: Boy Genius', 2002), show('Danny Phantom', 2004),
+      show('Avatar: The Last Airbender', 2005), show('Drake & Josh', 2004), show('Zoey 101', 2005), show('Ned\'s Declassified School Survival Guide', 2004), show('Rugrats', 1991),
+      show('All Grown Up!', 2003), show('Hey Arnold!', 1996), show('The Wild Thornberrys', 1998), show('Invader Zim', 2001), show('ChalkZone', 2002),
+      show('My Life as a Teenage Robot', 2003), show('iCarly', 2007), show('Unfabulous', 2004), show('El Tigre: The Adventures of Manny Rivera', 2007), show('Back at the Barnyard', 2007), show('True Jackson, VP', 2008)]
+  },
+  {
+    id: 'disney', number: 32, name: 'Disney Channel', color: '#2f7bff', adWord: 'disney channel', ads: adQ('Disney Channel', [2003, 2005, 2007, 2008]),
+    shows: [show('Lizzie McGuire', 2001), show('That\'s So Raven', 2003), show('The Suite Life of Zack & Cody', 2005), show('Hannah Montana', 2006), show('Kim Possible', 2002),
+      show('Phil of the Future', 2004), show('Even Stevens', 2000), show('Cory in the House', 2007), show('Wizards of Waverly Place', 2007), show('The Proud Family', 2001),
+      show('American Dragon: Jake Long', 2005), show('Phineas and Ferb', 2007), show('The Replacements', 2006), show('Brandy & Mr. Whiskers', 2004), show('Dave the Barbarian', 2004),
+      show('Lilo & Stitch: The Series', 2003), show('Sonny with a Chance', 2009), show('JONAS', 2009)]
+  },
+  {
+    id: 'toon', number: 33, name: 'Toon Disney', color: '#8b5cf6', adWord: ['toon disney', 'jetix'], ads: ['Toon Disney commercial break 2004', 'Jetix commercials 2006', 'Toon Disney commercials 2007', 'Jetix commercial break 2008'],
+    shows: [show('Totally Spies!', 2001), show('W.I.T.C.H.', 2004), show('Super Robot Monkey Team Hyperforce Go!', 2004), show('Pucca', 2006), show('Yin Yang Yo!', 2006),
+      show('Get Ed', 2005), show('Oban Star-Racers', 2006), show('Galactik Football', 2006), show('A.T.O.M.', 2005), show('Power Rangers Mystic Force', 2006),
+      show('Power Rangers Jungle Fury', 2008), show('Recess', 1997), show('The Emperor\'s New School', 2006), show('Kid vs. Kat', 2008), show('Spider-Man', 1994)]
+  },
+  {
+    id: 'cn', number: 34, name: 'Cartoon Network', color: '#e8e8ea', adWord: 'cartoon network', ads: adQ('Cartoon Network', [2002, 2004, 2006, 2008]),
+    shows: [show('Ed, Edd n Eddy', 1999), show('Dexter\'s Laboratory', 1996), show('The Powerpuff Girls', 1998), show('Courage the Cowardly Dog', 1999), show('Codename: Kids Next Door', 2002),
+      show('The Grim Adventures of Billy & Mandy', 2001), show('Foster\'s Home for Imaginary Friends', 2004), show('Samurai Jack', 2001), show('Teen Titans', 2003), show('Ben 10', 2005),
+      show('Camp Lazlo', 2005), show('My Gym Partner\'s a Monkey', 2005), show('Chowder', 2007), show('Ben 10: Alien Force', 2008), show('Johnny Bravo', 1997),
+      show('Megas XLR', 2004), show('Hi Hi Puffy AmiYumi', 2004), show('The Marvelous Misadventures of Flapjack', 2008)]
+  },
+  {
+    id: 'pbs', number: 35, name: 'PBS Kids', color: '#ffb703', adWord: 'pbs', ads: ['PBS Kids interstitials 2004', 'PBS Kids promos 2006', 'PBS Kids Go bumpers 2007', 'PBS Kids interstitials 2008'],
+    shows: [show('Arthur', 1996), show('Clifford the Big Red Dog', 2000), show('Cyberchase', 2002), show('Dragon Tales', 1999), show('Zoboomafoo', 1999),
+      show('Liberty\'s Kids', 2002), show('Maya & Miguel', 2004), show('Postcards from Buster', 2004), show('Curious George', 2006), show('Super Why!', 2007),
+      show('WordGirl', 2007), show('Martha Speaks', 2008), show('Sid the Science Kid', 2008), show('Fetch! with Ruff Ruffman', 2006), show('Between the Lions', 2000),
+      show('Caillou', 1997), show('Dinosaur Train', 2009), show('Clifford\'s Puppy Days', 2003), show('Jakers! The Adventures of Piggley Winks', 2003)]
+  }
+];
+const ERA_2020S = [
+  {
+    id: 'nick', number: 31, name: 'Nickelodeon', color: '#ff7a1a', adWord: 'nick', ads: adQ('Nickelodeon', [2020, 2021, 2022, 2023]),
+    shows: [show('SpongeBob SquarePants', 1999), show('The Loud House', 2016), show('The Casagrandes', 2019), show('Danger Force', 2020), show('Side Hustle', 2020),
+      show('That Girl Lay Lay', 2021), show('The Really Loud House', 2022), show('Kamp Koral: SpongeBob\'s Under Years', 2021), show('The Patrick Star Show', 2021),
+      show('Rise of the Teenage Mutant Ninja Turtles', 2018), show('It\'s Pony', 2020), show('Big Nate', 2022), show('Rugrats', 2021), show('Middlemost Post', 2021),
+      show('Tyler Perry\'s Young Dylan', 2020), show('Erin & Aaron', 2023), show('The Thundermans: Undercover', 2024)]
+  },
+  {
+    id: 'disney', number: 32, name: 'Disney Channel', color: '#2f7bff', adWord: 'disney channel', ads: adQ('Disney Channel', [2020, 2021, 2022, 2023]),
+    shows: [show('Bunk\'d', 2015), show('Raven\'s Home', 2017), show('Big City Greens', 2018), show('Amphibia', 2019), show('The Owl House', 2020),
+      show('The Ghost and Molly McGee', 2021), show('Hamster & Gretel', 2022), show('Kiff', 2023), show('Saturdays', 2023), show('Secrets of Sulphur Springs', 2021),
+      show('Sydney to the Max', 2019), show('Gabby Duran & the Unsittables', 2019), show('Marvel\'s Moon Girl and Devil Dinosaur', 2023), show('Wizards Beyond Waverly Place', 2024),
+      show('Primos', 2024), show('Hailey\'s On It!', 2023)]
+  },
+  {
+    id: 'xd', number: 33, name: 'Disney XD', color: '#39c463', adWord: 'xd', ads: adQ('Disney XD', [2020, 2021, 2022, 2023]),
+    shows: [show('DuckTales', 2017), show('Star Wars Resistance', 2018), show('Marvel\'s Spider-Man', 2017), show('Big Hero 6: The Series', 2017), show('Monsters at Work', 2021),
+      show('Hamster & Gretel', 2022), show('Kiff', 2023), show('Hailey\'s On It!', 2023), show('Marvel\'s Moon Girl and Devil Dinosaur', 2023), show('Amphibia', 2019),
+      show('The Owl House', 2020), show('Beyblade Burst', 2016), show('Big City Greens', 2018), show('Star Wars: The Bad Batch', 2021)]
+  },
+  {
+    id: 'cn', number: 34, name: 'Cartoon Network', color: '#e8e8ea', adWord: 'cartoon network', ads: adQ('Cartoon Network', [2020, 2021, 2022, 2023]),
+    shows: [show('Teen Titans Go!', 2013), show('The Amazing World of Gumball', 2011), show('Craig of the Creek', 2018), show('We Baby Bears', 2022), show('We Bare Bears', 2015),
+      show('Victor and Valentino', 2019), show('Apple & Onion', 2018), show('Summer Camp Island', 2018), show('Total DramaRama', 2018), show('Mao Mao: Heroes of Pure Heart', 2019),
+      show('Ben 10', 2016), show('ThunderCats Roar', 2020), show('Steven Universe Future', 2019), show('Infinity Train', 2019), show('Unikitty!', 2017), show('Tiny Toons Looniversity', 2023)]
+  },
+  {
+    id: 'pbs', number: 35, name: 'PBS Kids', color: '#ffb703', adWord: 'pbs', ads: ['PBS Kids interstitials 2020', 'PBS Kids promos 2021', 'PBS Kids bumpers 2022', 'PBS Kids interstitials 2023'],
+    shows: [show('Daniel Tiger\'s Neighborhood', 2012), show('Wild Kratts', 2011), show('Odd Squad', 2014), show('Nature Cat', 2015), show('Molly of Denali', 2019),
+      show('Alma\'s Way', 2021), show('Work It Out Wombats!', 2023), show('Donkey Hodie', 2021), show('Elinor Wonders Why', 2020), show('Rosie\'s Rules', 2022),
+      show('Lyla in the Loop', 2024), show('Hero Elementary', 2020), show('Xavier Riddle and the Secret Museum', 2019), show('Arthur', 1996), show('Pinkalicious & Peterrific', 2018),
+      show('Let\'s Go Luna!', 2018), show('Dinosaur Train', 2009), show('Ready Jet Go!', 2016)]
+  }
+];
+// The eras: each with its channels, and the years its episodes come from.
+const ERAS = {
+  '2000s': { name: '2000s', from: Date.UTC(2000, 0, 1), to: Date.UTC(2009, 11, 31, 23, 59), channels: ERA_2000S },
+  '2010s': { name: '2010s', from: Date.UTC(2009, 5, 1), to: Date.UTC(2019, 11, 31, 23, 59), channels: DEFAULT_CHANNELS },
+  '2020s': { name: '2020s', from: Date.UTC(2020, 0, 1), to: Date.UTC(2099, 0, 1), channels: ERA_2020S }
+};
+const ERA = ERAS['2010s'];
 const DAY_START_H = 6;         // the broadcast day starts at 6 AM
 const BREAK_MS = 60e3;         // a short break between shows
 const DEFAULT_RUNTIME = 22;    // minutes, when the show's length isn't known
@@ -84,11 +163,22 @@ function parseRuntime(s) {
   return min >= 5 && min <= 90 ? min : null;
 }
 const norm = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, '');
-// The episodes kept for a show: its 2010s ones when it has a few, else all of them.
-function eraEpisodes(videos) {
-  const all = (videos || []).filter((v) => v && v.id && Number(v.season) > 0);
-  const inEra = all.filter((v) => { const t = v.released ? Date.parse(v.released) : NaN; return isFinite(t) && t >= ERA.from && t <= ERA.to; });
-  return (inEra.length >= 3 ? inEra : all).map((v) => ({ id: String(v.id), season: Number(v.season), episode: Number(v.episode) || 0, title: String(v.title || '').slice(0, 100) }));
+// A show's episodes, kept small (with when each first aired).
+function compactEpisodes(videos) {
+  return (videos || []).filter((v) => v && v.id && Number(v.season) > 0).map((v) => {
+    const r = v.released ? Date.parse(v.released) : NaN;
+    return { id: String(v.id), season: Number(v.season), episode: Number(v.episode) || 0, title: String(v.title || '').slice(0, 100), r: isFinite(r) ? r : null };
+  });
+}
+// The episodes an era airs: the ones from its years when there are a few, else all of them.
+function inEra(episodes, era) {
+  const e = typeof era === 'string' ? ERAS[era] : era || ERA;
+  const all = episodes || [];
+  const hit = all.filter((v) => v.r != null && v.r >= e.from && v.r <= e.to);
+  return hit.length >= 3 ? hit : all;
+}
+function eraEpisodes(videos, era) {
+  return inEra(compactEpisodes(videos), era).map((v) => ({ id: v.id, season: v.season, episode: v.episode, title: v.title }));
 }
 // Picks the search result that's the show: same name (and start year close), series first.
 function pickMatch(items, name, year) {
@@ -148,7 +238,8 @@ function locate(plan, offsetSec) {
 }
 // Commercial-break videos worth using: about this channel, a minute to two hours long.
 function adVideos(entries, word, notWord) {
-  const w = String(word || '').toLowerCase(), nw = notWord ? String(notWord).toLowerCase() : null;
+  const ws = (Array.isArray(word) ? word : [word]).map((x) => String(x || '').toLowerCase()).filter(Boolean);
+  const nw = notWord ? String(notWord).toLowerCase() : null;
   const seen = new Set();
   return (entries || []).filter((e) => {
     if (!e || !e.id || seen.has(e.id)) return false;
@@ -156,7 +247,7 @@ function adVideos(entries, word, notWord) {
     const t = String(e.title || '').toLowerCase();
     if (!(e.duration >= 60 && e.duration <= 7200)) return false;
     if (!/commercial|ads\b|advert|break|bumper|promo|interstitial|funding/.test(t)) return false;
-    if (w && !t.includes(w)) return false;
+    if (ws.length && !ws.some((w) => t.includes(w))) return false;
     if (nw && t.includes(nw)) return false;
     return true;
   });
@@ -206,15 +297,28 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     if (state) return state;
     try { state = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { state = null; }
     if (!state || typeof state !== 'object') state = {};
-    if (!Array.isArray(state.channels)) state.channels = JSON.parse(JSON.stringify(DEFAULT_CHANNELS));
     if (!state.shows || typeof state.shows !== 'object') state.shows = {};
     if (!state.names || typeof state.names !== 'object') state.names = {};
     if (!state.durs || typeof state.durs !== 'object') state.durs = {};
     if (!state.ads || typeof state.ads !== 'object') state.ads = {};
-    // Channels added since (PBS Kids): put them in.
-    for (const d of DEFAULT_CHANNELS) if (!state.channels.some((c) => c.id === d.id)) state.channels.push(JSON.parse(JSON.stringify(d)));
-    // Channels from before commercials: give them their searches.
-    for (const c of state.channels) { const d = DEFAULT_CHANNELS.find((x) => x.id === c.id); if (d && !c.ads) { c.ads = d.ads.slice(); c.adWord = d.adWord; } }
+    if (!state.eras || typeof state.eras !== 'object') state.eras = {};
+    if (state.v !== 2) {
+      // From before eras: that line-up is the 2010s one. Shows are looked up again (for the
+      // dates their episodes aired), old commercial lists are dropped.
+      if (Array.isArray(state.channels)) { state.eras['2010s'] = { channels: state.channels, setup: true }; state.era = '2010s'; }
+      delete state.channels;
+      for (const k of Object.keys(state.shows)) state.shows[k].at = 0;
+      state.ads = {};
+      state.v = 2;
+    }
+    if (state.era && !ERAS[state.era]) state.era = null;
+    for (const [id, e] of Object.entries(state.eras)) {
+      if (!ERAS[id] || !e || !Array.isArray(e.channels)) { delete state.eras[id]; continue; }
+      const defs = ERAS[id].channels;
+      // Channels added since (like PBS Kids): put them in. Searches for commercials, too.
+      for (const d of defs) if (!e.channels.some((c) => c.id === d.id)) e.channels.push(JSON.parse(JSON.stringify(d)));
+      for (const c of e.channels) { const d = defs.find((x) => x.id === c.id); if (d && !c.ads) { c.ads = d.ads.slice(); c.adWord = d.adWord; } }
+    }
     return state;
   }
   let saveT = null;
@@ -224,13 +328,16 @@ function createCable({ tv, file, now, ytdlp, ads }) {
       try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(state)); fs.renameSync(file + '.tmp', file); } catch (_) { /* next time */ }
     }, 300);
   }
+  // The era being watched, and its channels.
+  const eraId = () => { load(); return state.era || null; };
+  const chans = () => { load(); return state.era && state.eras[state.era] ? state.eras[state.era].channels : []; };
   const nameKey = (s) => norm(s.name) + '|' + (s.year || '');
   const idOf = (s) => s.id || state.names[nameKey(s)] || null;
   const resolved = (s) => { const id = idOf(s); return id && state.shows[id] ? state.shows[id] : null; };
 
   async function loadShow(id) {
     const m = await tv.meta('series', id);
-    const episodes = eraEpisodes(m.videos);
+    const episodes = compactEpisodes(m.videos);
     const entry = { id, name: m.name || '', poster: m.poster || null, background: m.background || null, runtimeMin: parseRuntime(m.runtime), episodes, at: now() };
     state.shows[id] = entry;
     return entry;
@@ -251,13 +358,16 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     try { return await loadShow(id); } catch (e) { return have || null; }
   }
   // Looks up every show that isn't known yet (a few at a time). progress(done, total).
+  // (Only the era being watched: each era is set up the first time it's picked.)
   function ensure(progress) {
     load();
     if (resolving) return resolving;
+    if (!state.era) return Promise.resolve({ done: 0, total: 0 });
+    const era = state.eras[state.era];
     const all = [];
-    for (const c of state.channels) for (const s of c.shows) all.push(s);
+    for (const c of era.channels) for (const s of c.shows) all.push(s);
     const todo = all.filter((s) => { const r = resolved(s); return !r || now() - (r.at || 0) > STALE_MS; });
-    if (!todo.length) return Promise.resolve({ done: all.length, total: all.length });
+    if (!todo.length) { if (!era.setup) { era.setup = true; save(); } return Promise.resolve({ done: all.length, total: all.length }); }
     let done = all.length - todo.length;
     const queue = todo.slice();
     const worker = async () => {
@@ -270,19 +380,24 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     };
     resolving = Promise.all([worker(), worker(), worker(), worker()]).then(() => {
       days.clear();
+      era.setup = true;
       save();
       return { done, total: all.length };
     }).finally(() => { resolving = null; });
     return resolving;
   }
-  const ready = () => { load(); return state.channels.every((c) => c.shows.every((s) => resolved(s) || state.names[nameKey(s)] === false)); };
+  const eraReady = (id) => { load(); const e = state.eras[id]; return !!e && e.setup === true && e.channels.every((c) => c.shows.every((s) => resolved(s) || state.names[nameKey(s)] === false)); };
+  const ready = () => !!state && !!eraId() && eraReady(state.era);
+  // Some shows want looking up again (a week old): done quietly while you watch.
+  const stale = () => chans().some((c) => c.shows.some((s) => { const r = resolved(s); return r && now() - (r.at || 0) > STALE_MS; }));
 
   function showsOf(c) { return c.shows.map(resolved).filter(Boolean); }
   function schedule(c, start) {
-    const k = c.id + '|' + start + '|' + adsOn();
+    const k = state.era + '|' + c.id + '|' + start + '|' + adsOn();
     let d = days.get(k);
     if (!d) {
-      d = daySchedule(c.id, showsOf(c), start, adsOn());
+      const era = ERAS[state.era];
+      d = daySchedule(state.era + ':' + c.id, showsOf(c).map((x) => ({ id: x.id, runtimeMin: x.runtimeMin, episodes: inEra(x.episodes, era) })), start, adsOn());
       days.set(k, d);
       if (days.size > 40) days.delete(days.keys().next().value);
     }
@@ -301,12 +416,11 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     }
     return out;
   }
-  function channel(id) { load(); return state.channels.find((c) => c.id === id) || null; }
+  function channel(id) { return chans().find((c) => c.id === id) || null; }
   const brief = (c) => ({ id: c.id, number: c.number, name: c.name, color: c.color, shows: c.shows.length, found: showsOf(c).length });
   // The guide: every channel's programs between two times.
   function guide(from, to) {
-    load();
-    return state.channels.map((c) => Object.assign(brief(c), { programs: programs(c, from, to) }));
+    return chans().map((c) => Object.assign(brief(c), { programs: programs(c, from, to) }));
   }
   // What's on a channel at `t`, and what's next.
   function at(id, t) {
@@ -320,8 +434,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   }
   // Channel numbers in order, for up / down.
   function neighbor(id, dir) {
-    load();
-    const list = state.channels.slice().sort((a, b) => a.number - b.number);
+    const list = chans().slice().sort((a, b) => a.number - b.number);
     const i = list.findIndex((c) => c.id === id);
     if (i < 0) return list[0] ? list[0].id : null;
     return list[(i + dir + list.length) % list.length].id;
@@ -352,24 +465,24 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     load();
     const c = channel(channelId);
     if (!c || !ytdlp || !Array.isArray(c.ads) || !c.ads.length) return Promise.resolve([]);
-    const have = state.ads[channelId];
+    const key = state.era + '|' + channelId;
+    const have = state.ads[key];
     if (have && now() - (have.at || 0) < STALE_MS && have.list.length) return Promise.resolve(have.list);
-    if (adLoads.has(channelId)) return adLoads.get(channelId);
+    if (adLoads.has(key)) return adLoads.get(key);
     const p = (async () => {
       const found = [];
       for (const q of c.ads) { try { found.push(...await ytdlp.search(q, 20)); } catch (_) { /* next search */ } }
       const list = adVideos(found, c.adWord || '', c.id === 'disney' ? 'xd' : null).slice(0, 80);
-      if (list.length || !have) { state.ads[channelId] = { at: now(), list }; save(); }
+      if (list.length || !have) { state.ads[key] = { at: now(), list }; save(); }
       return list.length ? list : (have ? have.list : []);
-    })().finally(() => adLoads.delete(channelId));
-    adLoads.set(channelId, p);
+    })().finally(() => adLoads.delete(key));
+    adLoads.set(key, p);
     return p;
   }
 
   // ---- editing the line-up
   function lineup() {
-    load();
-    return state.channels.map((c) => Object.assign(brief(c), {
+    return chans().map((c) => Object.assign(brief(c), {
       list: c.shows.map((s) => { const r = resolved(s); return { name: r ? r.name : s.name, id: idOf(s), poster: r ? r.poster : null, found: !!r, missing: state.names[nameKey(s)] === false }; })
     }));
   }
@@ -379,7 +492,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     const id = String(meta && meta.id || '');
     if (!/^tt\d+$/.test(id)) throw new Error('That show can’t be added (it needs an IMDb id)');
     if (c.shows.some((s) => idOf(s) === id)) throw new Error('It’s already on ' + c.name);
-    const entry = await loadShow(id);
+    const entry = state.shows[id] && now() - (state.shows[id].at || 0) < STALE_MS ? state.shows[id] : await loadShow(id);
     if (!entry.episodes.length) throw new Error('No episodes found for that show');
     c.shows.push({ name: entry.name || String(meta.name || ''), id });
     days.clear(); save();
@@ -393,15 +506,34 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     return lineup();
   }
   function resetChannel(channelId) {
-    const c = channel(channelId), d = DEFAULT_CHANNELS.find((x) => x.id === channelId);
+    const c = channel(channelId), d = state.era ? ERAS[state.era].channels.find((x) => x.id === channelId) : null;
     if (!c || !d) throw new Error('Not found');
     c.shows = JSON.parse(JSON.stringify(d.shows));
     days.clear(); save();
     return lineup();
   }
+  // ---- eras
+  // Every era: whether it's set up yet (its shows looked up), and a taste of what's on.
+  function eras() {
+    load();
+    return Object.entries(ERAS).map(([id, e]) => ({
+      id, name: e.name, current: state.era === id, setup: eraReady(id),
+      channels: (state.eras[id] ? state.eras[id].channels : e.channels).map((c) => c.name),
+      sample: e.channels.map((c) => c.shows[0] && c.shows[0].name).concat(e.channels.map((c) => c.shows[1] && c.shows[1].name)).filter(Boolean).slice(0, 8),
+      shows: (state.eras[id] ? state.eras[id].channels : e.channels).reduce((n, c) => n + c.shows.length, 0)
+    }));
+  }
+  function setEra(id) {
+    load();
+    if (!ERAS[id]) throw new Error('No such era');
+    if (!state.eras[id]) state.eras[id] = { channels: JSON.parse(JSON.stringify(ERAS[id].channels)), setup: false };
+    state.era = id;
+    days.clear(); save();
+    return eras();
+  }
   function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { fs.writeFileSync(file, JSON.stringify(state)); } catch (_) { /* fine */ } } }
 
-  return { ensure, ready, guide, at, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, get resolving() { return !!resolving; } };
+  return { ensure, ready, stale, guide, at, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, era: eraId, get resolving() { return !!resolving; } };
 }
 
-module.exports = { createCable, daySchedule, dayStart, parseRuntime, eraEpisodes, pickMatch, hash32, slotMs, breakPlan, locate, adVideos, DEFAULT_CHANNELS };
+module.exports = { createCable, daySchedule, dayStart, parseRuntime, eraEpisodes, compactEpisodes, inEra, pickMatch, hash32, slotMs, breakPlan, locate, adVideos, DEFAULT_CHANNELS, ERAS };

@@ -1,6 +1,6 @@
 {
- "version": "1.22.1",
- "notes": "Cable TV: new PBS Kids channel (Arthur, Wild Kratts, Curious George, Dinosaur Train, Odd Squad and more, with PBS Kids promos between shows). Going into and out of commercials is now a straight cut, like real TV, with no card.",
- "file": "CouchLauncher-update-1.22.1.zip",
- "size": 387251
+ "version": "1.23.0",
+ "notes": "Cable TV eras: the 2000s (Nickelodeon, Disney Channel, Toon Disney, Cartoon Network, PBS Kids) and the 2020s join the 2010s, each with era-right shows, episodes from those years and commercials from the time. The first time, you pick the era to start with and only that one is set up; switch eras any time from the top of the guide.",
+ "file": "CouchLauncher-update-1.23.0.zip",
+ "size": 391576
 }

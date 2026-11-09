@@ -486,6 +486,7 @@ window.CouchTV = function (k) {
   }
   function cablePage(sc, gen) {
     sc.innerHTML = '<div class="tv-head tv-cable-head" data-block="top"><h1>Cable TV</h1><div class="tv-cable-sub"><span class="tv-cable-clock"></span>' +
+      '<button class="tv-chip" data-nav data-key="cb-era" data-zone="cbtop" data-lock="cbtop" data-act="cable-era">Era: <span class="tv-cera">…</span></button>' +
       '<button class="tv-chip" data-nav data-key="cb-ads" data-zone="cbtop" data-lock="cbtop" data-act="cable-ads">Commercials: ' + (S.lib.settings.cableAds === false ? 'Off' : 'On') + '</button>' +
       '<button class="tv-chip" data-nav data-key="cb-edit" data-zone="cbtop" data-lock="cbtop" data-act="cable-edit">' + icon('gear') + ' Edit channels</button></div></div><div class="tv-cable"><div class="tv-loading">Loading the guide…</div></div>';
     drawGuide(sc, gen);
@@ -499,10 +500,16 @@ window.CouchTV = function (k) {
     if (stale(gen)) return;
     const clockEl = $('.tv-cable-clock', sc);
     if (clockEl) clockEl.textContent = clock(Date.now());
+    const eraEl = $('.tv-cera', sc);
+    if (eraEl) eraEl.textContent = g.era || 'pick one';
+    const editEl = $('[data-key="cb-edit"]', sc);
+    if (editEl) editEl.hidden = !g.era;
     const box = $('.tv-cable', sc);
+    // The first time: which era to start with (only its shows are looked up).
+    if (!g.era) { if (!quiet) eraPicker(sc, gen, box); return; }
     if (!g.ready) {
       if (quiet) return;
-      box.innerHTML = '<div class="tv-cable-setup"><h2>Setting up your channels</h2><p>Finding the shows and their episodes (only the first time, about a minute).</p><div class="tv-cable-prog"><i></i></div><div class="n">Starting…</div></div>';
+      box.innerHTML = '<div class="tv-cable-setup"><h2>Setting up the ' + esc(g.era) + '</h2><p>Finding the shows and their episodes (only the first time for each era, about a minute).</p><div class="tv-cable-prog"><i></i></div><div class="n">Starting…</div></div>';
       if (!T.cableSetup) T.cableSetup = api.tvCableSetup().catch((e) => { toast(e.message, true); }).finally(() => { T.cableSetup = null; });
       await T.cableSetup;
       if (!stale(gen) && T.page === 'cable') drawGuide(sc, gen);
@@ -534,6 +541,26 @@ window.CouchTV = function (k) {
       if (first) setFocus(first, { instant: true });
     } else place(had);
     cableInfo(currentFocus());
+  }
+  // Which era: big cards for the 2000s, 2010s and 2020s. Picking one sets it up (its shows are
+  // looked up, about a minute); the others wait until they're picked.
+  async function eraPicker(sc, gen, box) {
+    let eras;
+    try { eras = await api.tvCableEras(); } catch (e) { box.innerHTML = empty(esc(e.message)); return; }
+    if (stale(gen)) return;
+    const first = !eras.some((e) => e.setup);
+    box.innerHTML = '<div class="tv-eras-intro"><h2>' + (first ? 'Pick an era to start with' : 'Pick an era') + '</h2><p>' +
+      (first ? 'Only that era’s shows are looked up now (about a minute). You can add the others any time from the guide.' : 'Eras you haven’t watched yet take about a minute to set up the first time.') + '</p></div>' +
+      '<div class="tv-eras">' + eras.map((e) => '<button class="tv-era' + (e.current ? ' on' : '') + '" data-nav data-key="era-' + e.id + '" data-zone="eras" data-lock="eras" data-act="cable-pick-era" data-era="' + e.id + '">' +
+        '<b>' + esc(e.name) + '</b><span class="tv-era-st">' + (e.setup ? 'Ready' : 'Set up when picked') + '</span>' +
+        '<span class="tv-era-ch">' + esc(e.channels.join(' · ')) + '</span><span class="tv-era-sh">' + esc(e.sample.join(', ')) + '…</span><span class="tv-era-n">' + e.shows + ' shows</span></button>').join('') + '</div>';
+    const cur = eras.find((e) => e.current) || eras.find((e) => e.id === '2010s');
+    setFocus($('[data-key="era-' + cur.id + '"]', box), { instant: true });
+  }
+  async function pickEra(id) {
+    try { await api.tvCableSetEra(id); } catch (e) { toast(e.message, true); return; }
+    T.cableKeepHead = false;
+    render();
   }
   // The box under the guide: what the focused program is.
   function cableInfo(el) {
@@ -1033,6 +1060,14 @@ window.CouchTV = function (k) {
       case 'search': return askSearch();
       case 'cable-tune': return tuneIn(el.dataset.ch);
       case 'cable-edit': return push('cableedit');
+      case 'cable-pick-era': return pickEra(el.dataset.era);
+      case 'cable-era': {
+        let eras;
+        try { eras = await api.tvCableEras(); } catch (e) { toast(e.message, true); return; }
+        const pick = await openMenu('Era', eras.map((e) => ({ id: e.id, label: e.name + (e.current ? ' (watching)' : e.setup ? '' : ' (about a minute to set up)'), icon: e.current ? 'check' : 'tv' })));
+        if (pick && !(eras.find((e) => e.id === pick) || {}).current) pickEra(pick);
+        return;
+      }
       case 'cable-ads': {
         const on = S.lib.settings.cableAds === false;
         S.lib.settings.cableAds = on; save();

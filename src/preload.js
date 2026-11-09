@@ -162,6 +162,8 @@ contextBridge.exposeInMainWorld('launcher', {
   tvCableSetup: () => call('tv:cableSetup'),
   tvCableGuide: (from, to) => call('tv:cableGuide', Number(from) || 0, Number(to) || 0),
   tvCableTune: (id) => call('tv:cableTune', String(id || '')),
+  tvCableEras: () => call('tv:cableEras'),
+  tvCableSetEra: (id) => call('tv:cableSetEra', String(id || '')),
   tvCableLineup: () => call('tv:cableLineup'),
   tvCableAdd: (ch, meta) => call('tv:cableAdd', String(ch || ''), { id: String((meta && meta.id) || ''), name: String((meta && meta.name) || '') }),
   tvCableRemove: (ch, i) => call('tv:cableRemove', String(ch || ''), Number(i) | 0),
