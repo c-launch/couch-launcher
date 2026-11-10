@@ -315,3 +315,36 @@
 .tv-eras-go { margin-top: 3rem; min-height: 6rem; }
 .tv-eras-none { font-size: 1.8rem; color: var(--tv-faint); margin: 1.6rem 0; }
 .tv-cedit-eras { display: flex; align-items: center; gap: 1.2rem; margin-top: 1.6rem; font-size: 1.7rem; color: var(--tv-sub); }
+
+/* ---------- Couch TV (Movies & TV as its own app, in a normal window) ---------- */
+/* Sized from the window's width (with a floor, so a small window stays readable); up and down
+   scrolls. The launcher fits a 16:9 screen instead. */
+html.tvapp { font-size: clamp(6.6px, min(calc(100vw / 160), calc(100vh / 76)), 15px); }
+html.tvapp #topbar, html.tvapp #bg .bg-deco, html.tvapp #bg .bg-art { display: none; }
+html.tvapp .shell { padding-top: 5rem; }
+html.tvapp .side .tvapp-back { justify-content: flex-start; gap: 1rem; margin-bottom: 1.4rem; color: var(--sub); }
+html.tvapp .side .tvapp-back svg { width: 2rem; height: 2rem; flex-shrink: 0; }
+html.tvapp .side .tvapp-back.focused { color: var(--text); }
+/* A row's arrows: in the page margin at either end, only on the side that has more to show,
+   and only while the mouse is what's being used. */
+.tv-rowwrap { position: relative; }
+.tv-arrow { position: absolute; top: calc(50% - .3rem); z-index: 2; width: 5.6rem; height: 5.6rem; margin-top: -2.8rem; padding: 0; border: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: var(--tv-nav); color: var(--tv-text); backdrop-filter: blur(20px); box-shadow: 0 .4rem 1.6rem rgba(0,0,0,.28);
+  opacity: .92; transition: opacity 160ms ease, transform 160ms ease, background 160ms ease; }
+.tv-arrow svg { width: 2.6rem; height: 2.6rem; }
+.tv-arrow.l { left: -7.8rem; }
+.tv-arrow.r { right: -7.8rem; }
+.tv-arrow:hover { opacity: 1; transform: scale(1.08); background: var(--tv-focus-bg); color: var(--tv-focus-text); }
+.tv-arrow:active { transform: scale(.96); }
+.tv-arrow.off, body.hide-cursor .tv-arrow { opacity: 0; pointer-events: none; }
+.reduce-motion .tv-arrow { transition: none; }
+/* For the mouse: Back at the top left (when there is somewhere to go back to), and the Back and
+   Search hints can be clicked. */
+.tv-backbtn { position: absolute; left: 10rem; top: .3rem; width: 4.8rem; height: 4.8rem; padding: 0; border: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--tv-nav); color: var(--tv-text); backdrop-filter: blur(24px); pointer-events: auto; cursor: pointer; transition: opacity 160ms ease, transform 160ms ease, background 160ms ease; }
+.tv-backbtn svg { width: 2.4rem; height: 2.4rem; }
+.tv-backbtn:hover { background: var(--tv-focus-bg); color: var(--tv-focus-text); transform: scale(1.08); }
+.tv-backbtn.off, body.hide-cursor .tv-backbtn { opacity: 0; pointer-events: none; }
+html.tvapp .tv-hints [data-b] { cursor: pointer; }
+html.tvapp .tv-hints [data-b]:hover { color: var(--tv-text); }

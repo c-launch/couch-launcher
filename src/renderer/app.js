@@ -4,6 +4,10 @@
   const api = window.launcher;
   // The same page also runs as the see-through guide that floats over a game.
   const OVERLAY = /[?&]overlay=1/.test(location.search);
+  // ...and as Couch TV: Movies & TV on its own, in a normal window, with its settings built in
+  // (no games, no Home, no guide). Couch TV's app core answers only what these screens ask.
+  const TVAPP = !OVERLAY && /[?&]tvapp=1/.test(location.search);
+  if (TVAPP) document.documentElement.classList.add('tvapp');
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
@@ -88,6 +92,8 @@
 
   // ---------------------------------------------------------------- icons
   const I = {
+    back: '<path d="M15 18l-6-6 6-6"/>',
+    expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v8h14v-8M12 8v12M12 8S10.5 3.5 8 4.5 9 8 12 8zm0 0s1.5-4.5 4-3.5S15 8 12 8z"/>',
     tag: '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
@@ -284,7 +290,7 @@
       prompts: () => [['A', 'Select'], ['B', 'Back']]
     });
   }
-  (async () => { if (OVERLAY) return; try { S.news = await api.news(false); S.newsErr = null; } catch (e) { S.newsErr = e.message; } paintNews(); })();
+  (async () => { if (OVERLAY || TVAPP) return; try { S.news = await api.news(false); S.newsErr = null; } catch (e) { S.newsErr = e.message; } paintNews(); })();
 
   // ----- Free games and deals (Home)
   const money = (n) => '$' + Number(n).toFixed(2);
@@ -643,6 +649,7 @@
   const DOCK = DOCK_NAVS.map((x) => x[0]);
   const DOCK_VIEWS = ['home', 'library', 'settings'];
   function renderTop() {
+    if (TVAPP) { $('#topbar').innerHTML = ''; return; } // Couch TV has no dock
     const s = S.lib.settings;
     const n = games().length;
     const navs = DOCK_NAVS;
@@ -704,11 +711,12 @@
     let list;
     const top = layers[layers.length - 1];
     if (top && top.className === 'launching') list = []; // the boot screen has its own Cancel hint
+    else if (TVAPP && !top) list = [['A', 'Select'], ['B', 'Back']];
     else if (top) list = top.prompts ? top.prompts(el) : [['A', 'Select'], ['B', 'Back']];
     else if (el && el.dataset.game) list = [['A', 'Play'], ['Y', 'Edit game'], ['MENU', 'Options']].concat(S.view !== 'home' ? [['B', 'Back']] : []);
     else if (el && el.classList.contains('navbtn') && !DOCK_VIEWS.includes(el.dataset.to)) list = [['A', 'Open']].concat(S.view !== 'home' ? [['B', 'Back']] : [['MENU', 'Power']]);
     else list = [['A', 'Select']].concat(S.view !== 'home' ? [['B', 'Back']] : [['MENU', 'Power']]);
-    if (!top && S.view !== 'home') list.push(['LB', 'RB']);
+    if (!top && S.view !== 'home' && !TVAPP) list.push(['LB', 'RB']);
     $('#prompts').innerHTML = list.map(([b, label]) => b === 'LB' ? '<span class="prompt">' + glyph('LB') + glyph('RB') + 'Switch</span>' : '<span class="prompt">' + glyph(b) + esc(label) + '</span>').join('');
   }
 
@@ -903,9 +911,12 @@
 
   // ----- settings
   const TABS = [['platforms', 'Platforms'], ['themes', 'Themes'], ['display', 'Display'], ['controllers', 'Controllers'], ['tv', 'Movies & TV'], ['saves', 'Saves & backups'], ['startup', 'Startup & power'], ['about', 'About']];
+  // Couch TV's Settings: the Movies & TV page and About, with a way back at the top.
+  const TABS_TV = [['tv', 'General'], ['about', 'About']];
   function settingsHTML() {
     return '<div class="shell"><aside class="side"><h1>Settings</h1>' +
-      TABS.map(([k, l]) => '<button class="sideitem' + (S.setTab === k ? ' sel' : '') + '" data-nav data-key="t-' + k + '" data-zone="side" data-action="tab" data-tab="' + k + '"><span>' + l + '</span></button>').join('') +
+      (TVAPP ? '<button class="sideitem tvapp-back" data-nav data-key="t-back" data-zone="side" data-action="tv-open">' + icon('back') + '<span>Back to Couch TV</span></button>' : '') +
+      (TVAPP ? TABS_TV : TABS).map(([k, l]) => '<button class="sideitem' + (S.setTab === k ? ' sel' : '') + '" data-nav data-key="t-' + k + '" data-zone="side" data-action="tab" data-tab="' + k + '"><span>' + l + '</span></button>').join('') +
       '</aside><section class="content" id="content">' + settingsContentHTML() + '</section></div>';
   }
   function toggleHTML(key, label, on, desc, action, extra) {
@@ -1146,23 +1157,26 @@
       const QL = { '4K': '4K', '1080p': '1080p', '720p': '720p' };
       const SL = { off: 'Off', en: 'English', es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', it: 'Italian' };
       const m = s.tvMode === 'light' ? 'light' : 'dark';
-      return '<div class="sect-h"><div><h2>Movies &amp; TV</h2><p>Stremio with your addons, made for the couch.</p></div><div class="btn-row"><button class="btn primary big" data-nav data-key="tv-open" data-zone="body" data-action="tv-open">' + icon('tv') + 'Open Movies &amp; TV</button></div></div>' +
+      return '<div class="sect-h"><div><h2>' + (TVAPP ? 'Couch TV' : 'Movies &amp; TV') + '</h2><p>Stremio with your addons, made for the couch.</p></div>' + (TVAPP ? '' : '<div class="btn-row"><button class="btn primary big" data-nav data-key="tv-open" data-zone="body" data-action="tv-open">' + icon('tv') + 'Open Movies &amp; TV</button></div>') + '</div>' +
         '<div class="sub-h">Appearance</div><div class="btn-row tv-modes">' +
         '<button class="btn big' + (m === 'dark' ? ' primary' : '') + '" data-nav data-key="tv-dark" data-zone="body" data-action="tv-mode" data-mode="dark" aria-pressed="' + (m === 'dark') + '">' + icon('moon') + 'Dark</button>' +
         '<button class="btn big' + (m === 'light' ? ' primary' : '') + '" data-nav data-key="tv-light" data-zone="body" data-action="tv-mode" data-mode="light" aria-pressed="' + (m === 'light') + '">' + icon('star') + 'Light</button></div>' +
+        (TVAPP ? '<div class="toggles" style="grid-template-columns:1fr;margin-top:1.6rem">' +
+          '<button class="toggle-row" data-nav data-key="tv-full" data-zone="body" data-action="tvapp-full"><span><div>Full screen</div><div class="d">Couch TV opens in a window you can size and move. F11 switches too.</div></span><span class="status ok">' + (S.tvFull ? 'On' : 'Off') + '</span></button>' +
+          toggleHTML('tv-motion', 'Reduce motion', !!s.reduceMotion, 'Fewer animations.', 'set-toggle', 'data-k="reduceMotion"') + '</div>' : '') +
         '<div class="sub-h">Stremio account</div><div class="toggles" style="grid-template-columns:1fr">' +
         (!t ? '<p class="field-note">Checking…</p>' : t.signedIn
           ? row('tv-out', 'tv-signout', 'Signed in' + (t.email ? ' as ' + t.email : ''), 'Your addons, library and Continue Watching sync with the Stremio app.', 'Sign out')
           : row('tv-in', 'tv-signin', 'Sign in to Stremio', 'Bring your own addons, library and Continue Watching. Without an account you get Cinemeta and OpenSubtitles.', 'Sign in')) +
         '</div><div class="sub-h">Playing</div><div class="toggles" style="grid-template-columns:1fr">' +
-        toggleHTML('tv-intro', 'Opening animation', s.tvIntro !== false, 'Plays the first time you open Movies & TV each session.', 'set-toggle', 'data-k="tvIntro"') +
+        toggleHTML('tv-intro', 'Opening animation', s.tvIntro !== false, TVAPP ? 'Plays when Couch TV opens.' : 'Plays the first time you open Movies & TV each session.', 'set-toggle', 'data-k="tvIntro"') +
         toggleHTML('tv-auto', 'Play the best match straight away', !!s.tvAutoPlay, 'Skips the stream list. Choose stream on a show’s page still lets you pick.', 'set-toggle', 'data-k="tvAutoPlay"') +
         row('tv-q', 'tv-quality', 'Preferred quality', 'What “best match” looks for first.', QL[s.tvQuality] || '1080p') +
         row('tv-s', 'tv-subs', 'Subtitles', 'Turned on automatically when a movie or episode has them.', SL[s.tvSubLang || 'en'] || 'English') +
         (t ? row('tv-mpv', 'tv-mpv', 'Video player', t.mpv ? 'mpv · ' + (t.mpvPath || '') : 'Movies play in mpv, a free player that handles every format (4K, HDR, all audio).', t.mpv ? 'Change' : 'Install mpv') : '') +
-        '</div><div class="sub-h">YouTube</div><div class="toggles" style="grid-template-columns:1fr">' +
+        (TVAPP ? '' : '</div><div class="sub-h">YouTube</div><div class="toggles" style="grid-template-columns:1fr">' +
         toggleHTML('yt-ads', 'Block ads in YouTube', s.ytAdblock !== false, 'Uses the ad blocker from VacuumTube by shy (MIT License). Takes effect the next time YouTube opens. Turn off if videos stop loading.', 'set-toggle', 'data-k="ytAdblock"') +
-                row('yt-reset', 'yt-reset', 'Sign out of YouTube', 'Forgets the YouTube account and settings on this ' + PCW + '. Open YouTube from the dock to sign in again.', 'Sign out') +
+                row('yt-reset', 'yt-reset', 'Sign out of YouTube', 'Forgets the YouTube account and settings on this ' + PCW + '. Open YouTube from the dock to sign in again.', 'Sign out')) +
         '</div>' + (t ? '<p class="field-note">' + (t.engine ? 'Torrent streams use Stremio’s streaming engine from your Stremio app.' : 'Torrent streams need the Stremio app (or Stremio Service) installed on this ' + PCW + '. Debrid and direct links work without it.') + ' Controls while watching: A pause · ←/→ scrub · LB/RB skip · Y subtitles · X audio · B back.</p>' : '');
     }
     if (tab === 'startup') {
@@ -1174,6 +1188,13 @@
         '<button class="btn big" data-nav data-key="pw-sleep" data-zone="body" data-action="power" data-p="sleep">' + icon('moon') + 'Sleep</button>' +
         '<button class="btn big" data-nav data-key="pw-restart" data-zone="body" data-action="power" data-p="restart">' + icon('restart') + 'Restart</button>' +
         '<button class="btn big" data-nav data-key="pw-off" data-zone="body" data-action="power" data-p="shutdown">' + icon('power') + (IS_MAC ? 'Shut Down' : 'Shut down') + '</button></div>';
+    }
+    if (TVAPP) {
+      return '<div class="sect-h about-h"><img class="about-logo" src="couchtv.png" alt=""><div><h2>Couch TV</h2><p>Version ' + esc(S.info.version || '') + '</p></div></div>' +
+        '<p class="field-note" style="font-size:1.6rem">Movies, series and Cable TV from Couch Launcher, as an app of its own.</p>' +
+        '<p class="field-note" style="margin-top:1.4rem;font-size:1.6rem">' + (S.info.sharedWithLauncher
+          ? 'Your addons, your list, what you’ve watched and your Cable TV channels are the same ones Couch Launcher uses' + (S.info.sharedSignIn ? ', and so is your Stremio sign-in.' : '. Your Stremio sign-in is kept separately here.')
+          : 'Couch Launcher isn’t set up on this ' + PCW + '. If you install it later, it will use the same addons, list and history.') + '</p>';
     }
     return '<div class="sect-h about-h"><img class="about-logo" src="logo.png" alt=""><div><h2>Couch Launcher</h2><p>Version ' + esc(S.info.version || '') + '</p></div></div><dl class="kv">' +
       '<dt>Games</dt><dd>' + games().length + '</dd><dt>Controllers</dt><dd>' + padCount() + ' connected</dd>' +
@@ -1308,7 +1329,7 @@
     if (top) top.focusKey = el.dataset.key; else S.baseFocus = el.dataset.key;
     if (el.dataset.zone) S.zoneMemory[el.dataset.zone] = el.dataset.key;
     if (!opts.noScroll) ensureVisible(el, opts.instant);
-    onFocusChanged(el);
+    onFocusChanged(el, opts);
   }
   function ensureVisible(el, instant) {
     const sc = el.closest('.row, .hf-row, .fp-games, .content, .fb-list, .side, .flist, .gbody, .home-news, .fprof');
@@ -1362,7 +1383,7 @@
   }
 
   let tabTimer = null;
-  function onFocusChanged(el) {
+  function onFocusChanged(el, opts) {
     const newsMode = !layers.length && S.view === 'home' && !!(el && el.closest && el.closest('.home-news'));
     if (!newsMode && $('#app').classList.contains('news-mode') && !layers.length) { const hn = $$('.home-news').pop(); if (hn) hn.scrollTop = 0; } // back up: start at the top next time
     $('#app').classList.toggle('news-mode', newsMode);
@@ -1379,7 +1400,7 @@
       }
     }
     const top = layers[layers.length - 1];
-    if (top && top.onFocus) top.onFocus(el);
+    if (top && top.onFocus) top.onFocus(el, opts);
     updatePrompts();
   }
 
@@ -4040,13 +4061,14 @@
         if (S.setTab !== 'emulators') { S.setTab = 'emulators'; }
         return refreshContent();
       }
-      case 'tv-open': return openApp('tv');
+      case 'tv-open': return TVAPP ? TV().open() : openApp('tv');
+      case 'tvapp-full': try { S.tvFull = !!(await api.tvFullscreen()); } catch (e) { toast(e.message, true); } return refreshContent();
       case 'yt-reset': {
         if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this ' + PCW + '.', 'Sign out', true))) return;
         try { await api.youtubeReset(); toast('Signed out of YouTube'); } catch (e) { toast(e.message, true); }
         return;
       }
-      case 'tv-mode': s.tvMode = el.dataset.mode === 'light' ? 'light' : 'dark'; save(); return refreshContent();
+      case 'tv-mode': s.tvMode = el.dataset.mode === 'light' ? 'light' : 'dark'; if (TVAPP) { tvAppTheme(); S.theme = window.applyTheme(s, true); } save(); return refreshContent();
       case 'tv-signin': return TV().signIn();
       case 'tv-signout': {
         if (!(await confirmBox('Sign out of Stremio?', 'Movies & TV goes back to Cinemeta and OpenSubtitles. Nothing is deleted from your account.', 'Sign out', true))) return;
@@ -4235,19 +4257,21 @@
       case 'A': return activate(el);
       case 'B':
         if (top) return top.onBack ? top.onBack() : closeLayer(top);
+        if (TVAPP) return TV().open(); // Couch TV's Settings: back to what you were watching
         if (S.view === 'settings' && S.setTab === 'emulators') return activate({ dataset: { action: 'emu-back' } });
         if (S.view !== 'home') return go('home');
         if (el && el.closest('.home-news')) { const c = $('[data-key="c-lib"]'); if (c) setFocus(c); } // back up from the news
         return;
       case 'Y':
+        if (TVAPP) return;
         if (!top && el && el.dataset.game) { const g = byId(el.dataset.game); if (g) openEdit(g); }
         return;
       case 'MENU':
-        if (top) return;
+        if (top || TVAPP) return;
         if (el && el.dataset.game) { const g = byId(el.dataset.game); if (g) gameMenu(g); return; }
         return powerMenu();
       case 'LB': case 'RB': {
-        if (top) return;
+        if (top || TVAPP) return;
         // Steps through every icon in the dock. Home, My library and Settings slide over to that
         // page; the ones that open something (Search, Clips, Movies & TV, YouTube, Friends) are
         // highlighted, and A opens them.
@@ -4272,7 +4296,7 @@
       }
       case 'LT': return page('up');
       case 'RT': return page('down');
-      case 'HOME': toggleGuide(!!S.playing); return;
+      case 'HOME': if (!TVAPP) toggleGuide(!!S.playing); return;
       default: return;
     }
   }
@@ -4295,7 +4319,7 @@
     return pics;
   }
   function openIdle() {
-    if (idle || OVERLAY) return;
+    if (idle || OVERLAY || TVAPP) return;
     const pics = idleArt();
     const layer = openLayer({
       className: 'idle-layer',
@@ -4338,7 +4362,7 @@
     closeLayer(x.layer);
     lastActivity = Date.now();
   }
-  if (!OVERLAY) {
+  if (!OVERLAY && !TVAPP) {
     setInterval(() => {
       const mins = idleMinutes();
       if (idle || !mins || !S.lib) return;
@@ -4483,6 +4507,7 @@
     noteActivity();
     if (S.tvPlaying) return; // the player has the keyboard
     if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (TVAPP && ['Shift', 'CapsLock', 'NumLock', 'ScrollLock'].includes(e.key)) return; // (Shift + wheel is a mouse gesture: the pointer stays)
     const top = topLayer();
     const typing = e.target && e.target.tagName === 'INPUT';
     setInput('key');
@@ -4504,7 +4529,7 @@
     if (!moved) return;
     setInput('mouse');
     clearTimeout(mouseTimer);
-    mouseTimer = setTimeout(() => document.body.classList.add('hide-cursor'), 3000);
+    if (!TVAPP) mouseTimer = setTimeout(() => document.body.classList.add('hide-cursor'), 3000); // (Couch TV is a normal window: its pointer stays)
   });
   document.addEventListener('mouseover', (e) => {
     if (S.input !== 'mouse') return;
@@ -4596,7 +4621,7 @@
     if (fresh.length && !OVERLAY) { rescan('steam', true); notInstAt = 0; } // a new install leaves Not installed
     paintDownloads();
   });
-  (async () => { try { S.downloads = await api.downloads(); paintDownloads(); } catch (_) { /* not available */ } })();
+  (async () => { if (TVAPP) return; try { S.downloads = await api.downloads(); paintDownloads(); } catch (_) { /* not available */ } })();
   api.on('news', (n) => { if (n && Array.isArray(n.items)) { S.news = n; S.newsErr = null; paintNews(); } });
   api.on('deals', (v) => { if (v && Array.isArray(v.free)) { S.deals = v; dealsAt = Date.now(); paintDeals(); } });
   api.on('pad:a', (slot) => { if (S.onPadA && Number.isInteger(slot)) S.onPadA(slot); });
@@ -4676,8 +4701,29 @@
     }
   }
   function refreshRa() { return Promise.resolve().then(() => api.raStatus()).then((r) => { S.raOn = !!(r && r.connected); S.raUser = (r && r.user) || null; }).catch(() => {}); }
+  // Couch TV's Settings follow its look: dark or light.
+  function tvAppTheme() { const s = S.lib.settings; s.theme = s.tvMode === 'light' ? 'macoslight' : 'macos'; s.accent = null; s.useArtBackground = false; s.customBg = null; }
+  // Couch TV: Movies & TV is the whole app. Its Settings page sits underneath (the gear opens it,
+  // B or "Back to Couch TV" returns).
+  async function initTvApp() {
+    window.__stage = 'info';
+    try { S.info = Object.assign(S.info, await api.info()); } catch (e) { window.__stage = 'info failed: ' + e.message; }
+    window.__stage = 'load';
+    S.lib = await api.load();
+    window.__stage = 'render';
+    tvAppTheme();
+    S.theme = window.applyTheme(S.lib.settings, false);
+    S.view = 'settings'; S.setTab = 'tv';
+    renderView(false);
+    TV().open();
+    requestAnimationFrame(pollPads);
+    window.__stage = 'running';
+    try { api.started().catch(() => {}); } catch (_) { /* fine */ }
+    api.on('tvapp:fullscreen', (on) => { S.tvFull = !!on; document.documentElement.classList.toggle('tvapp-full', !!on); if (!layers.length && S.setTab === 'tv') refreshContent(); });
+  }
   async function init() {
     if (OVERLAY) return initOverlay();
+    if (TVAPP) return initTvApp();
     window.__stage = 'info';
     try { S.info = await api.info(); } catch (e) { window.__stage = 'info failed: ' + e.message; }
     addEmuSources();
@@ -4708,6 +4754,7 @@
     if (tvUi) return tvUi;
     tvUi = window.CouchTV({
       api, S, $, $$, esc, icon, toast, openLayer, closeLayer, setFocus, currentFocus, cssEsc, openMenu, confirmBox, osk, browse, reduce, save, layers, topLayer,
+      standalone: TVAPP, // Couch TV: this is the whole app (nothing to close back to)
       glyphText: (b) => (GLYPHS[S.input === 'pad' ? S.glyphs : 'key'] || {})[b] || b,
       openSettings: () => { S.setTab = 'tv'; go('settings', 't-tv'); loadTvSettings(); },
       refreshSettings: () => { if (S.view === 'settings' && S.setTab === 'tv') loadTvSettings(); }
@@ -4719,9 +4766,9 @@
     if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) refreshContent();
   }
   // Mistakes on this screen go to errors.log (in the launcher's settings folder).
-  const reportError = (what) => { try { if (api.logError) api.logError((OVERLAY ? 'guide: ' : 'launcher: ') + what).catch(() => {}); } catch (_) { /* older app core */ } };
+  const reportError = (what) => { try { if (api.logError) api.logError((OVERLAY ? 'guide: ' : TVAPP ? 'couch tv: ' : 'launcher: ') + what).catch(() => {}); } catch (_) { /* older app core */ } };
   window.addEventListener('error', (e) => { if (e && e.message) reportError(e.message + ' at ' + String(e.filename || '').split('/').pop() + ':' + e.lineno + (e.error && e.error.stack ? '\n' + e.error.stack : '')); });
   window.addEventListener('unhandledrejection', (e) => { const r = e && e.reason; reportError('unhandled: ' + String((r && r.stack) || r)); });
   window.__couch = { S, move, button, setFocus, currentFocus, layers, TV, openIdle, closeIdle, go, osk, slotInfo }; // used by tests
-  init().catch((e) => { document.body.innerHTML = '<pre style="color:#fff;padding:40px;font-size:18px">Couch Launcher couldn’t start:\n' + esc(e && e.stack || e) + '</pre>'; });
+  init().catch((e) => { document.body.innerHTML = '<pre style="color:#fff;padding:40px;font-size:18px">' + (TVAPP ? 'Couch TV' : 'Couch Launcher') + ' couldn’t start:\n' + esc(e && e.stack || e) + '</pre>'; });
 })();

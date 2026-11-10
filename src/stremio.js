@@ -120,34 +120,96 @@ function createStremio(userDataDir, safeStorage, opts) {
   const doFetch = opts.fetch || ((...a) => fetch(...a));
   const now = opts.now || Date.now;
   const file = path.join(userDataDir, 'tv.json');
-  let data = { auth: null, user: null, addons: null, addonsAt: 0, library: {}, libraryAt: 0, watched: {}, dirty: {}, last: {} };
+  const blank = () => ({ auth: null, user: null, addons: null, addonsAt: 0, library: {}, libraryAt: 0, watched: {}, dirty: {}, last: {} });
+  let data = blank();
   // (Read with its backup, saved in one step: addons, your list and what you've watched must
   // not be lost to a crash in the middle of a save.)
   { const saved = readJson(file); if (saved && typeof saved === 'object' && !Array.isArray(saved)) data = Object.assign(data, saved); }
   const cache = new Map();
   let saveTimer = null;
+  // Couch Launcher and Couch TV keep this in the same file, and both can be open at once. So
+  // before anything is looked up or changed, and before every save, what the other one saved
+  // since is picked up: with nothing unsaved here, its copy simply replaces this one; with
+  // changes waiting here, the two are put together (this one's changes on top, title by title,
+  // the more recently changed one winning in your list).
+  const stampOf = () => { try { const st = fs.statSync(file); return st.mtimeMs + ':' + st.size; } catch (_) { return ''; } };
+  let stamp = stampOf();
+  // (What the small things looked like when the two were last the same, to tell which of them
+  // were changed here: the sign-in, the addons and so on are only kept over the other
+  // program's when they really were changed here.)
+  const MAPS = ['watched', 'dirty', 'last', 'library'];
+  const small = () => { const o = {}; for (const k of Object.keys(data)) if (!MAPS.includes(k)) o[k] = JSON.stringify(data[k]); return o; };
+  let same = small();
+  function pickUp() {
+    const st = stampOf();
+    if (st === stamp) return false;
+    stamp = st;
+    if (!st) return false; // the file is gone: what is here gets saved again with the next change
+    // (The file itself, never its backup: a file caught half-written or damaged is not news, and
+    // an older copy must never replace what is here. Its next change is looked at again.)
+    let saved = null;
+    try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { saved = null; }
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return false;
+    const theirs = Object.assign(blank(), saved);
+    if (saveTimer) {
+      const mine = data;
+      for (const k of ['watched', 'dirty', 'last']) theirs[k] = Object.assign({}, theirs[k], mine[k]);
+      const lib = Object.assign({}, theirs.library);
+      for (const [id, it] of Object.entries(mine.library || {})) {
+        const t = lib[id];
+        if (!t || !(Date.parse(t._mtime) > Date.parse(it && it._mtime))) lib[id] = it;
+      }
+      theirs.library = lib;
+      for (const k of Object.keys(mine)) if (!MAPS.includes(k) && JSON.stringify(mine[k]) !== same[k]) theirs[k] = mine[k];
+    } else cache.clear();
+    data = theirs;
+    same = small();
+    return true;
+  }
   function saveSoon() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 400);
     if (saveTimer.unref) saveTimer.unref();
   }
   function saveNow() {
-    clearTimeout(saveTimer);
-    try { writeJson(file, data); } catch (_) { /* tried again with the next change */ }
+    const waiting = !!saveTimer;
+    if (!waiting) saveTimer = true; // (saving without a change waiting still counts as "changes here")
+    try { pickUp(); } catch (_) { /* saved as it is */ }
+    clearTimeout(saveTimer); saveTimer = null;
+    try { writeJson(file, data); stamp = stampOf(); same = small(); } catch (_) { /* tried again with the next change */ }
   }
 
   // The account key is kept encrypted with Windows' own protection (like the other accounts).
-  function authKey() {
-    if (!data.auth) return null;
+  //
+  // Couch TV (opts.ownSlot = 'authTv'): with the launcher's key (opts.other, see sharedkey.js)
+  // it reads and saves the launcher's own sign-in, so there is one for both. Without that key it
+  // keeps a sign-in of its own beside the launcher's, and leaves the launcher's alone.
+  const other = opts.other || null, ownSlot = opts.ownSlot || null;
+  const readSlot = (a) => {
+    if (!a) return null;
     try {
-      if (data.auth.enc && safeStorage && safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(Buffer.from(data.auth.enc, 'base64'));
-      return data.auth.plain || null;
+      if (a.enc && safeStorage && safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(Buffer.from(a.enc, 'base64'));
+      return a.plain || null;
     } catch (_) { return null; }
+  };
+  const writeSlot = (k) => (safeStorage && safeStorage.isEncryptionAvailable() ? { enc: safeStorage.encryptString(k).toString('base64') } : { plain: k });
+  function authKey() {
+    if (!ownSlot) return readSlot(data.auth);
+    if (data.auth && data.auth.plain) return data.auth.plain;
+    if (other && data.auth && data.auth.enc) {
+      let k = null;
+      try { k = other.decrypt(Buffer.from(data.auth.enc, 'base64')); } catch (_) { k = null; }
+      if (k) return k;
+    }
+    return readSlot(data[ownSlot]);
   }
   function setAuthKey(k) {
-    if (!k) { data.auth = null; return; }
-    if (safeStorage && safeStorage.isEncryptionAvailable()) data.auth = { enc: safeStorage.encryptString(k).toString('base64') };
-    else data.auth = { plain: k };
+    if (!ownSlot) { data.auth = k ? writeSlot(k) : null; return; }
+    if (!k) { if (other) data.auth = null; delete data[ownSlot]; return; }
+    let enc = null;
+    if (other) { try { enc = other.encrypt(k).toString('base64'); } catch (_) { enc = null; } }
+    if (enc) { data.auth = { enc }; delete data[ownSlot]; }
+    else data[ownSlot] = writeSlot(k);
   }
 
   async function getJson(url, ms) {
@@ -513,13 +575,17 @@ function createStremio(userDataDir, safeStorage, opts) {
     return Math.round(Number(it.state.timeOffset) / 1000);
   }
 
-  return {
+  const all = {
     status, login, linkCreate, linkPoll, logout,
     addons, addonList, addonInstall, addonRemove, addonMove, addonByUrl,
     catalogs, catalog, search, meta, streams, subtitles,
     library, setInLibrary, progress, setWatched, watched, resumeAt, pushDirty, rememberStream, lastStream,
     flush: () => { saveNow(); return pushDirty().catch(() => false); }
   };
+  // (Every one of these first picks up what the other program saved, see pickUp above.)
+  const out = {};
+  for (const [name, fn] of Object.entries(all)) out[name] = (...a) => { try { pickUp(); } catch (_) { /* as it is */ } return fn(...a); };
+  return out;
 }
 
 module.exports = { createStremio, describeStream, bestStream, supports, resourceUrl, normalizeAddonUrl, quality, inContinueWatching };

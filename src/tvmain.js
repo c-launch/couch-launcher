@@ -15,7 +15,11 @@ const epLabel = (v) => (v && v.season ? 'S' + v.season + ':E' + v.episode + (v.t
 function setupTv(ctx) {
   const { app, safeStorage, shell, clipboard, BrowserWindow, handle, send, settings, targetDisplay, toPx, presentApp, bringBack, saveSettings } = ctx;
   let store = null;
-  const tv = () => store || (store = createStremio(app.getPath('userData'), safeStorage));
+  // (Couch TV keeps all of this in the launcher's folder, so both have the same addons, list,
+  // history, channels and player: ctx.dataDir. ctx.storeOpts: how it shares the sign-in.)
+  const dataDir = ctx.dataDir || app.getPath('userData');
+  const playerTitle = ctx.playerTitle || 'Couch Launcher Player';
+  const tv = () => store || (store = createStremio(dataDir, safeStorage, ctx.storeOpts || undefined));
   const engine = tvp.createEngine();
   let session = null;
   let hud = null;
@@ -23,7 +27,7 @@ function setupTv(ctx) {
   // The one you chose, else the launcher's own copy, else any mpv on this PC. Whatever is found
   // is remembered, so it's there straight away next time.
   const mpvPath = () => {
-    const exe = tvp.findMpv(process.env, settings().mpvPath || null, app.getPath('userData'));
+    const exe = tvp.findMpv(process.env, settings().mpvPath || null, dataDir);
     if (exe && exe !== settings().mpvPath) { settings().mpvPath = exe; saveSettings(); }
     return exe;
   };
@@ -75,7 +79,7 @@ function setupTv(ctx) {
   handle('tv:setWatched', (id, on) => tv().setWatched(String(id || ''), !!on));
   handle('tv:resumeAt', (id, videoId) => tv().resumeAt(String(id || ''), videoId ? String(videoId) : null));
   handle('tv:installMpv', async () => {
-    const exe = await tvp.installMpv(app.getPath('userData'));
+    const exe = await tvp.installMpv(dataDir);
     settings().mpvPath = exe; saveSettings();
     return exe;
   });
@@ -88,9 +92,9 @@ function setupTv(ctx) {
 
   // ---------- Cable TV
   let cableObj = null, ytdlpObj = null;
-  const ytdlp = () => ytdlpObj || (ytdlpObj = createYtdlp(path.join(app.getPath('userData'), 'bin')));
+  const ytdlp = () => ytdlpObj || (ytdlpObj = createYtdlp(path.join(dataDir, 'bin')));
   const cable = () => cableObj || (cableObj = createCable({
-    tv: tv(), file: path.join(app.getPath('userData'), 'cable.json'),
+    tv: tv(), file: path.join(dataDir, 'cable.json'),
     ytdlp: { search: (q, n) => ytdlp().search(q, n) },
     ads: () => settings().cableAds !== false
   }));
@@ -203,7 +207,7 @@ function setupTv(ctx) {
     h.setBounds(targetDisplay().bounds);
     h.showInactive();
     h.setAlwaysOnTop(true, 'screen-saver');
-    s.stopPlace = presentApp(['mpv.exe'], 'Couch Launcher Player', 15000);
+    s.stopPlace = presentApp(['mpv.exe'], playerTitle, 15000);
     s.timer = setInterval(() => {
       if (session !== s) return;
       s.controls.tick();
@@ -392,7 +396,7 @@ function setupTv(ctx) {
       await tvp.extrasOk(s.exe); // (which optional switches this mpv accepts)
       s.mpv = tvp.startMpv(s.exe, { url, title, startAt: at, rect: toPx(targetDisplay().bounds), subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: (s.stream && s.stream.headers) || null, idle: true });
       if (s.stopPlace) s.stopPlace();
-      s.stopPlace = presentApp(['mpv.exe'], 'Couch Launcher Player', 15000);
+      s.stopPlace = presentApp(['mpv.exe'], playerTitle, 15000);
       wire(s);
     } else {
       s.loading = { at: Date.now(), expect: at > 5 ? at : 0 };

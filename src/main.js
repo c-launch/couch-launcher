@@ -2654,6 +2654,25 @@ if (!app.requestSingleInstanceLock()) {
         }
         await step('guard', () => { if (!guard) return false; guard.tick(); return guard.wantsPause() === false; });
         await step('pops', async () => { notify('Self-test', 'A pop-up from the build check.'); await wait(2500); return !!popsPart && popsPart.state.shown.length === 1; });
+        // Couch TV reads the Stremio sign-in this app saves (sharedkey.js): what Windows' own
+        // protection wrote here must read back through that, and the other way round, each way
+        // it has of asking Windows. A sample is left for Couch TV's own check to read.
+        await step('sharedKey', async () => {
+          if (!safeStorage.isEncryptionAvailable()) return 'no encryption here';
+          const sk = require('./sharedkey');
+          const ud = app.getPath('userData');
+          const secret = safeStorage.encryptString('couch-shared-check');
+          let key = null;
+          for (let i = 0; i < 40 && !key; i++) { key = sk.open(ud); if (!key) await wait(500); } // (the key file is written a few seconds after the first start)
+          if (!key) return 'no key from ' + (fs.existsSync(path.join(ud, 'Local State')) ? 'the key file' : 'a missing key file');
+          if (key.decrypt(secret) !== 'couch-shared-check') return 'could not read what this app saved (' + secret.slice(0, 3).toString('latin1') + ')';
+          if (safeStorage.decryptString(key.encrypt('the other way ☕')) !== 'the other way ☕') return 'this app could not read what it saved';
+          const hows = {};
+          for (const [name, fn] of sk.ways()) { const k2 = sk.open(ud, { ways: [[name, fn]] }); hows[name] = !!k2 && k2.decrypt(secret) === 'couch-shared-check'; }
+          winRes.sharedKeyWays = hows;
+          fs.writeFileSync(path.join(ud, 'selftest-shared.json'), JSON.stringify({ enc: secret.toString('base64') }));
+          return hows.koffi === true && hows.powershell === true ? true : 'ways: ' + JSON.stringify(hows);
+        });
         await step('errors', () => { try { return fs.readFileSync(path.join(app.getPath('userData'), 'errors.log'), 'utf8').slice(-1500); } catch (_) { return ''; } });
         winRes.done = true;
       }, 2500);

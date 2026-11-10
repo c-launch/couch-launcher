@@ -41,4 +41,37 @@ jobs:
           for i in $(seq 1 300); do [ -f st/result.json ] && break; sleep 1; done
           sleep 3; taskkill //F //IM "Couch Launcher.exe" > /dev/null 2>&1 || true
           [ -f st/result.json ] || { echo "The Windows app never finished its self-test"; cat st/log.txt || true; exit 1; }
-          node -e "const r=require('./st/result.json'); const w=r.win||{}; console.log(JSON.stringify({version:r.version,controller:r.controller,overlay:r.overlay,windows:r.windows,win:w},null,1)); const need=['w32','foreground','ownWindow','minimize','focus','pauser','pause','procs','procsList','procsTrack','mpvGot','mpvSwitches','mpvStart','mpvTwoFiles','mpvSoundDropped','mpvBadFile','mpvPlaysAfter','guard','pops']; const bad=need.filter((k)=>w[k]!==true); if(!w.ran||bad.length){console.error('Not working on Windows: '+(w.ran?bad.join(', '):'the Windows checks did not run'));process.exit(1);} if(!r.overlay){console.error('The guide did not open');process.exit(1);} if(String(w.errors||'').trim()){console.error('errors.log is not empty:\\n'+w.errors);process.exit(1);}"
+          node -e "const r=require('./st/result.json'); const w=r.win||{}; console.log(JSON.stringify({version:r.version,controller:r.controller,overlay:r.overlay,windows:r.windows,win:w},null,1)); const need=['w32','foreground','ownWindow','minimize','focus','pauser','pause','procs','procsList','procsTrack','mpvGot','mpvSwitches','mpvStart','mpvTwoFiles','mpvSoundDropped','mpvBadFile','mpvPlaysAfter','guard','pops','sharedKey']; const bad=need.filter((k)=>w[k]!==true); if(!w.ran||bad.length){console.error('Not working on Windows: '+(w.ran?bad.join(', '):'the Windows checks did not run'));process.exit(1);} if(!r.overlay){console.error('The guide did not open');process.exit(1);} if(String(w.errors||'').trim()){console.error('errors.log is not empty:\\n'+w.errors);process.exit(1);}"
+
+      # Couch TV: the same Movies & TV as an app of its own. Built (the app and its setup
+      # wizard), started once here, and checked: a normal window with the TV screens in it, sized
+      # like any window, full screen and back, and the launcher's sign-in read with the
+      # launcher's key (the launcher's check above left a sample to read).
+      - name: Build Couch TV
+        if: always()
+        run: npx electron-builder --win nsis --publish never --config couchtv.build.json
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Check that Couch TV runs on Windows
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p st2
+          ( COUCH_TV_SELFTEST="$(pwd -W 2>/dev/null || pwd)/st2" "dist-tv/win-unpacked/Couch TV.exe" > st2/log.txt 2>&1 & echo $! > st2/pid )
+          for i in $(seq 1 120); do [ -f st2/result.json ] && break; sleep 1; done
+          sleep 3; taskkill //F //IM "Couch TV.exe" > /dev/null 2>&1 || true
+          [ -f st2/result.json ] || { echo "Couch TV never finished its self-test"; cat st2/log.txt || true; exit 1; }
+          node tools/couch-tv-check.js st2/result.json
+
+      - name: Keep the Couch TV setup wizard and the pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: couch-tv-preview
+          path: |
+            dist-tv/CouchTV-Setup-*.exe
+            st2/couchtv.png
+            st2/result.json
+            st/result.json
+          if-no-files-found: warn
