@@ -105,4 +105,15 @@ async function installBus(log) {
   return busInstalled();
 }
 
-module.exports = { createVPads, busInstalled, installBus };
+// Fail-safe: should virtual controllers that are plugged in right now be removed? They are only
+// meant to exist while the emulator game they were made for is running, or while the test in
+// Settings is open. s: { forGame (the game they were made for), runningGame (what runs now),
+// testing, testFor (ms the test has been on), unusedFor (ms since that game was last running) }
+const TEST_MAX = 30 * 60e3, UNUSED_MAX = 20e3;
+function shouldRemove(s) {
+  if (s.forGame && s.runningGame === s.forGame) return false;         // their game is running
+  if (s.testing) return !!s.runningGame || s.testFor > TEST_MAX;        // the test: until a game starts, or left on for half an hour
+  return s.unusedFor > UNUSED_MAX;                                      // their game never started, or is over
+}
+
+module.exports = { shouldRemove, createVPads, busInstalled, installBus };

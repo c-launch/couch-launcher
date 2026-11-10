@@ -1101,7 +1101,7 @@ if (!app.requestSingleInstanceLock()) {
   const playerCount = {}; // emulator -> players set up for this session
   handle('players:listen', (on) => { controller.setJoin(!!on); return true; });
   // Steady players (Settings › Controllers): virtual controllers held for the game's players.
-  let vp = null, vpadsGame = null;
+  let vp = null, vpadsGame = null, vpadsTestAt = 0, vpadsUsedAt = 0;
   function vpadsPart() {
     if (vp || MAC || process.platform !== 'win32') return vp;
     let koffiPath = '';
@@ -1109,7 +1109,17 @@ if (!app.requestSingleInstanceLock()) {
     vp = require('./vpads').createVPads({ execPath: process.execPath, koffiPath, onState: (st) => { send('vpads', st); sendOverlay('vpads', st); } });
     return vp;
   }
-  function stopSteady() { vpadsGame = null; if (vp) vp.stop(); }
+  function stopSteady() { vpadsGame = null; vpadsTestAt = 0; if (vp) vp.stop(); }
+  // Fail-safe: virtual controllers only exist while the emulator game they were made for is
+  // running (or the test in Settings is open). Looked at every few seconds, so ones left behind
+  // by a game that never started, a closed test or anything unforeseen are removed.
+  setInterval(() => {
+    if (!vp || !vp.running) return;
+    const t = Date.now(), now = running ? running.gameId : null;
+    if (vpadsGame && now === vpadsGame) vpadsUsedAt = t;
+    if (require('./vpads').shouldRemove({ forGame: vpadsGame, runningGame: now, testing: !!vpadsTestAt, testFor: t - vpadsTestAt, unusedFor: t - vpadsUsedAt })) stopSteady();
+  }, 4000);
+  app.on('will-quit', () => stopSteady());
   const ryujinxGuids = () => ({ virtualGuid: lib.settings.vpadGuid || null, realGuid: lib.settings.ryujinxRealGuid || null });
   handle('players:set', async (gameId, slots) => {
     if (MAC) throw new Error('On a Mac, set players in the emulator');
@@ -1123,7 +1133,7 @@ if (!app.requestSingleInstanceLock()) {
       const r = f ? await vp.start(list) : { error: 'Ryujinx settings not found' };
       if (r && r.ok) {
         const n = players.setRyujinxVirtual(f, list.length, lib.settings.vpadGuid);
-        vpadsGame = gameId; playerCount[emu] = n;
+        vpadsGame = gameId; vpadsTestAt = 0; vpadsUsedAt = Date.now(); playerCount[emu] = n;
         return n;
       }
       send('notice', { title: 'Steady players didn’t start (' + ((r && r.error) || 'unknown') + '). Using your controllers directly.' });
@@ -1144,6 +1154,7 @@ if (!app.requestSingleInstanceLock()) {
     const list = (Array.isArray(slots) ? slots : []).map((n) => (Number.isInteger(n) && n >= 0 && n <= 3 ? n : null)).slice(0, 4);
     const r = await vp.start(list.length ? list : [null]);
     if (!r || !r.ok) throw new Error((r && r.error) || 'Didn’t start');
+    vpadsGame = null; vpadsTestAt = Date.now();
     return r.players;
   });
   handle('vpads:stop', () => { stopSteady(); return true; });

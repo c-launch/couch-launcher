@@ -1,6 +1,6 @@
 {
- "version": "1.28.1",
- "notes": "Fixes and fail-safes. Cable TV: the hour that had nothing on when the clocks go back is filled, a show with bad data can't freeze the launcher, the player restarts if it crashes, and commercials set themselves up more reliably (and say plainly why when they can't). Movies & TV: the player always starts, even on an mpv that doesn't know the newer switches. Fail-safes: an update that can't show its screen twice in a row is dropped for the built-in version; a crashed or frozen screen reloads itself; a game is never left frozen if the launcher is killed; saved data survives a crash in the middle of a save; mistakes are written to errors.log.",
- "file": "CouchLauncher-update-1.28.1.zip",
- "size": 423327
+ "version": "1.28.2",
+ "notes": "Virtual controllers (Steady players) only exist while the emulator game they were made for is running. They are now also removed if that game never starts, when the launcher quits, and by a check every few seconds that removes any left behind.",
+ "file": "CouchLauncher-update-1.28.2.zip",
+ "size": 423711
 }

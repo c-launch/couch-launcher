@@ -83,6 +83,11 @@ require.cache[path.join(SRC, 'discordrpc.js')] = { id: 'd', filename: path.join(
   configured: () => dc.configured, connected: () => dc.configured, messagesAllowed: () => dc.configured, close() {}, disconnect() {},
   state: async () => { throw new Error('not in this test'); },
   live(onVoice, onMessage) { const l = { onVoice, onMessage, stopped: false }; dc.lives.push(l); return { stop() { l.stopped = true; dc.stops++; } }; } }) } };
+// pretend virtual controllers (the real rule for when they must go)
+const vpad = { running: false, starts: 0, stops: 0 };
+{ const real = require(path.join(SRC, 'vpads.js'));
+  require.cache[path.join(SRC, 'vpads.js')] = { id: 'v', filename: path.join(SRC, 'vpads.js'), loaded: true, exports: Object.assign({}, real, { createVPads: () => ({
+    get running() { return vpad.running; }, start: async (l) => { vpad.running = true; vpad.starts++; return { ok: true, players: l.length }; }, stop() { if (vpad.running) vpad.stops++; vpad.running = false; }, status: () => ({}) }) }) }; }
 const pauser = { available: true, isPaused: () => world.paused.size > 0, has: (p) => world.paused.has(p),
   pause(pids, still) { world.calls.push('pause'); return new Promise((res) => setTimeout(() => { if (!still || still()) for (const p of pids) world.paused.add(p); res(); }, 300)); },
   resumeAll() { if (world.paused.size) world.calls.push('resume'); world.paused.clear(); }, resumeAfterPending() { this.resumeAll(); return Promise.resolve(); } };
@@ -206,6 +211,15 @@ require(path.join(APP, 'src', 'boot.js'));
   assert.ok((await handlers['game:status']()).value.gameId === 'g1', 'starting it twice keeps one: ' + JSON.stringify(dup));
   require('child_process').execFileSync('pkill', ['-f', 'sleep 120']); await wait(900);
   assert.strictEqual((await handlers['game:status']()).value, null);
+  // 7) virtual controllers only exist for the test in Settings or their emulator game
+  assert.ok(await handlers['vpads:test']([0]) && vpad.running, 'the Settings test plugs them in');
+  await wait(4600); assert.ok(vpad.running, 'and they stay while the test is open');
+  assert.ok((await handlers.launch('g1')).ok && !vpad.running, 'starting any other game removes them at once');
+  require('child_process').execFileSync('pkill', ['-f', 'sleep 120']); await wait(900);
+  vpad.running = true; // left behind with no test and no game (should never happen)
+  await wait(4600); assert.ok(!vpad.running, 'left-behind ones are removed within seconds');
+  await handlers['vpads:test']([0]); await handlers['vpads:stop'](); assert.ok(!vpad.running, 'closing the test removes them');
+  await handlers['vpads:test']([0]); app.emit('will-quit'); assert.ok(!vpad.running, 'and so does quitting the launcher');
   assert.deepStrictEqual(errors, [], 'no errors: ' + errors.join('\n'));
   fs.rmSync(TMP, { recursive: true, force: true });
   console.log('windows guide flow ok');
