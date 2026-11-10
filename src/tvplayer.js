@@ -195,6 +195,9 @@ function startMpv(exe, o) {
   const args = [
     '--input-ipc-server=' + pipe, '--force-window=immediate', '--keep-open=always', '--idle=' + (o.idle ? 'yes' : 'no'),
     '--no-border', '--osc=no', '--osd-bar=no', '--cursor-autohide=always', '--hwdec=auto-safe',
+    // The mouse does nothing to the picture: no dragging the window around, and none of mpv's own
+    // mouse actions (wheel = seek, right click = pause, double click = leave full screen).
+    '--window-dragging=no', '--input-cursor=no',
     '--title=Couch Launcher Player', '--force-media-title=' + String(o.title || 'Movies & TV').replace(/[\r\n]/g, ' '),
     '--ytdl=no', '--cache=yes', '--demuxer-max-bytes=400MiB', '--demuxer-readahead-secs=60', '--network-timeout=40',
     '--save-position-on-quit=no', '--sub-auto=fuzzy', '--sub-font-size=46', '--osd-font-size=36', '--volume=100',
