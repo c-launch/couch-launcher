@@ -366,7 +366,8 @@ function setupTv(ctx) {
           s.controls.part('filler', backAt, settings().cableAds === false ? '' : adWhy);
           return;
         }
-        await loadInto(s, ad.url, chName + ' · Commercials', ad.start, partTok);
+        c.ad = ad;
+        await loadInto(s, ad.url, chName + ' · Commercials', ad.start, partTok, ad);
         if (stale()) return;
         s.controls.part('ad', backAt);
       }
@@ -381,7 +382,12 @@ function setupTv(ctx) {
     }
   }
   // Opens a file in the player at a spot (starting the player the first time).
-  async function loadInto(s, url, title, at, partTok) {
+  // ad: a commercial (see prepareAd): its picture and sound may be two links. Played that way
+  // when the player is already open and takes it; otherwise from its one-file link.
+  async function loadInto(s, url, title, at, partTok, ad) {
+    const two = !!(ad && ad.audio);
+    if (two && noSeparateAudio && ad.plain) { url = ad.plain; ad.audio = null; }
+    else if (two && (!s.mpv || !s.mpv.alive)) { if (!ad.plain) throw new Error('This commercial needs the player open'); url = ad.plain; ad.audio = null; }
     if (!s.mpv || !s.mpv.alive) {
       await tvp.extrasOk(s.exe); // (which optional switches this mpv accepts)
       s.mpv = tvp.startMpv(s.exe, { url, title, startAt: at, rect: toPx(targetDisplay().bounds), subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: (s.stream && s.stream.headers) || null, idle: true });
@@ -390,8 +396,26 @@ function setupTv(ctx) {
       wire(s);
     } else {
       s.loading = { at: Date.now(), expect: at > 5 ? at : 0 };
-      await s.mpv.load(url, title, at);
+      try { await s.mpv.load(url, title, at, ad && ad.audio ? { audio: ad.audio } : null); }
+      catch (e) {
+        // This mpv won't take picture and sound apart: the one-file link, from now on.
+        if (!(e && e.code === 'NO_SEPARATE_AUDIO') || !ad || !ad.plain) throw e;
+        noSeparateAudio = true; ad.audio = null;
+        await s.mpv.load(ad.plain, title, at);
+      }
       s.mpv.pause(false);
+      // Fail-safe: picture running but no sound came with it (its link didn't open): the same
+      // commercial from its one-file link, from where it is.
+      if (ad && ad.audio && ad.plain) {
+        s.audioTracks = -1;
+        setTimeout(() => {
+          if (session !== s || !s.cable || s.cable.ad !== ad || s.cable.lastKind !== 'ad' || !ad.audio || !s.mpv || !s.mpv.alive) return;
+          if (s.audioTracks !== 0 || !(s.pos > 0)) return;
+          ad.audio = null;
+          s.loading = { at: Date.now(), expect: s.pos > 5 ? s.pos : 0 };
+          s.mpv.load(ad.plain, title, s.pos).then(() => s.mpv.pause(false)).catch(() => {});
+        }, 6000);
+      }
     }
     // Black until the picture actually moves.
     const c = s.cable, show = c.lastKind === 'show', prog = c.prog;
@@ -439,25 +463,44 @@ function setupTv(ctx) {
   }
   // A commercial break: a random stretch of an old commercial-break recording from YouTube.
   let adWhy = ''; // why the last commercial couldn't be had (said on the break card)
-  async function prepareAd(channelId, need) {
+  let noSeparateAudio = false; // this mpv was seen not to play picture and sound from two links
+  // Widescreen HD recordings (16:9 or wider, 720p or more) go first. What a recording's picture
+  // is only shows when it is opened, so that is remembered (cable().adNote) and the ones not
+  // opened yet are tried a few at a time. When a channel has none (TV was 4:3 and low
+  // resolution for most of these years), the best of the others plays, as it is.
+  const wideHd = (i) => !!i && i.h >= 720 && i.w / i.h >= 1.6;
+  async function prepareAd(channelId, need, quick) {
     const list = await cable().adsFor(channelId);
     if (!list.length) { adWhy = cable().adWhy || 'none were found on YouTube'; return null; }
     const long = list.filter((v) => v.duration >= need + 20);
-    const pool = long.length ? long : list;
-    for (let tries = 0; tries < 3; tries++) {
-      const v = pool[Math.floor(Math.random() * pool.length)];
+    const pool = (long.length ? long : list).slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    const info = (v) => cable().adInfo(v.id);
+    const good = pool.filter((v) => wideHd(info(v))), fresh = pool.filter((v) => !info(v));
+    const rest = pool.filter((v) => info(v) && !wideHd(info(v))).sort((a, b) => info(b).h - info(a).h);
+    // Enough good ones known: one of those. Otherwise a few not opened yet first.
+    const order = (good.length >= 4 ? good.slice(0, 2) : []).concat(fresh.slice(0, 3), good, rest, fresh.slice(3));
+    let best = null;
+    for (const v of order.slice(0, quick ? 2 : 4)) {
       const room = v.duration - need - 10;
       const start = room > 10 ? 10 + Math.floor(Math.random() * room) : 0;
-      try { const url = await ytdlp().directUrl(v.id); adWhy = ''; return { channelId, id: v.id, url, start }; } catch (e) { adWhy = String(e.message || e); /* try another */ }
+      try {
+        const m = await ytdlp().media(v.id);
+        cable().adNote(v.id, m.width, m.height);
+        adWhy = '';
+        const ad = { channelId, id: v.id, url: m.url, audio: m.audio || null, plain: m.plain || null, start, h: m.height || 0 };
+        if (wideHd({ w: m.width, h: m.height })) return ad;
+        if (!best || ad.h > best.h) best = ad;
+      } catch (e) { adWhy = String(e.message || e); /* try another */ }
     }
-    return null;
+    return best;
   }
   async function pickAd(s, need) {
     const c = s.cable;
     const ready = c.nextAd && c.nextAd.channelId === c.channelId ? c.nextAd : null;
     c.nextAd = null;
     if (ready) return ready;
-    try { return await prepareAd(c.channelId, need); } catch (e) { adWhy = String(e.message || e); return null; }
+    try { return await prepareAd(c.channelId, need, true); } catch (e) { adWhy = String(e.message || e); return null; } // (not looked up ahead: quickly)
   }
   function onCableAct(s, a, x) {
     if (session !== s) return;
@@ -519,7 +562,7 @@ function setupTv(ctx) {
     mpv.on('tracks', (t) => {
       if (session !== s) return;
       s.controls.setTracks(t);
-      if (s.cable) { cableSubs(s, t); return; }
+      if (s.cable) { s.audioTracks = t.audio.length; cableSubs(s, t); return; }
       // Subtitles from addons arrive after the video starts: turn on your language if nothing is on.
       const pref = settings().tvSubLang || 'en';
       if (!s.subPicked && pref !== 'off' && t.subs.length && !t.subs.some((x) => x.selected)) {

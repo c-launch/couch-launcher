@@ -30,12 +30,15 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Check that it runs on Windows
+        env:
+          # (GitHub's machines share internet addresses: its list of mpv releases needs this pass.)
+          COUCH_SELFTEST_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           mkdir -p st
           d="dist/win-unpacked"
           ( COUCH_SELFTEST="$(pwd -W 2>/dev/null || pwd)/st" "$d/Couch Launcher.exe" > st/log.txt 2>&1 & echo $! > st/pid )
-          for i in $(seq 1 120); do [ -f st/result.json ] && break; sleep 1; done
+          for i in $(seq 1 300); do [ -f st/result.json ] && break; sleep 1; done
           sleep 3; taskkill //F //IM "Couch Launcher.exe" > /dev/null 2>&1 || true
           [ -f st/result.json ] || { echo "The Windows app never finished its self-test"; cat st/log.txt || true; exit 1; }
-          node -e "const r=require('./st/result.json'); const w=r.win||{}; console.log(JSON.stringify({version:r.version,controller:r.controller,overlay:r.overlay,windows:r.windows,win:w},null,1)); const need=['w32','foreground','ownWindow','minimize','focus','pauser','pause','procs','procsList','procsTrack','guard','pops']; const bad=need.filter((k)=>w[k]!==true); if(!w.ran||bad.length){console.error('Not working on Windows: '+(w.ran?bad.join(', '):'the Windows checks did not run'));process.exit(1);} if(!r.overlay){console.error('The guide did not open');process.exit(1);} if(String(w.errors||'').trim()){console.error('errors.log is not empty:\\n'+w.errors);process.exit(1);}"
+          node -e "const r=require('./st/result.json'); const w=r.win||{}; console.log(JSON.stringify({version:r.version,controller:r.controller,overlay:r.overlay,windows:r.windows,win:w},null,1)); const need=['w32','foreground','ownWindow','minimize','focus','pauser','pause','procs','procsList','procsTrack','mpvGot','mpvSwitches','mpvStart','mpvTwoFiles','mpvSoundDropped','mpvBadFile','mpvPlaysAfter','guard','pops']; const bad=need.filter((k)=>w[k]!==true); if(!w.ran||bad.length){console.error('Not working on Windows: '+(w.ran?bad.join(', '):'the Windows checks did not run'));process.exit(1);} if(!r.overlay){console.error('The guide did not open');process.exit(1);} if(String(w.errors||'').trim()){console.error('errors.log is not empty:\\n'+w.errors);process.exit(1);}"

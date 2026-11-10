@@ -209,24 +209,29 @@ function slotMs(runtimeMin, ads) {
 }
 // The parts of a time slot, in seconds: the episode in acts with commercial breaks between,
 // and one at the end. slotSec: the slot's length; epSec: the episode's.
+// No break is longer than two minutes: the commercial time of the slot is split into as many
+// breaks as that takes (a 22-minute episode in a half hour: three breaks during it and one
+// after, two minutes each), spread evenly through the episode. Acts are never shorter than
+// about four minutes; only when an episode is far shorter than its slot does that leave the
+// last break longer.
+const BREAK_MAX = 120, ACT_MIN = 240;
 function breakPlan(slotSec, epSec, ads) {
   slotSec = Math.max(1, Math.round(slotSec));
   epSec = Math.max(1, Math.round(epSec));
   if (epSec >= slotSec) return [{ kind: 'show', from: 0, to: slotSec }];
   const extra = slotSec - epSec;
   if (!ads || extra < 45) return [{ kind: 'show', from: 0, to: epSec }, { kind: 'ad', len: extra, end: true }];
-  let cuts = [];
-  if (epSec >= 18 * 60) cuts = [0.36, 0.68];
-  else if (epSec >= 8 * 60) cuts = [0.5];
-  const mid = cuts.length ? Math.min(cuts.length === 2 ? 210 : 150, Math.round(extra * (cuts.length === 2 ? 0.3 : 0.4))) : 0;
+  const breaks = Math.ceil(extra / BREAK_MAX);                                   // counting the one at the end
+  const mids = Math.max(0, Math.min(breaks - 1, Math.floor(epSec / ACT_MIN) - 1)); // breaks during the episode
+  const mid = mids ? Math.min(BREAK_MAX, Math.round(extra / (mids + 1))) : 0;
   const out = [];
   let from = 0;
-  for (const c of cuts) {
-    const at = Math.round(epSec * c);
+  for (let i = 1; i <= mids; i++) {
+    const at = Math.round(epSec * i / (mids + 1));
     out.push({ kind: 'show', from, to: at }, { kind: 'ad', len: mid });
     from = at;
   }
-  out.push({ kind: 'show', from, to: epSec }, { kind: 'ad', len: extra - mid * cuts.length, end: true });
+  out.push({ kind: 'show', from, to: epSec }, { kind: 'ad', len: extra - mid * mids, end: true });
   return out;
 }
 // Where `offsetSec` into the slot falls: the part (i), how far into it, and the part itself.
@@ -556,6 +561,18 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     save();
     return true;
   }
+  // What each commercial recording's picture turned out to be (width, height), learned the first
+  // time it is opened: widescreen HD ones are picked first from then on.
+  function adInfo(id) { load(); const i = state.adInfo && state.adInfo[id]; return Array.isArray(i) ? { w: Number(i[0]) || 0, h: Number(i[1]) || 0 } : null; }
+  function adNote(id, w, h) {
+    load();
+    if (!/^[\w-]{11}$/.test(String(id))) return;
+    if (!state.adInfo || typeof state.adInfo !== 'object') state.adInfo = {};
+    state.adInfo[id] = [Math.round(Number(w) || 0), Math.round(Number(h) || 0)];
+    const keys = Object.keys(state.adInfo);
+    if (keys.length > 800) for (const k of keys.slice(0, keys.length - 800)) delete state.adInfo[k];
+    save();
+  }
   // The channel's commercial-break recordings on YouTube (looked up weekly).
   const adLoads = new Map();
   let adWhy = '';
@@ -642,7 +659,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   const setEra = (id) => setEras([id]);
   function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { writeJson(file, state); } catch (_) { /* fine */ } } }
 
-  return { get adWhy() { return adWhy; }, ensure, ready, stale, guide, at, alternates, substitute, markBad, isBad, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
+  return { get adWhy() { return adWhy; }, adInfo, adNote, ensure, ready, stale, guide, at, alternates, substitute, markBad, isBad, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
 }
 
 module.exports = { createCable, daySchedule, dayStart, parseRuntime, eraEpisodes, compactEpisodes, inEra, pickMatch, hash32, slotMs, breakPlan, locate, adVideos, DEFAULT_CHANNELS, ERAS };
