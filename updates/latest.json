@@ -1,6 +1,6 @@
 {
- "version": "1.28.2",
- "notes": "Virtual controllers (Steady players) only exist while the emulator game they were made for is running. They are now also removed if that game never starts, when the launcher quits, and by a check every few seconds that removes any left behind.",
- "file": "CouchLauncher-update-1.28.2.zip",
- "size": 423711
+ "version": "1.28.3",
+ "notes": "Lighter while you play. Following a Steam or Epic game no longer starts PowerShell every 3 seconds: the launcher asks Windows directly whether anything changed, and PowerShell only when a new program appears, to confirm a game has closed, and for a routine check every 5 minutes (its answer still decides, as before). Pausing a game and spotting anti-cheat use the same direct list. The launcher's screens check the controller 4 times a second instead of 60 while they aren't in use.",
+ "file": "CouchLauncher-update-1.28.3.zip",
+ "size": 430177
 }
