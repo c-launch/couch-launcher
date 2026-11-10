@@ -58,6 +58,9 @@ jobs:
       - name: Check that it runs on Windows
         # (Reported, but it doesn't hold back the Mac build: look at this step's result.)
         continue-on-error: true
+        env:
+          # (GitHub's machines share internet addresses: its list of mpv releases needs this pass.)
+          COUCH_SELFTEST_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           mkdir -p st

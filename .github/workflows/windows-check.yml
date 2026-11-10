@@ -30,6 +30,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Check that it runs on Windows
+        env:
+          # (GitHub's machines share internet addresses: its list of mpv releases needs this pass.)
+          COUCH_SELFTEST_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           mkdir -p st

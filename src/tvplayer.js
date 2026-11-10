@@ -59,7 +59,7 @@ async function downloadMpv(userData, opts) {
   const doFetch = opts.fetch || ((...a) => fetch(...a));
   const exec = opts.exec || run;
   const dir = ownDir(userData);
-  const res = await doFetch('https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(20000) });
+  const res = await doFetch('https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest', { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'CouchLauncher', ...(opts.token ? { Authorization: 'Bearer ' + opts.token } : {}) }, signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error('GitHub: HTTP ' + res.status);
   const asset = pickMpvAsset((await res.json()).assets);
   if (!asset) throw new Error('No Windows download of mpv found');

@@ -2615,7 +2615,7 @@ if (!app.requestSingleInstanceLock()) {
           const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return true; await wait(150); } return !!fn(); };
           try {
             let exe = null;
-            await step('mpvGot', async () => { exe = tvp.findMpv(process.env, null, ud) || await tvp.downloadMpv(ud); return !!exe && fs.existsSync(exe); });
+            await step('mpvGot', async () => { exe = tvp.findMpv(process.env, null, ud) || await tvp.downloadMpv(ud, process.env.COUCH_SELFTEST_TOKEN ? { token: process.env.COUCH_SELFTEST_TOKEN } : {}); return !!exe && fs.existsSync(exe); });
             const clips = path.join(ud, 'selftest-clips');
             fs.mkdirSync(clips, { recursive: true });
             for (const f of ['wide.mp4', 'tone.m4a', 'box.mp4']) fs.writeFileSync(path.join(clips, f), fs.readFileSync(path.join(__dirname, 'selftest', f)));
