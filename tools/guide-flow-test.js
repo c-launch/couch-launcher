@@ -7,6 +7,7 @@ const ROOT = path.resolve(__dirname, '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'couch-winflow-'));
 Object.defineProperty(process, 'platform', { value: 'win32' });
 const UD = path.join(TMP, 'userData');
+const GDIR = 'C:\\Games\\GTA V';
 const handlers = {}, shortcuts = {}, wins = [];
 const world = { fg: null, allowFocus: true, calls: [], paused: new Set(), minimized: new Set() };
 let nextH = 1000;
@@ -40,7 +41,7 @@ Module._resolveFilename = function (req, ...rest) { return req === 'electron' ? 
 require.cache['electron-stub'] = { id: 'electron-stub', filename: 'electron-stub', loaded: true, exports: electron };
 const errors = [];
 process.on('unhandledRejection', (e) => errors.push(e && e.stack || e));
-process.on('uncaughtException', (e) => errors.push(e && e.stack || e));
+process.on('uncaughtException', (e) => { errors.push(e && e.stack || e); if (!global.__flowStarted) { console.error(e); process.exit(1); } }); // (a mistake while setting up must not pass silently)
 
 const APP = path.join(TMP, 'app');
 fs.mkdirSync(path.join(APP, 'src'), { recursive: true });
@@ -53,7 +54,8 @@ fs.cpSync(path.join(ROOT, 'src'), SRC, { recursive: true });
 fs.writeFileSync(path.join(UD, 'update', 'version.json'), JSON.stringify({ version: '999.0.0' }));
 fs.writeFileSync(path.join(UD, 'library.json'), JSON.stringify({ games: [{ id: 'g1', title: 'Grand Theft Auto V', source: 'custom', launch: { type: 'exe', exe: '/bin/sleep' }, args: '120' },
   { id: 'g2', title: 'Gone Game', source: 'custom', launch: { type: 'exe', exe: '/nowhere/gone.exe' } },
-  { id: 'g3', title: 'Quits At Once', source: 'custom', launch: { type: 'exe', exe: '/bin/true' } }], settings: { firstRun: false } }));
+  { id: 'g3', title: 'Quits At Once', source: 'custom', launch: { type: 'exe', exe: '/bin/true' } },
+  { id: 'g4', title: 'GTA V (Steam)', source: 'steam', launch: { type: 'url', url: 'steam://rungameid/271590', dir: GDIR } }], settings: { firstRun: false } }));
 
 // the pretend Windows
 const GAME_H = 500;
@@ -83,6 +85,23 @@ require.cache[path.join(SRC, 'discordrpc.js')] = { id: 'd', filename: path.join(
   configured: () => dc.configured, connected: () => dc.configured, messagesAllowed: () => dc.configured, close() {}, disconnect() {},
   state: async () => { throw new Error('not in this test'); },
   live(onVoice, onMessage) { const l = { onVoice, onMessage, stopped: false }; dc.lives.push(l); return { stop() { l.stopped = true; dc.stops++; } }; } }) } };
+// pretend running programs (Windows' own list) and a pretend PowerShell that knows the truth
+const ptable = new Map([[process.pid, { pid: process.pid, ppid: 4, name: 'Couch Launcher.exe', file: 'C:\\Apps\\Couch Launcher.exe', readable: true }], [4, { pid: 4, ppid: 0, name: 'System', file: '', readable: false }]]);
+const psh = { calls: 0, lists: 0 };
+{ const cp = require('child_process'), realExec = cp.execFile;
+  cp.execFile = function (cmd, args, opts, cb) {
+    if (cmd === 'powershell.exe' && /Win32_Process \| Where-Object/.test(String(args[args.length - 1]))) {
+      psh.calls++;
+      const out = Array.from(ptable.values()).filter((p) => p.file.toLowerCase().startsWith(GDIR.toLowerCase() + '\\')).map((p) => p.pid).join('\r\n');
+      setTimeout(() => (typeof opts === 'function' ? opts : cb)(null, out), 30);
+      return { on() {}, kill() {} };
+    }
+    return realExec.apply(this, arguments);
+  };
+  const real = require(path.join(SRC, 'procs.js'));
+  require.cache[path.join(SRC, 'procs.js')] = { id: 'pr', filename: path.join(SRC, 'procs.js'), loaded: true, exports: Object.assign({}, real, { createProcs: () => real.createProcs({ self: process.pid, exe: 'C:\\Apps\\Couch Launcher.exe', api: {
+    list: () => { psh.lists++; return Array.from(ptable.values()).map((p) => ({ pid: p.pid, ppid: p.ppid, name: p.name })); },
+    pathOf: (pid) => { const p = ptable.get(pid); return p && p.readable ? p.file : null; } } }) }) }; }
 // pretend virtual controllers (the real rule for when they must go)
 const vpad = { running: false, starts: 0, stops: 0 };
 { const real = require(path.join(SRC, 'vpads.js'));
@@ -94,11 +113,14 @@ const pauser = { available: true, isPaused: () => world.paused.size > 0, has: (p
 require.cache[path.join(SRC, 'pause.js')] = { id: 'p', filename: path.join(SRC, 'pause.js'), loaded: true, exports: { createPauser: () => pauser } };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+let verdict = false;
+process.on('exit', (code) => { if (!verdict && code === 0) { console.error('The guide flow test ended without finishing'); process.exitCode = 1; } });
 // a frozen game must never be the window in front for longer than a blink
 let frozenFront = 0;
 setInterval(() => { if (world.fg && world.paused.has(world.fg.pid)) { if (++frozenFront > 8) { console.error('FROZEN GAME LEFT IN FRONT', world.calls); process.exit(1); } } else frozenFront = 0; }, 50);
 
 require(path.join(APP, 'src', 'boot.js'));
+global.__flowStarted = true;
 (async () => {
   await wait(2500);
   assert.ok(!global.__fellBack, 'the launcher started: ' + global.couchUpdateFailed);
@@ -211,6 +233,29 @@ require(path.join(APP, 'src', 'boot.js'));
   assert.ok((await handlers['game:status']()).value.gameId === 'g1', 'starting it twice keeps one: ' + JSON.stringify(dup));
   require('child_process').execFileSync('pkill', ['-f', 'sleep 120']); await wait(900);
   assert.strictEqual((await handlers['game:status']()).value, null);
+  // 8) a store game (started by Steam, followed by its folder): found, handed the screen, and
+  //    its end noticed, with PowerShell asked a handful of times instead of every 3 seconds
+  world.fg = { hwnd: win.h, pid: process.pid }; psh.calls = 0; psh.lists = 0; world.calls.length = 0;
+  assert.ok((await handlers.launch('g4')).ok); await wait(3400);
+  assert.ok((await handlers['game:status']()).value.gameId === 'g4' && psh.calls === 1, 'waiting for the game: asked once: ' + psh.calls);
+  await wait(6200); assert.strictEqual(psh.calls, 1, 'still waiting, nothing changed: not asked again');
+  ptable.set(7000, { pid: 7000, ppid: 4, name: 'GTA5.exe', file: GDIR + '\\GTA5.exe', readable: true });
+  ptable.set(7004, { pid: 7004, ppid: 7000, name: 'CrashHandler.exe', file: GDIR + '\\CrashHandler.exe', readable: true });
+  world.gamePid = 7000; world.under = { hwnd: 700, pid: 7000 }; world.fg = world.under;
+  await wait(3600);
+  assert.ok(world.calls.includes('focus 700'), 'the game was found and handed the screen: ' + world.calls);
+  const c8 = psh.calls; await wait(9200);
+  assert.ok(psh.calls - c8 <= 1 && psh.lists >= 5, 'nine seconds of play: PowerShell ' + (psh.calls - c8) + ' times, Windows’ own list ' + psh.lists + ' times');
+  assert.ok((await handlers['game:status']()).value.gameId === 'g4', 'still running');
+  // the guide pauses the whole family, found without PowerShell
+  shortcuts['Control+Alt+Home'](); await wait(1300);
+  assert.ok(world.paused.has(7000), 'paused through the guide: ' + [...world.paused]);
+  await handlers['game:resume'](); await wait(800); assert.ok(!world.paused.size && world.fg.hwnd === 700);
+  // it closes (the crash handler lingers, as they do): noticed within a few seconds
+  ptable.delete(7000); const tEnd = Date.now(); let ended = false;
+  while (Date.now() - tEnd < 12000) { await wait(500); if ((await handlers['game:status']()).value === null) { ended = true; break; } }
+  assert.ok(ended && Date.now() - tEnd < 9500, 'the end was noticed in ' + (Date.now() - tEnd) + ' ms');
+  ptable.delete(7004);
   // 7) virtual controllers only exist for the test in Settings or their emulator game
   assert.ok(await handlers['vpads:test']([0]) && vpad.running, 'the Settings test plugs them in');
   await wait(4600); assert.ok(vpad.running, 'and they stay while the test is open');
@@ -222,6 +267,7 @@ require(path.join(APP, 'src', 'boot.js'));
   await handlers['vpads:test']([0]); app.emit('will-quit'); assert.ok(!vpad.running, 'and so does quitting the launcher');
   assert.deepStrictEqual(errors, [], 'no errors: ' + errors.join('\n'));
   fs.rmSync(TMP, { recursive: true, force: true });
+  verdict = true;
   console.log('windows guide flow ok');
   process.exit(0);
 })().catch((e) => { console.error(e, '\ncalls:', world.calls, '\nerrors:', errors); try { process.kill(world.gamePid); } catch (_) {} process.exit(1); });
