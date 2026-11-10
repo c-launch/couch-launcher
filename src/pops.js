@@ -42,6 +42,8 @@ function createPops(o) {
     w.webContents.on('will-navigate', (e) => e.preventDefault());
     w.webContents.on('did-finish-load', () => { if (wins[kind] === w) { ready[kind] = true; send(kind); } });
     w.on('closed', () => { if (wins[kind] === w) { wins[kind] = null; ready[kind] = false; } });
+    // A page that crashed is thrown away; the next pop-up makes a new one.
+    w.webContents.on('render-process-gone', () => { try { if (!w.isDestroyed()) w.destroy(); } catch (_) { /* gone */ } });
     return w;
   }
   // The whole picture every time, so a page that loaded late or missed one is still right.

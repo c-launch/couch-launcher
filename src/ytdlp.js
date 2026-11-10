@@ -11,7 +11,8 @@ const path = require('path');
 const { execFile } = require('child_process');
 
 const DENO_ZIP = process.platform === 'win32' ? 'deno-x86_64-pc-windows-msvc.zip'
-  : process.platform === 'darwin' ? (process.arch === 'arm64' ? 'deno-aarch64-apple-darwin.zip' : 'deno-x86_64-apple-darwin.zip') : null;
+  : process.platform === 'darwin' ? (process.arch === 'arm64' ? 'deno-aarch64-apple-darwin.zip' : 'deno-x86_64-apple-darwin.zip')
+  : process.platform === 'linux' && process.arch === 'x64' ? 'deno-x86_64-unknown-linux-gnu.zip' : null;
 const ASSET = process.platform === 'win32' ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp_macos' : 'yt-dlp';
 
 function createYtdlp(binDir) {
@@ -19,23 +20,39 @@ function createYtdlp(binDir) {
   let installing = null;
   const have = () => { try { return fs.statSync(exe).size > 1e6; } catch (_) { return false; } };
 
+  // A download from GitHub's "latest release" address (no sign-in, no hourly limit), checked
+  // against the size GitHub says it has. Says plainly when the internet is the problem.
+  async function download(url, minBytes, timeout) {
+    let dl;
+    try { dl = await fetch(url, { headers: { 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(timeout || 300000) }); }
+    catch (e) { throw new Error(/timeout|abort/i.test(String(e && (e.name + e.message))) ? 'The download took too long' : 'Couldn’t reach GitHub (no internet?)'); }
+    if (!dl.ok) throw new Error('Download failed (' + dl.status + ')');
+    let data;
+    try { data = Buffer.from(await dl.arrayBuffer()); } catch (_) { throw new Error('The download was cut off'); }
+    const size = Number(dl.headers && dl.headers.get && dl.headers.get('content-length')) || 0;
+    if (data.length < minBytes || (size && data.length !== size)) throw new Error('The download was incomplete');
+    return data;
+  }
+  // Does the yt-dlp on disk actually start? (A cut-off or blocked file is there but can't run.)
+  let checked = false;
+  function works() {
+    return new Promise((resolve) => execFile(exe, ['--version'], { windowsHide: true, timeout: 60000 }, (err, out) => resolve(!err && /^\d{4}\./.test(String(out || '').trim()))));
+  }
   async function install() {
-    if (have()) return exe;
+    if (have() && checked) return exe;
     if (installing) return installing;
     installing = (async () => {
-      const res = await fetch('https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest', { headers: { 'User-Agent': 'CouchLauncher', Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(20000) });
-      if (!res.ok) throw new Error('Couldn’t reach GitHub (' + res.status + ')');
-      const rel = await res.json();
-      const asset = (rel.assets || []).find((a) => a.name === ASSET);
-      if (!asset || !/^https:\/\/github\.com\/yt-dlp\/yt-dlp\/releases\/download\//.test(asset.browser_download_url || '')) throw new Error('yt-dlp download not found');
-      const dl = await fetch(asset.browser_download_url, { headers: { 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(300000) });
-      if (!dl.ok) throw new Error('Download failed (' + dl.status + ')');
-      const data = Buffer.from(await dl.arrayBuffer());
-      if (asset.size && data.length !== asset.size) throw new Error('The download was incomplete');
+      if (have()) {
+        if (await works()) { checked = true; return exe; }
+        try { fs.unlinkSync(exe); } catch (_) { /* replaced below */ } // broken: get it again
+      }
+      const data = await download('https://github.com/yt-dlp/yt-dlp/releases/latest/download/' + ASSET, 1e6);
       fs.mkdirSync(binDir, { recursive: true });
       fs.writeFileSync(exe + '.part', data);
       fs.renameSync(exe + '.part', exe);
       if (process.platform !== 'win32') fs.chmodSync(exe, 0o755);
+      if (!(await works())) { try { fs.unlinkSync(exe); } catch (_) { /* gone */ } throw new Error('yt-dlp was downloaded but can’t start (blocked by antivirus?)'); }
+      checked = true;
       return exe;
     })().finally(() => { installing = null; });
     return installing;
@@ -44,18 +61,14 @@ function createYtdlp(binDir) {
   const deno = path.join(binDir, process.platform === 'win32' ? 'deno.exe' : 'deno');
   const haveDeno = () => { try { return fs.statSync(deno).size > 20e6; } catch (_) { return false; } };
   const sh = (cmd, args, timeout) => new Promise((resolve, reject) => execFile(cmd, args, { windowsHide: true, timeout: timeout || 120000 }, (err) => (err ? reject(err) : resolve())));
-  let denoing = null, denoTried = 0;
+  let denoing = null, denoTried = 0, denoWhy = '';
   function runtime() {
     if (!DENO_ZIP || haveDeno()) return Promise.resolve(haveDeno());
     if (denoing) return denoing;
     if (Date.now() - denoTried < 10 * 60e3) return Promise.resolve(false); // failed just now: not on every video
     denoTried = Date.now();
     denoing = (async () => {
-      const dl = await fetch('https://github.com/denoland/deno/releases/latest/download/' + DENO_ZIP, { headers: { 'User-Agent': 'CouchLauncher' }, signal: AbortSignal.timeout(600000) });
-      if (!dl.ok) throw new Error('Download failed (' + dl.status + ')');
-      const data = Buffer.from(await dl.arrayBuffer());
-      const size = Number(dl.headers.get('content-length')) || 0;
-      if (data.length < 10e6 || (size && data.length !== size)) throw new Error('The download was incomplete');
+      const data = await download('https://github.com/denoland/deno/releases/latest/download/' + DENO_ZIP, 10e6, 600000);
       fs.mkdirSync(binDir, { recursive: true });
       const zip = path.join(binDir, 'deno.zip'), tmp = path.join(binDir, 'deno-new');
       fs.writeFileSync(zip, data);
@@ -65,18 +78,21 @@ function createYtdlp(binDir) {
         if (process.platform === 'win32') {
           // Windows' own tar opens zip files; PowerShell when it can't.
           try { await sh(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', tmp]); }
-          catch (_) { await sh('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force', zip, tmp]); }
+          catch (_) { const q = (s) => "'" + String(s).replace(/'/g, "''") + "'"; await sh('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Expand-Archive -LiteralPath ' + q(zip) + ' -DestinationPath ' + q(tmp) + ' -Force']); }
         } else await sh('/usr/bin/unzip', ['-o', '-q', zip, '-d', tmp]);
         const got = path.join(tmp, path.basename(deno));
         if (!(fs.statSync(got).size > 20e6)) throw new Error('The download was incomplete');
+        if (process.platform !== 'win32') fs.chmodSync(got, 0o755);
+        // It has to start, too (a blocked or damaged file is there but can't run).
+        try { await sh(got, ['--version'], 60000); } catch (_) { throw new Error('It was downloaded but can’t start (blocked by antivirus?)'); }
         fs.renameSync(got, deno);
-        if (process.platform !== 'win32') fs.chmodSync(deno, 0o755);
       } finally {
         fs.rmSync(zip, { force: true });
         fs.rmSync(tmp, { recursive: true, force: true });
       }
+      denoWhy = '';
       return true;
-    })().catch(() => false).finally(() => { denoing = null; });
+    })().catch((e) => { denoWhy = String((e && e.message) || e).slice(0, 120); return false; }).finally(() => { denoing = null; });
     return denoing;
   }
 
@@ -87,7 +103,11 @@ function createYtdlp(binDir) {
           // yt-dlp's own reason ("ERROR: …") when it gave one, else why it couldn't run.
           const why = String(stderr || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => /^ERROR:/i.test(l)).pop();
           const msg = why ? why.replace(/^ERROR:\s*/i, '').replace(/^\[[^\]]*\]\s*[\w-]{11}:\s*/, '') : err.killed ? 'YouTube took too long to answer' : err.code === 'ENOENT' ? 'yt-dlp is missing' : typeof err.code === 'string' ? 'yt-dlp couldn’t start (' + err.code + ')' : 'yt-dlp stopped with an error';
-          reject(new Error(msg.slice(0, 160)));
+          // (Plain words for the usual ones: this is what the break card shows.)
+          const plain = /unable to connect|getaddrinfo|name resolution|timed out|unreachable|connection (reset|refused|aborted)|proxy/i.test(msg) ? 'YouTube couldn’t be reached'
+            : /sign in to confirm|not a bot/i.test(msg) ? 'YouTube is asking this PC to sign in (too many requests); it usually passes after a while'
+            : msg.split(/[;(]/)[0].trim() || msg;
+          reject(new Error(plain.slice(0, 160)));
         } else resolve(String(stdout || ''));
       });
     });
@@ -119,8 +139,10 @@ function createYtdlp(binDir) {
     const args = (js ? ['--js-runtimes', 'deno:' + deno] : []).concat(['-g', '--no-warnings', '--no-playlist', '-f', 'best[height<=720][acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]/best', 'https://www.youtube.com/watch?v=' + id]);
     let out;
     try { out = await run(args, 60000); } catch (e) {
-      if (!(await update())) throw e;
-      out = await run(args, 60000);
+      // Without the JavaScript engine YouTube refuses every video: say that, not YouTube's vague reason.
+      const real = !js && DENO_ZIP ? new Error('the JavaScript engine yt-dlp needs couldn’t be set up' + (denoWhy ? ': ' + denoWhy : '')) : e;
+      if (!(await update())) throw real;
+      try { out = await run(args, 60000); } catch (e2) { throw !js && DENO_ZIP ? real : e2; }
     }
     const url = out.split(/\r?\n/).map((l) => l.trim()).find((l) => /^https:\/\//.test(l));
     if (!url) throw new Error('No playable link');

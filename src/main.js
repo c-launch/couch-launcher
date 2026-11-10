@@ -2,6 +2,23 @@
 const { app, BrowserWindow, ipcMain, shell, globalShortcut, Menu, safeStorage, dialog, screen, Notification, clipboard, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+// Fail-safe for updates. boot.js already falls back to the built-in app when an update can't be
+// loaded at all. This covers the update that loads but never gets as far as showing its first
+// screen: each start is counted until the screen reports it is up; after two starts in a row
+// that didn't get there, this stops right here, and boot.js runs the built-in app instead (and
+// says so on screen). Only when running as an installed update.
+const UPDATE_RUN = (() => { try { return path.resolve(__dirname).startsWith(path.join(path.resolve(app.getPath('userData')), 'update') + path.sep); } catch (_) { return false; } })();
+const healthFile = () => path.join(app.getPath('userData'), 'update-health.json');
+const readHealth = () => { try { const h = JSON.parse(fs.readFileSync(healthFile(), 'utf8')); return h && typeof h === 'object' ? h : null; } catch (_) { return null; } };
+if (UPDATE_RUN) {
+  const h = readHealth();
+  if (h && h.version === global.couchVersion && !h.ok && h.starts >= 2) {
+    try { fs.unlinkSync(healthFile()); } catch (_) { /* gone */ }
+    throw new Error('This update didn’t get to its first screen twice in a row');
+  }
+}
+
 const { spawn, execFile } = require('child_process');
 const scanners = require('./scanners');
 const library = require('./library');
@@ -34,13 +51,19 @@ const MAC = process.platform === 'darwin';
 // A mistake somewhere in the app core must never pop up Electron's error box: over a full-screen
 // launcher it hides behind it, takes the focus, and the controller seems to stop working.
 // It's written to errors.log (in the launcher's settings folder) instead.
-process.on('uncaughtException', (err) => {
+let lastLogged = '', sameLogged = 0;
+function logError(what, err) {
   try {
+    const text = what + ' ' + String(err && err.stack || err);
+    // The same line over and over (a timer that keeps failing) is written a few times, not forever.
+    if (text === lastLogged) { if (++sameLogged > 3) return; } else { lastLogged = text; sameLogged = 0; }
     const f = path.join(app.getPath('userData'), 'errors.log');
     try { if (fs.statSync(f).size > 512 * 1024) fs.renameSync(f, f + '.old'); } catch (_) { /* new file */ }
-    fs.appendFileSync(f, new Date().toISOString() + ' ' + String(err && err.stack || err) + '\n');
+    fs.appendFileSync(f, new Date().toISOString() + ' ' + text + '\n');
   } catch (_) { /* nowhere to write */ }
-});
+}
+process.on('uncaughtException', (err) => logError('error', err));
+process.on('unhandledRejection', (err) => logError('unhandled', err));
 // Build check (see COUCH_SELFTEST below): what the screens printed, to spot a screen that broke.
 const selftestLog = [];
 if (process.env.COUCH_SELFTEST) {
@@ -52,6 +75,18 @@ if (process.env.COUCH_SELFTEST) {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // (Update fail-safe, see the top of this file: one more start that hasn't shown its screen yet.)
+  let healthy = !UPDATE_RUN;
+  if (UPDATE_RUN) {
+    const h = readHealth(), same = h && h.version === global.couchVersion;
+    if (same && h.ok) healthy = true;
+    else { try { fs.writeFileSync(healthFile(), JSON.stringify({ version: global.couchVersion, starts: same ? (Number(h.starts) || 0) + 1 : 1, ok: false })); } catch (_) { /* not counted */ } }
+  }
+  const markHealthy = () => {
+    if (healthy) return;
+    healthy = true;
+    try { fs.writeFileSync(healthFile(), JSON.stringify({ version: global.couchVersion, starts: 0, ok: true })); } catch (_) { /* counted again next time */ }
+  };
   let win = null;
   let lib = null;
   const libFile = () => path.join(app.getPath('userData'), 'library.json');
@@ -224,7 +259,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     return !!(win && !win.isDestroyed() && win.isFocused());
   }
-  const pauser = createPauser();
+  const pauser = createPauser(path.join(app.getPath('userData'), 'paused.json'));
   // Controller as a mouse in Apple Music / Spotify (setting, on by default).
   // (Never while an anti-cheat game runs: a pointer and keys moved by a program are what those
   // games kick for, and Fortnite switches to mouse-and-keyboard controls when it sees them.)
@@ -286,6 +321,28 @@ if (!app.requestSingleInstanceLock()) {
   // A see-through window that floats above the game, so the guide opens without leaving it.
   // (Games in exclusive full screen can't be drawn over; most games use borderless full screen.)
   let overlay = null;
+  // Fail-safe for the launcher's screens: one that crashed, or froze for 20 seconds, is loaded
+  // again by itself (three times in ten minutes at most, so a screen that can't run doesn't spin).
+  // onBroken: what to undo first (the guide over a game gives the screen back to the game).
+  function watchScreen(w, name, onBroken) {
+    const times = [];
+    let hung = null;
+    const again = (why) => {
+      logError('screen', name + ' ' + why);
+      const t = Date.now();
+      while (times.length && t - times[0] > 10 * 60e3) times.shift();
+      if (times.length >= 3 || w.isDestroyed()) return;
+      times.push(t);
+      try { if (onBroken) onBroken(); } catch (_) { /* reload anyway */ }
+      setTimeout(() => { try { if (!w.isDestroyed()) w.webContents.reload(); } catch (_) { /* closed meanwhile */ } }, 300);
+    };
+    w.webContents.on('render-process-gone', (_e, d) => { if (!d || d.reason !== 'clean-exit') again('stopped (' + ((d && d.reason) || 'unknown') + ')'); });
+    w.on('unresponsive', () => {
+      clearTimeout(hung);
+      hung = setTimeout(() => { hung = null; try { w.webContents.forcefullyCrashRenderer(); } catch (_) { again('froze'); } }, 20000);
+    });
+    w.on('responsive', () => { clearTimeout(hung); hung = null; });
+  }
   function createOverlay() {
     const b = targetDisplay().bounds;
     overlay = new BrowserWindow({
@@ -303,6 +360,7 @@ if (!app.requestSingleInstanceLock()) {
     overlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     overlay.webContents.on('will-navigate', (e) => e.preventDefault());
     overlay.on('closed', () => { overlay = null; });
+    { const o = overlay; watchScreen(o, 'guide', () => { if (overlay === o && overlayShown()) hideOverlay(true); }); }
   }
   // Mac: light or dark glass (menus, the frosted guide) to match the launcher's theme.
   function syncAppearance() {
@@ -585,6 +643,7 @@ if (!app.requestSingleInstanceLock()) {
     if (MAC) { try { app.setAboutPanelOptions({ applicationName: 'Couch Launcher', applicationVersion: VERSION, copyright: 'Made by Jahdiel', credits: 'Your games, on the couch, with a controller.' }); } catch (_) { /* fine */ } }
     win.once('ready-to-show', () => { win.show(); if (MAC && !WINDOWED) win.setSimpleFullScreen(true); win.focus(); });
     win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+    watchScreen(win, 'launcher');
 
     // Once the game takes over the screen, get out of its way.
     win.on('blur', () => {
@@ -1387,6 +1446,12 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   handle('lib:load', () => lib);
+  // The launcher's screen is up and running (it says so once, after drawing Home).
+  handle('app:started', () => { markHealthy(); return true; });
+  // A mistake on one of the launcher's screens: written to errors.log too (a few per run), so
+  // there is something to go on when a screen misbehaves.
+  let screenErrors = 0;
+  handle('log:error', (what) => { if (screenErrors++ < 40) logError('screen', String(what || '').slice(0, 1500)); return true; });
 
   // ---------- Emulators page: find what's on this PC (EmuDeck folders first) ----------
   const allDrives = () => {
@@ -2444,6 +2509,35 @@ if (!app.requestSingleInstanceLock()) {
       const probe = (w) => (w && !w.isDestroyed() ? w.webContents.executeJavaScript("JSON.stringify({ html: document.documentElement.className, top: (document.getElementById('topbar') || {}).innerHTML ? document.getElementById('topbar').innerHTML.length : 0, view: (document.getElementById('view') || {}).innerHTML ? document.getElementById('view').innerHTML.length : 0, layers: document.querySelectorAll('.layer').length, guide: !!document.querySelector('.guide'), font: getComputedStyle(document.body).fontFamily.slice(0, 60), visible: document.visibilityState, stage: window.__stage || null })").catch((e) => 'error: ' + e.message) : Promise.resolve(null));
       let probes = {};
       trace('selftest start');
+      // Windows: the parts only a real Windows can show working (the window calls, the pauser,
+      // the focus guard, the pop-ups). Checked by the build before a release.
+      const winRes = { ran: false };
+      if (process.platform === 'win32') setTimeout(async () => {
+        const step = async (name, fn) => { try { winRes[name] = await fn(); } catch (e) { winRes[name] = false; winRes[name + 'Error'] = String(e && e.message || e).slice(0, 200); } };
+        winRes.ran = true;
+        await step('w32', () => !!w32);
+        await step('foreground', () => { const fg = w32.foreground(); return fg === null || (typeof fg.pid === 'number' && typeof fg.hwnd === 'number'); });
+        await step('ownWindow', () => { const h = w32.hwndOf(win); return w32.exists(h) && !!w32.rect(h); });
+        await step('minimize', async () => { const h = w32.hwndOf(win); w32.minimize(h); await wait(700); const was = w32.isIconic(h); w32.restore(h); await wait(700); return was && !w32.isIconic(h); });
+        await step('focus', () => { w32.forceForeground(w32.hwndOf(win)); return true; });
+        await step('inFront', async () => { await wait(400); const fg = w32.foreground(); return !!fg && fg.pid === process.pid; });
+        await step('pauser', () => !!pauser.available);
+        // A real program frozen and woken: the pauser, its record on disk, and the way back.
+        await step('pause', async () => {
+          const kid = spawn('ping', ['-n', '40', '127.0.0.1'], { windowsHide: true, stdio: 'ignore' });
+          try {
+            await wait(500);
+            await pauser.pause([kid.pid]);
+            const note = path.join(app.getPath('userData'), 'paused.json');
+            const frozen = pauser.has(kid.pid) && fs.existsSync(note);
+            pauser.resumeAll();
+            return frozen && !pauser.isPaused() && !fs.existsSync(note);
+          } finally { try { kid.kill(); } catch (_) { /* gone */ } }
+        });
+        await step('guard', () => { if (!guard) return false; guard.tick(); return guard.wantsPause() === false; });
+        await step('pops', async () => { notify('Self-test', 'A pop-up from the build check.'); await wait(2500); return !!popsPart && popsPart.state.shown.length === 1; });
+        await step('errors', () => { try { return fs.readFileSync(path.join(app.getPath('userData'), 'errors.log'), 'utf8').slice(-1500); } catch (_) { return ''; } });
+      }, 2500);
       // Notes when the app core was too busy to answer (anything over a quarter second).
       let tick = Date.now();
       setInterval(() => { const n = Date.now(); if (n - tick > 250) trace('busy', n - tick); tick = n; }, 50);
@@ -2460,7 +2554,7 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(() => {
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
-        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, placements: placeCount, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
+        try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, placements: placeCount, win: winRes, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
         app.quit();
       }, 22000);
     }

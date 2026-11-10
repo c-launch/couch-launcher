@@ -7,6 +7,7 @@
 // Everything is fetched here in the app core; the screens only get plain data back.
 
 const fs = require('fs');
+const { readJson, writeJson } = require('./safefile');
 const path = require('path');
 
 const API = 'https://api.strem.io/api/';
@@ -120,7 +121,9 @@ function createStremio(userDataDir, safeStorage, opts) {
   const now = opts.now || Date.now;
   const file = path.join(userDataDir, 'tv.json');
   let data = { auth: null, user: null, addons: null, addonsAt: 0, library: {}, libraryAt: 0, watched: {}, dirty: {}, last: {} };
-  try { data = Object.assign(data, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (_) { /* first run */ }
+  // (Read with its backup, saved in one step: addons, your list and what you've watched must
+  // not be lost to a crash in the middle of a save.)
+  { const saved = readJson(file); if (saved && typeof saved === 'object' && !Array.isArray(saved)) data = Object.assign(data, saved); }
   const cache = new Map();
   let saveTimer = null;
   function saveSoon() {
@@ -130,7 +133,7 @@ function createStremio(userDataDir, safeStorage, opts) {
   }
   function saveNow() {
     clearTimeout(saveTimer);
-    try { fs.mkdirSync(userDataDir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch (_) { /* not critical */ }
+    try { writeJson(file, data); } catch (_) { /* tried again with the next change */ }
   }
 
   // The account key is kept encrypted with Windows' own protection (like the other accounts).

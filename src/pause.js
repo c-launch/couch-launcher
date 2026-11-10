@@ -3,8 +3,22 @@
 // only drives the menu. Windows lets every program read the controller, so pausing is the only
 // reliable way to keep a game from reacting. Every pause is undone exactly once.
 const { execFile } = require('child_process');
+const fs = require('fs');
 
-function createPauser() {
+// Fail-safe: which programs are paused right now is also written to a small file. If the
+// launcher is killed or crashes while a game is paused, nobody is left to wake the game: it
+// would sit frozen until closed from Task Manager. The next start reads the file and wakes them.
+// (Waking a program that isn't paused does nothing.)
+function createPausedNote(file) {
+  return {
+    read() { try { const l = JSON.parse(fs.readFileSync(file, 'utf8')); return Array.isArray(l) ? l.map(Number).filter((p) => Number.isInteger(p) && p > 4) : []; } catch (_) { return []; } },
+    write(pids) { if (!file) return; try { if (pids.length) fs.writeFileSync(file, JSON.stringify(pids)); else fs.unlinkSync(file); } catch (_) { /* best effort */ } },
+    clear() { if (!file) return; try { fs.unlinkSync(file); } catch (_) { /* none */ } }
+  };
+}
+
+// noteFile: where the paused programs are written down (see createPausedNote).
+function createPauser(noteFile) {
   const off = { available: false, async pause() {}, resumeAll() {}, resumeAfterPending: async () => {}, isPaused: () => false, has: () => false };
   if (process.platform === 'darwin') return createMacPauser();
   if (process.platform !== 'win32') return off;
@@ -50,6 +64,10 @@ function createPauser() {
     });
   }
 
+  // Left paused by a launcher that was killed or crashed: wake them now.
+  const note = createPausedNote(noteFile);
+  if (noteFile) { for (const pid of note.read()) { try { act(pid, api.Resume); } catch (_) { /* gone */ } } note.clear(); }
+
   let busy = Promise.resolve();
   return {
     available: true,
@@ -61,13 +79,19 @@ function createPauser() {
         if (!rootPids.filter(Boolean).length) return;
         const pids = (await familyOf(rootPids.filter(Boolean))).filter((p) => p !== process.pid && !paused.has(p));
         if (stillWanted && !stillWanted()) return;
-        for (const pid of pids) if (act(pid, api.Suspend)) paused.add(pid);
+        for (const pid of pids) {
+          // (Written down before each one is frozen, so a crash right here still leaves a record.)
+          note.write(Array.from(paused).concat(pid));
+          if (act(pid, api.Suspend)) paused.add(pid);
+        }
+        note.write(Array.from(paused));
       }).catch(() => {});
       return busy;
     },
     // Synchronous on purpose: also used while the app is quitting.
     resumeAll() {
       for (const pid of paused) act(pid, api.Resume);
+      if (paused.size) note.clear();
       paused.clear();
     },
     // Waits for any pause still being set up, then undoes everything.
@@ -113,4 +137,4 @@ function createMacPauser() {
   };
 }
 
-module.exports = { createPauser };
+module.exports = { createPauser, createPausedNote };

@@ -51,7 +51,9 @@ const SRC = path.join(UD, 'update', 'src');
 fs.mkdirSync(path.join(UD, 'update'), { recursive: true });
 fs.cpSync(path.join(ROOT, 'src'), SRC, { recursive: true });
 fs.writeFileSync(path.join(UD, 'update', 'version.json'), JSON.stringify({ version: '999.0.0' }));
-fs.writeFileSync(path.join(UD, 'library.json'), JSON.stringify({ games: [{ id: 'g1', title: 'Grand Theft Auto V', source: 'custom', launch: { type: 'exe', exe: '/bin/sleep' }, args: '120' }], settings: { firstRun: false } }));
+fs.writeFileSync(path.join(UD, 'library.json'), JSON.stringify({ games: [{ id: 'g1', title: 'Grand Theft Auto V', source: 'custom', launch: { type: 'exe', exe: '/bin/sleep' }, args: '120' },
+  { id: 'g2', title: 'Gone Game', source: 'custom', launch: { type: 'exe', exe: '/nowhere/gone.exe' } },
+  { id: 'g3', title: 'Quits At Once', source: 'custom', launch: { type: 'exe', exe: '/bin/true' } }], settings: { firstRun: false } }));
 
 // the pretend Windows
 const GAME_H = 500;
@@ -190,6 +192,20 @@ require(path.join(APP, 'src', 'boot.js'));
   process.kill(world.gamePid); await wait(900);
   assert.strictEqual((await handlers['game:status']()).value, null);
   assert.ok(!world.paused.size);
+  // 6) games that can't start or quit at once: said plainly, nothing left running or frozen,
+  //    and the launcher is usable straight away
+  world.fg = { hwnd: win.h, pid: process.pid };
+  let bad = await handlers.launch('g2');
+  assert.ok(bad.ok === false && bad.error && (await handlers['game:status']()).value === null, 'missing game: an error, nothing running: ' + JSON.stringify(bad));
+  bad = await handlers.launch('nope');
+  assert.ok(bad.ok === false && (await handlers['game:status']()).value === null, 'unknown game: ' + JSON.stringify(bad));
+  const quick = await handlers.launch('g3'); await wait(1200);
+  assert.ok((await handlers['game:status']()).value === null && !world.paused.size, 'a game that quits at once leaves nothing behind: ' + JSON.stringify(quick));
+  const again = await handlers.launch('g1'); assert.ok(again.ok, 'and the next game still starts: ' + JSON.stringify(again));
+  const dup = await handlers.launch('g1');
+  assert.ok((await handlers['game:status']()).value.gameId === 'g1', 'starting it twice keeps one: ' + JSON.stringify(dup));
+  require('child_process').execFileSync('pkill', ['-f', 'sleep 120']); await wait(900);
+  assert.strictEqual((await handlers['game:status']()).value, null);
   assert.deepStrictEqual(errors, [], 'no errors: ' + errors.join('\n'));
   fs.rmSync(TMP, { recursive: true, force: true });
   console.log('windows guide flow ok');

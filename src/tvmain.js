@@ -145,6 +145,8 @@ function setupTv(ctx) {
     hud.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     hud.webContents.on('will-navigate', (e) => e.preventDefault());
     hud.on('closed', () => { hud = null; });
+    // A crashed controls page is thrown away (made again the next time it's needed).
+    { const h = hud; h.webContents.on('render-process-gone', () => { try { if (!h.isDestroyed()) h.destroy(); } catch (_) { /* gone */ } }); }
     return hud;
   }
   const hudSend = (v) => { if (hud && !hud.isDestroyed()) hud.webContents.send('hud', v); };
@@ -186,6 +188,7 @@ function setupTv(ctx) {
     }
     const url = await streamUrl(stream, video);
     tv().rememberStream(meta.id, videoId, stream);
+    await tvp.extrasOk(exe); // (which optional switches this mpv accepts)
     if (session) end('switch');
     const startAt = req.startAt != null ? Number(req.startAt) : tv().resumeAt(meta.id, videoId);
     const rect = toPx(targetDisplay().bounds);
@@ -380,6 +383,7 @@ function setupTv(ctx) {
   // Opens a file in the player at a spot (starting the player the first time).
   async function loadInto(s, url, title, at, partTok) {
     if (!s.mpv || !s.mpv.alive) {
+      await tvp.extrasOk(s.exe); // (which optional switches this mpv accepts)
       s.mpv = tvp.startMpv(s.exe, { url, title, startAt: at, rect: toPx(targetDisplay().bounds), subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: (s.stream && s.stream.headers) || null, idle: true });
       if (s.stopPlace) s.stopPlace();
       s.stopPlace = presentApp(['mpv.exe'], 'Couch Launcher Player', 15000);
@@ -407,7 +411,7 @@ function setupTv(ctx) {
   const NOTICE = /(fail|remov|error|block|limit|downloading|infring|unavailable|not[_-]?found|expired|denied|no[_-]?video)[^/]*\.(mp4|mkv|webm)$/i;
   async function isNotice(url, headers) {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 12000);
+    const timer = setTimeout(() => ctl.abort(), 5000);
     try {
       let at = url;
       for (let hop = 0; hop < 4; hop++) {
@@ -564,7 +568,23 @@ function setupTv(ctx) {
         s.controls.part('filler', loc && !loc.part.end ? Date.now() + loc.left * 1000 : 0, 'the commercial couldn’t be played');
       }
     });
-    mpv.on('exit', () => { if (session === s) end('closed'); });
+    // The player closed. You closing it (or Cable TV being left) ends the session. A player
+    // that crashed while Cable TV was on is started again where the schedule is now (twice in
+    // five minutes at most), instead of dropping you back to the guide.
+    mpv.on('exit', (info) => {
+      if (session !== s) return;
+      const c = s.cable, t = Date.now();
+      if (c && s.mpv === mpv && info && info.code !== 0 && c.prog) {
+        c.crashes = (c.crashes || []).filter((x) => t - x < 5 * 60e3);
+        if (c.crashes.length < 2) {
+          c.crashes.push(t);
+          s.mpv = null; c.waitPlay = null; c.nextAd = null; c.segI = -1;
+          s.controls.tuning(c.info);
+          return;
+        }
+      }
+      end('closed');
+    });
   }
   async function loadSubs(s) {
     try {

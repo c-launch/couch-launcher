@@ -4676,6 +4676,7 @@
     renderView(false);
     requestAnimationFrame(pollPads);
     window.__stage = 'running';
+    try { if (api.started) api.started().catch(() => {}); } catch (_) { /* older app core */ } // the update fail-safe: this screen is up
     setInterval(tickClock, 10000);
     setTimeout(() => rescan(null, true), 400);
     if (S.info.updateFailed) toast('The last update couldn’t start, so the previous version is running. Details: ' + S.info.updateFailed, true);
@@ -4703,6 +4704,10 @@
     try { S.tvStatus = await api.tvStatus(); } catch (_) { S.tvStatus = S.tvStatus || { signedIn: false }; }
     if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) refreshContent();
   }
+  // Mistakes on this screen go to errors.log (in the launcher's settings folder).
+  const reportError = (what) => { try { if (api.logError) api.logError((OVERLAY ? 'guide: ' : 'launcher: ') + what).catch(() => {}); } catch (_) { /* older app core */ } };
+  window.addEventListener('error', (e) => { if (e && e.message) reportError(e.message + ' at ' + String(e.filename || '').split('/').pop() + ':' + e.lineno + (e.error && e.error.stack ? '\n' + e.error.stack : '')); });
+  window.addEventListener('unhandledrejection', (e) => { const r = e && e.reason; reportError('unhandled: ' + String((r && r.stack) || r)); });
   window.__couch = { S, move, button, setFocus, currentFocus, layers, TV, openIdle, closeIdle, go, osk, slotInfo }; // used by tests
   init().catch((e) => { document.body.innerHTML = '<pre style="color:#fff;padding:40px;font-size:18px">Couch Launcher couldn’t start:\n' + esc(e && e.stack || e) + '</pre>'; });
 })();

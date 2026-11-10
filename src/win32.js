@@ -25,7 +25,8 @@ function createWin32() {
     const ShowWindow = u.func('__stdcall', 'ShowWindow', 'bool', ['uintptr_t', 'int']);
     // Other programs' windows are only ever asked, never waited for: a game that is frozen or
     // hung can't answer, and waiting for it would freeze the launcher (guide button and all).
-    const ShowWindowAsync = u.func('__stdcall', 'ShowWindowAsync', 'bool', ['uintptr_t', 'int']);
+    let ShowWindowAsync = ShowWindow; // (if it can't be had, the waiting kind: better than no window calls at all)
+    try { ShowWindowAsync = u.func('__stdcall', 'ShowWindowAsync', 'bool', ['uintptr_t', 'int']); } catch (_) { ShowWindowAsync = ShowWindow; }
     let IsHungAppWindow = null;
     try { IsHungAppWindow = u.func('__stdcall', 'IsHungAppWindow', 'bool', ['uintptr_t']); } catch (_) { IsHungAppWindow = null; }
     const pidOfWindow = (h) => { const p = [0]; GetWindowThreadProcessId(h, p); return p[0]; };

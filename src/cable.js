@@ -8,6 +8,7 @@
 // episode lists, in cable.json; they're refreshed weekly.
 
 const fs = require('fs');
+const { readJson, writeJson } = require('./safefile');
 const path = require('path');
 
 const show = (name, year) => ({ name, year });
@@ -202,7 +203,7 @@ function dayStart(t) {
 // How long a show's time slot is. With commercials, like real TV: the show plus its breaks
 // fill a quarter-hour grid (a 22-minute episode gets 30 minutes, an 11-minute one 15).
 function slotMs(runtimeMin, ads) {
-  const rt = runtimeMin || DEFAULT_RUNTIME;
+  const rt = Number(runtimeMin) > 0 && Number(runtimeMin) <= 600 ? Number(runtimeMin) : DEFAULT_RUNTIME;
   if (!ads) return rt * 60e3 + BREAK_MS;
   return Math.ceil((rt + 3) / 15) * 15 * 60e3;
 }
@@ -259,17 +260,20 @@ function adVideos(entries, word, notWord) {
 // a random episode not shown earlier that day while there are others.
 // shows: [{ id, runtimeMin, episodes: [...] }]
 function daySchedule(channelId, shows, start, ads) {
-  const usable = (shows || []).filter((s) => s && s.id && s.episodes && s.episodes.length);
+  const usable = (shows || []).filter((s) => s && s.id && Array.isArray(s.episodes) && s.episodes.some((e) => e && e.id));
   if (!usable.length) return [];
   const day = new Date(start);
   const key = channelId + '|' + day.getFullYear() + '-' + (day.getMonth() + 1) + '-' + day.getDate() + '|' + usable.map((s) => s.id).join(',') + (ads ? '|ads' : '');
   const r = rng(hash32(key));
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const used = new Map();
-  const end = start + 24 * 3600e3;
+  // Up to the next day's start: 24 hours, or 23 / 25 on the days the clocks change (so the
+  // extra hour isn't left with nothing on).
+  const next = dayStart(start + 36 * 3600e3);
+  const end = next > start && next - start <= 26 * 3600e3 ? next : start + 24 * 3600e3;
   const out = [];
   let bag = [], last = null, t = start;
-  while (t < end) {
+  while (t < end && out.length < 3000) {
     if (!bag.length) { bag = shuffle(usable.slice()); if (bag.length > 1 && bag[0] === last) bag.push(bag.shift()); }
     const s = bag.shift();
     last = s;
@@ -277,9 +281,10 @@ function daySchedule(channelId, shows, start, ads) {
     if (!seen) { seen = new Set(); used.set(s.id, seen); }
     if (seen.size >= s.episodes.length) seen.clear();
     let ep;
-    for (let tries = 0; tries < 12; tries++) { ep = s.episodes[Math.floor(r() * s.episodes.length)]; if (!seen.has(ep.id)) break; }
+    for (let tries = 0; tries < 12; tries++) { ep = s.episodes[Math.floor(r() * s.episodes.length)]; if (ep && ep.id && !seen.has(ep.id)) break; }
+    if (!ep || !ep.id) ep = s.episodes.find((e) => e && e.id); // (always one: see `usable`)
     seen.add(ep.id);
-    const len = slotMs(s.runtimeMin, ads);
+    const len = Math.max(60e3, slotMs(s.runtimeMin, ads) || 0); // (never zero or backwards, whatever the runtime says)
     out.push({ start: t, end: Math.min(end, t + len), showId: s.id, video: ep });
     t += len;
   }
@@ -297,8 +302,8 @@ function createCable({ tv, file, now, ytdlp, ads }) {
 
   function load() {
     if (state) return state;
-    try { state = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { state = null; }
-    if (!state || typeof state !== 'object') state = {};
+    state = readJson(file);
+    if (!state || typeof state !== 'object' || Array.isArray(state)) state = {};
     if (!state.shows || typeof state.shows !== 'object') state.shows = {};
     if (!state.names || typeof state.names !== 'object') state.names = {};
     if (!state.durs || typeof state.durs !== 'object') state.durs = {};
@@ -330,7 +335,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   function save() {
     clearTimeout(saveT);
     saveT = setTimeout(() => {
-      try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify(state)); fs.renameSync(file + '.tmp', file); } catch (_) { /* next time */ }
+      try { writeJson(file, state); } catch (_) { /* next time */ }
     }, 300);
   }
   // The eras being watched (one, or several merged), and their channels. Merged: a channel in
@@ -635,7 +640,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     return eras();
   }
   const setEra = (id) => setEras([id]);
-  function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { fs.writeFileSync(file, JSON.stringify(state)); } catch (_) { /* fine */ } } }
+  function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { writeJson(file, state); } catch (_) { /* fine */ } } }
 
   return { get adWhy() { return adWhy; }, ensure, ready, stale, guide, at, alternates, substitute, markBad, isBad, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
 }

@@ -187,6 +187,17 @@ function createEngine(opts) {
 // Events: 'time' {pos, dur}, 'pause' bool, 'tracks' {subs, audio}, 'buffering' bool,
 //         'eof', 'exit' {code}, 'failed' (a file couldn't be opened; only heard of with o.idle,
 //         where the player stays open instead of closing).
+// Fail-safe for the optional switches: asked once per mpv whether it accepts them (it exits
+// with an error when it doesn't know one). Until that has been asked, and when the answer is no,
+// the player starts without them.
+const extras = new Map(); // exe -> true / false
+function extrasOk(exe) {
+  if (extras.has(exe)) return Promise.resolve(extras.get(exe));
+  return new Promise((resolve) => {
+    execFile(exe, ['--no-config', '--window-dragging=no', '--input-cursor=no', '--version'], { windowsHide: true, timeout: 15000 }, (err) => { extras.set(exe, !err); resolve(!err); });
+  });
+}
+
 function startMpv(exe, o) {
   const ev = new EventEmitter();
   // Windows: a named pipe. Mac / Linux: a socket file in the temp folder.
@@ -197,7 +208,9 @@ function startMpv(exe, o) {
     '--no-border', '--osc=no', '--osd-bar=no', '--cursor-autohide=always', '--hwdec=auto-safe',
     // The mouse does nothing to the picture: no dragging the window around, and none of mpv's own
     // mouse actions (wheel = seek, right click = pause, double click = leave full screen).
-    '--window-dragging=no', '--input-cursor=no',
+    // Only when this mpv was seen to accept them (extrasOk below): an mpv that doesn't know an
+    // option refuses to start at all.
+    ...(extras.get(exe) === true ? ['--window-dragging=no', '--input-cursor=no'] : []),
     '--title=Couch Launcher Player', '--force-media-title=' + String(o.title || 'Movies & TV').replace(/[\r\n]/g, ' '),
     '--ytdl=no', '--cache=yes', '--demuxer-max-bytes=400MiB', '--demuxer-readahead-secs=60', '--network-timeout=40',
     '--save-position-on-quit=no', '--sub-auto=fuzzy', '--sub-font-size=46', '--osd-font-size=36', '--volume=100',
@@ -309,4 +322,4 @@ function startMpv(exe, o) {
   }) && Object.defineProperty(ev, 'alive', { get: () => !exited });
 }
 
-module.exports = { findMpv, installMpv, downloadMpv, pickMpvAsset, createEngine, startMpv, serverCandidates, SERVER };
+module.exports = { extrasOk, findMpv, installMpv, downloadMpv, pickMpvAsset, createEngine, startMpv, serverCandidates, SERVER };

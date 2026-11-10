@@ -4,6 +4,7 @@
 // the session list).
 
 const fs = require('fs');
+const { readJson, writeJson } = require('./safefile');
 const path = require('path');
 
 const DAY = 864e5;
@@ -93,13 +94,13 @@ function createStats({ userDataDir, now }) {
   now = now || Date.now;
   const file = path.join(userDataDir, 'sessions.json');
   let list = null;
-  const load = () => { if (!list) { try { list = JSON.parse(fs.readFileSync(file, 'utf8')); if (!Array.isArray(list)) list = []; } catch (_) { list = []; } } return list; };
+  const load = () => { if (!list) { list = readJson(file); if (!Array.isArray(list)) list = []; } return list; };
   function record(gameId, title, start, seconds) {
     if (!gameId || !(seconds > 0)) return;
     const l = load();
     l.push({ gameId: String(gameId), title: String(title || '').slice(0, 120), start: Number(start) || now() - seconds * 1000, seconds: Math.round(seconds) });
     if (l.length > MAX_SESSIONS) l.splice(0, l.length - MAX_SESSIONS);
-    try { fs.mkdirSync(userDataDir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(l)); } catch (_) { /* not critical */ }
+    try { writeJson(file, l); } catch (_) { /* not critical */ }
   }
   return { record, get: (games) => compute(load(), games, now()), sessions: () => load().slice() };
 }

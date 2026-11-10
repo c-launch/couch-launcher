@@ -95,6 +95,8 @@ contextBridge.exposeInMainWorld('launcher', {
   dcRpcConnect: (id, secret) => call('dcrpc:connect', String(id || ''), String(secret || '')),
   dcRpcDisconnect: () => call('dcrpc:disconnect'),
   dcRpcReapprove: () => call('dcrpc:reapprove'),
+  started: () => call('app:started'),
+  logError: (what) => call('log:error', String(what || '').slice(0, 1500)),
   popsTest: () => call('pops:test'),
   dcRpcState: (ids) => call('dcrpc:state', Array.isArray(ids) ? ids.map(String) : []),
   dcRpcJoin: (id) => call('dcrpc:join', String(id || '')),
