@@ -1,6 +1,6 @@
 {
- "version": "1.27.8",
- "notes": "Movies & TV: the mouse can no longer drag the player window around, and mpv's own mouse actions (wheel seeking, right click pause, double click) are off.",
- "file": "CouchLauncher-update-1.27.8.zip",
- "size": 407054
+ "version": "1.28.0",
+ "notes": "Pop-ups: notifications now show as Couch Launcher pop-ups, top right, above games and everything else, instead of Windows notifications (Settings › Controllers to turn off, try one, or mute the sound). Discord on screen: your call shows top left, with who's in it lit up while they talk, and Discord's message notifications can show as pop-ups (needs Discord's permission: Settings › Controllers › Discord messages as pop-ups › Allow in Discord).",
+ "file": "CouchLauncher-update-1.28.0.zip",
+ "size": 417689
 }

@@ -19,13 +19,14 @@ class BW extends EventEmitter {
   constructor(o) { super(); this.h = nextH++; this.o = o || {}; this.visible = false; this.min = false; wins.push(this);
     this.webContents = Object.assign(new EventEmitter(), { send: (ch) => { this.sent = (this.sent || []).concat(ch); }, setWindowOpenHandler() {}, isLoading: () => false, getURL: () => 'file://x/index.html', executeJavaScript: async () => '{}', capturePage: async () => ({ toPNG: () => Buffer.alloc(0) }) });
     setTimeout(() => this.emit('ready-to-show'), 5); }
-  loadFile() { return Promise.resolve(); } loadURL() { return Promise.resolve(); }
+  loadFile(f) { this.file = String(f); setTimeout(() => this.webContents.emit('did-finish-load'), 5); return Promise.resolve(); } loadURL() { return Promise.resolve(); }
+  showInactive() { this.visible = true; }
   show() { this.visible = true; this.min = false; } hide() { this.visible = false; if (world.fg && world.fg.hwnd === this.h) world.fg = wins[0].visible && !wins[0].min && wins[0] !== this ? { hwnd: wins[0].h, pid: process.pid } : world.under; }
   focus() {} isFocused() { return !!world.fg && world.fg.hwnd === this.h; }
   isMinimized() { return this.min; } isDestroyed() { return false; } setBounds() {} setAlwaysOnTop() {} setFullScreen() {} isFullScreen() { return true; }
   restore() { this.min = false; } minimize() { this.min = true; world.calls.push('win.minimize'); if (world.fg && world.fg.hwnd === this.h) world.fg = world.under; }
   getNativeWindowHandle() { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(this.h)); return b; } setMenu() {} setIgnoreMouseEvents() {} setSkipTaskbar() {} isVisible() { return this.visible; }
-  setSimpleFullScreen() {} isSimpleFullScreen() { return true; } moveTop() {} setVisibleOnAllWorkspaces() {} setFullScreenable() {} setHiddenInMissionControl() {} getBounds() { return display.bounds; }
+  destroy() { this.visible = false; } setSimpleFullScreen() {} isSimpleFullScreen() { return true; } moveTop() {} setVisibleOnAllWorkspaces() {} setFullScreenable() {} setHiddenInMissionControl() {} getBounds() { return display.bounds; }
 }
 const display = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 }, scaleFactor: 1 };
 const electron = { app, BrowserWindow: BW,
@@ -74,6 +75,12 @@ require.cache[path.join(SRC, 'hotkey.js')] = { id: 'h', filename: path.join(SRC,
   loadXInput: () => { throw new Error('no XInput here'); }, readPads: () => [], padType: () => 'xbox' } };
 const padExt = () => (wins[0].sent || []).filter((ch) => ch === 'pad:ext').length;
 const press = async (n) => { for (let i = 0; i < (n || 5); i++) { world.ctl.onButtons(0x1000, 0, 0); await wait(20); world.ctl.onButtons(0, 0, 0); await wait(20); } };
+// a pretend Discord connection: the test plays the call and the messages
+const dc = { configured: false, lives: [], stops: 0 };
+require.cache[path.join(SRC, 'discordrpc.js')] = { id: 'd', filename: path.join(SRC, 'discordrpc.js'), loaded: true, exports: { createDiscordRpc: () => ({
+  configured: () => dc.configured, connected: () => dc.configured, messagesAllowed: () => dc.configured, close() {}, disconnect() {},
+  state: async () => { throw new Error('not in this test'); },
+  live(onVoice, onMessage) { const l = { onVoice, onMessage, stopped: false }; dc.lives.push(l); return { stop() { l.stopped = true; dc.stops++; } }; } }) } };
 const pauser = { available: true, isPaused: () => world.paused.size > 0, has: (p) => world.paused.has(p),
   pause(pids, still) { world.calls.push('pause'); return new Promise((res) => setTimeout(() => { if (!still || still()) for (const p of pids) world.paused.add(p); res(); }, 300)); },
   resumeAll() { if (world.paused.size) world.calls.push('resume'); world.paused.clear(); }, resumeAfterPending() { this.resumeAll(); return Promise.resolve(); } };
@@ -104,6 +111,43 @@ require(path.join(APP, 'src', 'boot.js'));
   world.calls.length = 0; let n0 = padExt();
   await press(10);
   assert.ok(padExt() === n0 && !world.calls.some((x) => x === 'force ' + win.h) && world.fg.hwnd === GAME_H, 'hands off the controller in a game: ' + world.calls);
+
+  // a notification during the game: the launcher's pop-up, which never takes the screen
+  world.calls.length = 0;
+  assert.ok((await handlers['pops:test']()).ok); await wait(120);
+  const popWins = () => wins.filter((w) => /pops\.html$/.test(w.file || ''));
+  const tw = popWins()[0];
+  assert.ok(tw && tw.o.focusable === false && tw.visible && (tw.sent || []).includes('pops'), 'pop-up shown in its own click-through window');
+  assert.ok(world.fg.hwnd === GAME_H && !world.paused.size && !world.calls.some((x) => /^(force|focus|minimize|pause)/.test(x)) && !(win.sent || []).includes('notice'), 'the game keeps the screen: ' + world.calls);
+  // pop-ups turned off: the system's notifications and the launcher's own toast, as before
+  const lib0 = (await handlers['lib:load']()).value;
+  let n1 = (tw.sent || []).length;
+  await handlers['lib:save'](Object.assign({}, lib0, { settings: Object.assign({}, lib0.settings, { ownPopups: false }) }));
+  await handlers['pops:test'](); await wait(60);
+  assert.ok((tw.sent || []).length === n1 && (win.sent || []).includes('notice'), 'off: the old way');
+  await handlers['lib:save'](lib0);
+  // Discord, live: nothing listens until Discord calls are connected
+  assert.strictEqual(dc.lives.length, 0);
+  dc.configured = true; await handlers['lib:save'](lib0);
+  assert.strictEqual(dc.lives.length, 1, 'listening once connected'); await handlers['lib:save'](lib0); assert.strictEqual(dc.lives.length, 1, 'only once');
+  const person = (id, name, sp) => ({ id, name, pic: null, muted: false, deaf: false, speaking: !!sp });
+  dc.lives[0].onVoice({ id: '77', name: 'Squad', people: [person('1', 'Me'), person('2', 'Ana', true)] }); await wait(120);
+  const vw = popWins()[1];
+  assert.ok(vw && vw.visible && vw.o.focusable === false && (vw.sent || []).includes('pops') && world.fg.hwnd === GAME_H, 'the call on screen, game still in front');
+  n1 = (tw.sent || []).length;
+  dc.lives[0].onMessage({ title: 'Ana (#general)', body: 'get on', icon: null }); await wait(60);
+  assert.ok((tw.sent || []).length > n1, 'a Discord message as a pop-up');
+  // the call turned off in Settings: gone, but messages still listened for
+  await handlers['lib:save'](Object.assign({}, lib0, { settings: Object.assign({}, lib0.settings, { callOverlay: false }) }));
+  assert.ok(!vw.visible && dc.stops === 0, 'call hidden, still listening for messages');
+  dc.lives[0].onVoice({ id: '77', name: 'Squad', people: [person('1', 'Me')] }); assert.ok(!vw.visible, 'stays hidden');
+  // both off: stops listening; back on: listens again and the call comes back with the next change
+  await handlers['lib:save'](Object.assign({}, lib0, { settings: Object.assign({}, lib0.settings, { callOverlay: false, dcMessages: false }) }));
+  assert.strictEqual(dc.stops, 1, 'stopped listening');
+  await handlers['lib:save'](lib0); assert.strictEqual(dc.lives.length, 2);
+  dc.lives[1].onVoice({ id: '77', name: 'Squad', people: [person('1', 'Me')] }); assert.ok(vw.visible, 'call back on screen');
+  dc.lives[1].onVoice(null); assert.ok(!vw.visible, 'call ended: gone');
+  assert.ok(world.fg.hwnd === GAME_H && !world.paused.size, 'none of it touched the game');
 
   // 1) guide: it gets the screen, the game is paused
   world.calls.length = 0;

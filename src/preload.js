@@ -94,6 +94,8 @@ contextBridge.exposeInMainWorld('launcher', {
   dcRpcStatus: () => call('dcrpc:status'),
   dcRpcConnect: (id, secret) => call('dcrpc:connect', String(id || ''), String(secret || '')),
   dcRpcDisconnect: () => call('dcrpc:disconnect'),
+  dcRpcReapprove: () => call('dcrpc:reapprove'),
+  popsTest: () => call('pops:test'),
   dcRpcState: (ids) => call('dcrpc:state', Array.isArray(ids) ? ids.map(String) : []),
   dcRpcJoin: (id) => call('dcrpc:join', String(id || '')),
   dcRpcLeave: () => call('dcrpc:leave'),
@@ -169,7 +171,7 @@ contextBridge.exposeInMainWorld('launcher', {
   tvCableRemove: (ch, i, era) => call('tv:cableRemove', String(ch || ''), Number(i) | 0, era ? String(era) : ''),
   tvCableReset: (ch, era) => call('tv:cableReset', String(ch || ''), era ? String(era) : ''),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'vpads', 'phone', 'news', 'deals', 'tv:ended', 'hud', 'tv:cableProgress'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'vpads', 'phone', 'news', 'deals', 'tv:ended', 'hud', 'tv:cableProgress', 'pops'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

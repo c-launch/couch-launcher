@@ -1025,7 +1025,13 @@
           '<dt>Xbox button opens Launchpad?</dt><dd>Turn that off in System Settings › Game Controllers › your controller › Home button</dd></dl>' +
           '<div class="sub-h">Guide</div><div class="toggles" style="grid-template-columns:1fr">' +
           toggleHTML('c-pause', 'Pause the game while the guide is open', S.lib.settings.pauseGame !== false, 'Stops the controller from also moving you in the game. Turn off for online matches, since a paused game can’t stay connected.', 'set-toggle', 'data-k="pauseGame"') +
-          toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') + '</div>';
+          toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
+        toggleHTML('c-pops', 'Show notifications as Couch Launcher pop-ups', S.lib.settings.ownPopups !== false, 'Top right, above games and everything else. Off: regular ' + (IS_MAC ? 'Mac' : 'Windows') + ' notifications.', 'set-toggle', 'data-k="ownPopups"') +
+        toggleHTML('c-popsnd', 'Play a sound with pop-ups', S.lib.settings.popSound !== false, '', 'set-toggle', 'data-k="popSound"') +
+        '<button class="toggle-row" data-nav data-key="c-poptest" data-zone="body" data-action="pops-test"><span><div>Show a test pop-up</div><div class="d">See where they appear.</div></span><span class="status ok">Try it</span></button>' +
+        toggleHTML('c-callov', 'Show my Discord call on screen', S.lib.settings.callOverlay !== false, 'Who’s in the call, lit up while they talk. Top left, above games and the launcher. Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="callOverlay"') +
+        toggleHTML('c-calltalk', 'Only show who’s talking', !!S.lib.settings.callTalkingOnly, 'Instead of everyone in the call.', 'set-toggle', 'data-k="callTalkingOnly"') +
+        '<button class="toggle-row" data-nav data-key="c-dcmsg" data-zone="body" data-action="dc-msgs"><span><div>Discord messages as pop-ups</div><div class="d">Discord’s own notifications, shown the launcher’s way. Needs Discord calls connected and Discord’s permission to read notifications.</div></span><span class="status ok">' + (S.lib.settings.dcMessages !== false ? 'On' : 'Off') + '</span></button>' + '</div>';
         return h;
       }
       h += '</div><div class="sub-h">During a game</div><dl class="kv">' +
@@ -1044,6 +1050,12 @@
         '<button class="toggle-row" data-nav data-key="c-steady" data-zone="body" data-action="steady"><span><div>Steady players in Ryujinx</div><div class="d">The launcher holds a virtual controller for each player during the game, so a controller dying doesn’t shuffle the players. When it’s back on, it takes its spot again.</div></span><span class="status ok">' +
           (S.lib.settings.steadyPlayers ? 'On' : 'Off') + '</span></button>' +
         toggleHTML('c-nbat', 'Warn me when a controller battery is low', S.lib.settings.notifyBattery !== false, 'A pop-up, even during a game.', 'set-toggle', 'data-k="notifyBattery"') +
+        toggleHTML('c-pops', 'Show notifications as Couch Launcher pop-ups', S.lib.settings.ownPopups !== false, 'Top right, above games and everything else. Off: regular ' + (IS_MAC ? 'Mac' : 'Windows') + ' notifications.', 'set-toggle', 'data-k="ownPopups"') +
+        toggleHTML('c-popsnd', 'Play a sound with pop-ups', S.lib.settings.popSound !== false, '', 'set-toggle', 'data-k="popSound"') +
+        '<button class="toggle-row" data-nav data-key="c-poptest" data-zone="body" data-action="pops-test"><span><div>Show a test pop-up</div><div class="d">See where they appear.</div></span><span class="status ok">Try it</span></button>' +
+        toggleHTML('c-callov', 'Show my Discord call on screen', S.lib.settings.callOverlay !== false, 'Who’s in the call, lit up while they talk. Top left, above games and the launcher. Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="callOverlay"') +
+        toggleHTML('c-calltalk', 'Only show who’s talking', !!S.lib.settings.callTalkingOnly, 'Instead of everyone in the call.', 'set-toggle', 'data-k="callTalkingOnly"') +
+        '<button class="toggle-row" data-nav data-key="c-dcmsg" data-zone="body" data-action="dc-msgs"><span><div>Discord messages as pop-ups</div><div class="d">Discord’s own notifications, shown the launcher’s way. Needs Discord calls connected and Discord’s permission to read notifications.</div></span><span class="status ok">' + (S.lib.settings.dcMessages !== false ? 'On' : 'Off') + '</span></button>' +
         toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
         toggleHTML('c-njoin', 'Tell me when a friend starts a game I can join', S.lib.settings.notifyJoin !== false, 'Steam friends in a lobby or on a server (their Steam profile has to be public). Join from the alert or the guide.', 'set-toggle', 'data-k="notifyJoin"') +
         toggleHTML('c-ncall', 'Tell me when someone joins or leaves my Discord call', S.lib.settings.notifyCalls !== false, 'Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="notifyCalls"') +
@@ -3917,6 +3929,8 @@
       case 'friend': return friendMenu(el.dataset.friend);
       case 'steady': return steadyMenu();
       case 'phone-remote': return phoneRemote();
+      case 'pops-test': try { await api.popsTest(); } catch (_) { /* nothing to show */ } return;
+      case 'dc-msgs': return dcMessagesMenu();
       case 'pick-mode': {
         const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
         if (m) { s.pickPlayers = m; save(); refreshContent(); }
@@ -4181,6 +4195,25 @@
     if (S.view !== 'library') go('library', 's-search'); else refreshContent();
     const first = $('#content .grid [data-nav]');
     if (first && v) setFocus(first);
+  }
+  // Discord's message notifications as the launcher's pop-ups: on / off, and Discord's permission.
+  async function dcMessagesMenu() {
+    const s = S.lib.settings;
+    let st = null;
+    try { st = await api.dcRpcStatus(); } catch (_) { st = null; }
+    const on = s.dcMessages !== false;
+    const items = [{ id: 'toggle', label: on ? 'Turn off' : 'Turn on', icon: on ? 'x' : 'check' }];
+    if (st && st.configured && st.connected && !st.messages) items.push({ id: 'allow', label: 'Allow in Discord (it shows a box to approve)', icon: 'link' });
+    if (!st || !st.configured) items.push({ id: 'link', label: 'Connect Discord for calls', icon: 'link' });
+    const pick = await openMenu('Discord messages as pop-ups', items);
+    if (!pick) return;
+    if (pick === 'link') { await discordConnect(); refreshContent(); return; }
+    if (pick === 'toggle') { s.dcMessages = !on; save(); refreshContent(); if (on || !st || !st.connected || st.messages) return; }
+    toast('Check Discord: approve “Couch Launcher” in the box it shows…');
+    try {
+      const r = await api.dcRpcReapprove();
+      toast(r && r.messages ? 'Discord message pop-ups are on' : 'Discord didn’t give that permission', !(r && r.messages));
+    } catch (e) { toast(e.message, true); }
   }
   function themeChanged() {
     S.theme = window.applyTheme(S.lib.settings, true);

@@ -23,6 +23,11 @@ const DEFAULT_SETTINGS = {
   displayId: null,       // which monitor (null = main)
   musicApp: 'auto',      // 'auto' | 'AppleMusic' | 'Spotify'
   pauseGame: true,       // pause the game while the guide or launcher is in front
+  ownPopups: true,       // notifications as the launcher's own pop-ups (top right, above games); off: system notifications
+  popSound: true,        // a soft sound with each pop-up
+  callOverlay: true,     // your Discord call on screen (top left): who's in it, who's talking
+  callTalkingOnly: false, // ... only the people talking
+  dcMessages: true,      // Discord's message notifications as pop-ups (needs Discord's permission)
   customBg: null,        // your own Home background image (path)
   musicMouse: true,      // controller works as a mouse in Apple Music / Spotify / Discord
   discordPins: [],       // [{ name, url }] Discord channels / servers / invites shown in the guide

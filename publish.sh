@@ -10,6 +10,8 @@ node tools/smoke-test.js && node tools/smoke-test.js --mac || { echo "Not publis
 # Nor one where the guide can leave a game frozen in front or the launcher takes the controller
 # from a game (1.27.6 and earlier could, with GTA V and Fortnite).
 node tools/focus-guard-test.js && node tools/guide-flow-test.js || { echo "Not published: the guide check failed."; exit 1; }
+# Nor one where the pop-ups or the Discord call on screen misbehave (they sit above games).
+node tools/pops-test.js && node tools/discord-live-test.js || { echo "Not published: the pop-ups check failed."; exit 1; }
 python3 -c "import json,sys; p='package.json'; d=json.load(open(p)); d['version']=sys.argv[1]; open(p,'w').write(json.dumps(d, indent=2)+'\\n')" "$V"
 ./make-update.sh "$V" "$NOTES" >/dev/null
 Z="CouchLauncher-update-$V.zip"

@@ -10,6 +10,7 @@ const { asGamepad } = require('./macpads');
 const anticheat = require('./anticheat');
 const { createPadMouse } = require('./padmouse');
 const { createFocusGuard } = require('./focusguard');
+const { createPops } = require('./pops');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
 const { createDiscordRpc } = require('./discordrpc');
@@ -532,6 +533,7 @@ if (!app.requestSingleInstanceLock()) {
   let placeTimes = [], placeStorm = false, placeCount = 0;
   function placeWindows() {
     const d = targetDisplay();
+    if (popsPart) popsPart.place();
     if (win && !win.isDestroyed()) {
       const isFull = () => (MAC ? win.isSimpleFullScreen() : win.isFullScreen());
       const setFull = (on) => (MAC ? win.setSimpleFullScreen(on) : win.setFullScreen(on));
@@ -1194,8 +1196,21 @@ if (!app.requestSingleInstanceLock()) {
     try { players.setPlayers(emu, exe, connected, connected, undefined, ryujinxGuids()); playerCount[emu] = 1; return true; } catch (_) { return false; }
   });
 
-  // Windows notification (shows over games too) plus a toast in the launcher.
+  // The launcher's own pop-ups (pops.js): notifications top right and your Discord call top left,
+  // above games and everything else, in windows that can't be clicked or take the screen.
+  let popsPart = null;
+  const pops = () => popsPart || (popsPart = createPops({
+    BrowserWindow, file: path.join(__dirname, 'renderer', 'pops.html'), preload: path.join(__dirname, 'preload.js'),
+    display: () => targetDisplay(), mac: MAC, sound: () => !(lib && lib.settings && lib.settings.popSound === false)
+  }));
+  const ownPops = () => !(lib && lib.settings && lib.settings.ownPopups === false);
+  // A notification: the launcher's own pop-up, or (when those are turned off, or can't be shown)
+  // a Windows notification plus a toast in the launcher.
   function notify(title, body, onClick, extra) {
+    if (ownPops()) {
+      try { pops().toast({ title, body, icon: extra && extra.icon, from: extra && extra.from }); return; } catch (_) { /* the Windows way below */ }
+    }
+    if (extra && extra.ownOnly) return;
     try {
       if (Notification.isSupported()) {
         const n = new Notification({ title, body, silent: false });
@@ -1203,7 +1218,30 @@ if (!app.requestSingleInstanceLock()) {
         n.show();
       }
     } catch (_) { /* not available */ }
-    send('notice', Object.assign({ title, body }, extra || {}));
+    send('notice', Object.assign({ title, body }, extra && extra.join ? { join: extra.join } : {}));
+  }
+  handle('pops:test', () => { notify('This is a pop-up', 'Notifications show here, above games too.'); return true; });
+
+  // Discord, live: your call on screen (who's in it, who's talking) and Discord's message
+  // notifications as pop-ups. Only listens when Discord calls are connected and one of the two is on.
+  let dcLive = null, dcCall = null;
+  function drawCall() {
+    const s = (lib && lib.settings) || {};
+    if (!dcCall || s.callOverlay === false) { if (popsPart) popsPart.voice(null); return; }
+    try { pops().voice(dcCall, !!s.callTalkingOnly); } catch (_) { /* no pop-ups */ }
+  }
+  function syncDiscordLive() {
+    const s = (lib && lib.settings) || {};
+    let want = false;
+    try { want = (s.callOverlay !== false || (s.dcMessages !== false && ownPops())) && dr().configured(); } catch (_) { want = false; }
+    if (want && !dcLive) {
+      dcLive = dr().live(
+        (v) => { dcCall = v; drawCall(); },
+        // (Only as the launcher's own pop-up: Discord already shows its own Windows notification.)
+        (m) => { const st = (lib && lib.settings) || {}; if (st.dcMessages !== false && ownPops()) notify(m.title, m.body, null, { icon: m.icon, from: 'Discord', ownOnly: true }); }
+      );
+    } else if (!want && dcLive) { dcLive.stop(); dcLive = null; dcCall = null; }
+    drawCall();
   }
   function sendOverlay(ch, payload) { if (overlay && !overlay.isDestroyed()) overlay.webContents.send(ch, payload); }
 
@@ -1466,6 +1504,7 @@ if (!app.requestSingleInstanceLock()) {
     lib = next;
     persist();
     syncAppearance();
+    syncDiscordLive(); // the call on screen and message pop-ups follow their settings
     try {
       for (const f of fs.readdirSync(artDir())) {
         const full = path.resolve(path.join(artDir(), f));
@@ -1815,7 +1854,7 @@ if (!app.requestSingleInstanceLock()) {
       if (lib.settings.notifyJoin !== false) {
         for (const f of joinNow.slice(0, 2)) {
           const have = friendsLib.matchGame(f, lib.games);
-          notify(f.gamertag + ' is in a game you can join', (f.game || 'Steam game') + (have ? ' · Click to join, or open the guide › Friends' : ' · Click to join through Steam'), () => joinFromAlert(f), { join: f.id });
+          notify(f.gamertag + ' is in a game you can join', (f.game || 'Steam game') + (ownPops() ? ' · Open the guide › Friends to join' : have ? ' · Click to join, or open the guide › Friends' : ' · Click to join through Steam'), () => joinFromAlert(f), { join: f.id });
         }
         const shown = new Set(joinNow.map((f) => f.id));
         for (let i = fresh.length - 1; i >= 0; i--) if (shown.has(fresh[i].id)) fresh.splice(i, 1); // one alert per person
@@ -1839,7 +1878,7 @@ if (!app.requestSingleInstanceLock()) {
       }
       callId = s.call.id; callPeople = now;
     }
-    friendsCheck(); callCheck();
+    friendsCheck(); callCheck(); syncDiscordLive();
     setInterval(friendsCheck, 2 * 60 * 1000);
     setInterval(callCheck, 15000);
   }
@@ -2018,16 +2057,25 @@ if (!app.requestSingleInstanceLock()) {
   let dcRpc = null;
   const dr = () => dcRpc || (dcRpc = createDiscordRpc(app.getPath('userData'), safeStorage));
   const dcIds = (ids) => (Array.isArray(ids) ? ids : []).map(String).filter((x) => /^\d{5,25}$/.test(x)).slice(0, 10);
-  handle('dcrpc:status', () => ({ configured: dr().configured(), connected: dr().connected() }));
+  handle('dcrpc:status', () => ({ configured: dr().configured(), connected: dr().connected(), messages: dr().messagesAllowed() }));
+  // Asks Discord once more (same app): adds the permission to read its message notifications.
+  handle('dcrpc:reapprove', async () => {
+    const w = discordWindow();
+    if (w && w32) setTimeout(() => fillChosenDisplay(w), 800);
+    try { await dr().reapprove(); } finally { bringBack(false); }
+    syncDiscordLive();
+    return { messages: dr().messagesAllowed() };
+  });
   handle('dcrpc:connect', async (id, secret) => {
     // Discord shows its "Authorize" box: bring Discord forward so it can be clicked.
     const w = discordWindow();
     if (w && w32) setTimeout(() => fillChosenDisplay(w), 800);
     const r = await dr().connect(id, secret);
     bringBack(false);
+    syncDiscordLive();
     return r;
   });
-  handle('dcrpc:disconnect', () => { dr().disconnect(); return true; });
+  handle('dcrpc:disconnect', () => { dr().disconnect(); syncDiscordLive(); return true; });
   handle('dcrpc:state', (ids) => dr().state(dcIds(ids)));
   handle('dcrpc:join', (id) => dr().join(String(id)));
   handle('dcrpc:leave', () => dr().leave());
@@ -2420,5 +2468,5 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => { globalShortcut.unregisterAll(); controller.stop(); padMouse.stop(); if (tvPart) tvPart.quit(); if (audioMod) audioMod.stop(); if (rawPads) rawPads.stop(); });
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => { pauser.resumeAll(); if (overlay && !overlay.isDestroyed()) overlay.destroy(); if (media) media.stop(); });
+  app.on('before-quit', () => { if (dcLive) { dcLive.stop(); dcLive = null; } if (popsPart) popsPart.close(); pauser.resumeAll(); if (overlay && !overlay.isDestroyed()) overlay.destroy(); if (media) media.stop(); });
 }

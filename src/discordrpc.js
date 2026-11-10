@@ -2,6 +2,9 @@
 // Discord's official local connection ("RPC"), through your own Discord app (made once at
 // discord.com/developers). It lets the launcher see who's in a voice call, join and leave
 // calls, and mute / deafen you. Discord asks you to approve it the first time.
+// live() keeps listening: who's in your call and who's talking right now (for the call shown on
+// screen), and Discord's message notifications (for the launcher's own pop-ups; that one needs
+// the extra "read notifications" permission, asked for when you connect or allow it again).
 //
 // Talks to the Discord app on this PC over its local pipe: each message is
 // [opcode int32 LE][length int32 LE][JSON]. Opcodes: 0 handshake, 1 frame, 2 close, 3 ping, 4 pong.
@@ -12,6 +15,7 @@ const net = require('net');
 const crypto = require('crypto');
 
 const SCOPES = ['rpc', 'rpc.voice.read', 'rpc.voice.write', 'identify'];
+const MESSAGES = 'rpc.notifications.read';
 const REDIRECT = 'http://127.0.0.1';
 
 function pipePaths() {
@@ -34,8 +38,9 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
   const file = path.join(userDataDir, 'discord-rpc.json');
   const doFetch = opts.fetch || ((...a) => fetch(...a));
   const tokenUrl = opts.tokenUrl || 'https://discord.com/api/oauth2/token';
-  let sock = null, ready = null, buf = Buffer.alloc(0), authed = false, me = null;
+  let sock = null, ready = null, buf = Buffer.alloc(0), authed = false, me = null, scopes = [];
   const pending = new Map();
+  const listeners = new Set(); // (evt, data) for everything Discord sends by itself
 
   // ----- saved app ID, secret and tokens (encrypted on this PC)
   const enc = (s) => (safeStorage && safeStorage.isEncryptionAvailable() ? { e: safeStorage.encryptString(s).toString('base64') } : { p: s });
@@ -55,7 +60,7 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
   function drop(err) {
     if (ready && ready.reject) { clearTimeout(ready.timer); const rj = ready.reject; ready.reject = null; rj(err || new Error('Discord closed the connection')); }
     if (sock) { try { sock.destroy(); } catch (_) { /* gone */ } }
-    sock = null; ready = null; authed = false; buf = Buffer.alloc(0);
+    sock = null; ready = null; authed = false; scopes = []; buf = Buffer.alloc(0);
     for (const [, p] of pending) { clearTimeout(p.t); p.reject(err || new Error('Discord closed the connection')); }
     pending.clear();
   }
@@ -71,6 +76,7 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
       if (op === 2) { drop(new Error((msg && msg.message) || 'Discord closed the connection')); return; }
       if (!msg) continue;
       if (msg.cmd === 'DISPATCH' && msg.evt === 'READY' && ready && ready.resolve) { clearTimeout(ready.timer); ready.reject = null; ready.resolve(msg.data || {}); continue; }
+      if (msg.cmd === 'DISPATCH') { if (msg.evt) for (const fn of Array.from(listeners)) { try { fn(String(msg.evt), msg.data || {}); } catch (_) { /* a listener's own trouble */ } } continue; }
       const p = msg.nonce && pending.get(msg.nonce);
       if (!p) continue;
       pending.delete(msg.nonce); clearTimeout(p.t);
@@ -113,13 +119,15 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
     p.catch(() => { if (ready === mine) drop(); });
     return p;
   }
-  function command(cmd, args, ms) {
+  // evt: only for SUBSCRIBE / UNSUBSCRIBE (which event).
+  function command(cmd, args, ms, evt) {
     if (!sock) return Promise.reject(new Error('Discord isn’t connected'));
     const nonce = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       const t = setTimeout(() => { pending.delete(nonce); reject(new Error('Discord didn’t answer')); }, ms || 10000);
       pending.set(nonce, { resolve, reject, t });
-      sock.write(encode(1, { cmd, args: args || {}, nonce }));
+      try { sock.write(encode(1, evt ? { cmd, evt, args: args || {}, nonce } : { cmd, args: args || {}, nonce })); }
+      catch (e) { pending.delete(nonce); clearTimeout(t); reject(new Error('Discord isn’t connected')); }
     });
   }
 
@@ -142,6 +150,7 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
   async function authenticate(c) {
     const d = await command('AUTHENTICATE', { access_token: c.access });
     me = d && d.user ? d.user : null;
+    scopes = Array.isArray(d && d.scopes) ? d.scopes.map(String) : [];
     authed = true;
   }
   // Connects (and signs in with the saved token, refreshing it when it has expired).
@@ -179,9 +188,15 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
     // Saved only once Discord approves, so cancelling keeps a working sign-in.
     const c = { clientId, secret, access: null, refresh: null };
     await open(clientId);
+    // With the permission to read message notifications (for the launcher's own pop-ups) when
+    // Discord gives it; if Discord refuses that one, the same as before without it.
     let code;
-    try { code = (await command('AUTHORIZE', { client_id: clientId, scopes: SCOPES }, 120000)).code; }
-    catch (e) {
+    const ask = async (list) => (await command('AUTHORIZE', { client_id: clientId, scopes: list }, 120000)).code;
+    const cancelled = (e) => /cancel|denied|reject|didn’t answer/i.test(String(e && e.message));
+    try {
+      try { code = await ask(SCOPES.concat(MESSAGES)); }
+      catch (e) { if (cancelled(e) || !sock) throw e; code = await ask(SCOPES); }
+    } catch (e) {
       if (/not.*(allow|whitelist|tester)|4000|5000/i.test(String(e.message) + ' ' + e.code)) throw new Error('Discord blocked it: add yourself under App Testers in your Discord app, then try again');
       throw new Error(/cancel|denied|reject/i.test(e.message) ? 'You didn’t approve it in Discord' : e.message);
     }
@@ -235,10 +250,99 @@ function createDiscordRpc(userDataDir, safeStorage, opts) {
     return on;
   }
 
+  // ----- live: your call as it changes, and message notifications
+  // onVoice(null | { id, name, people: [{ id, name, pic, muted, deaf, speaking }] }) on every change;
+  // onMessage({ title, body, icon }) for each Discord notification. Returns { stop() }.
+  const CALL_EVENTS = ['VOICE_STATE_CREATE', 'VOICE_STATE_UPDATE', 'VOICE_STATE_DELETE', 'SPEAKING_START', 'SPEAKING_STOP'];
+  function live(onVoice, onMessage, o) {
+    o = o || {};
+    let on = true, wired = null, msgs = null, chan = null, seq = 0, syncedAt = 0, busy = false, last = 'null';
+    let folks = new Map();
+    const talking = new Set();
+    const snapshot = () => (chan ? { id: chan.id, name: chan.name, people: Array.from(folks.values()).map((p) => Object.assign({}, p, { speaking: talking.has(p.id) })) } : null);
+    const push = () => { const v = snapshot(), s = JSON.stringify(v); if (s === last) return; last = s; try { onVoice(v); } catch (_) { /* theirs */ } };
+    const clear = () => { chan = null; folks = new Map(); talking.clear(); push(); };
+    // The call you're in is now `ch` (null: none). Listens to that channel only.
+    function setChannel(ch) {
+      const old = chan;
+      if (old && (!ch || ch.id !== old.id)) for (const e of CALL_EVENTS) command('UNSUBSCRIBE', { channel_id: old.id }, 10000, e).catch(() => {});
+      if (!ch || !ch.id) { clear(); return; }
+      const fresh = !old || old.id !== ch.id;
+      chan = { id: String(ch.id), name: String(ch.name || 'Voice').slice(0, 80) };
+      folks = new Map(people(ch.voice_states).filter((p) => p.id).map((p) => [p.id, p]));
+      for (const id of Array.from(talking)) if (!folks.has(id) || fresh) talking.delete(id);
+      push();
+      if (fresh) for (const e of CALL_EVENTS) command('SUBSCRIBE', { channel_id: chan.id }, 10000, e).catch(() => {});
+    }
+    function onEvent(evt, d) {
+      if (!on) return;
+      if (evt === 'VOICE_CHANNEL_SELECT') {
+        const mine = ++seq;
+        if (!d.channel_id) { setChannel(null); return; }
+        command('GET_CHANNEL', { channel_id: String(d.channel_id) }).then((ch) => { if (on && mine === seq && ch) setChannel(ch); }).catch(() => {});
+        return;
+      }
+      if (evt === 'NOTIFICATION_CREATE') {
+        const m = d.message || {}, a = m.author || {};
+        const title = String(d.title || a.global_name || a.username || 'Discord').replace(/\s+/g, ' ').trim().slice(0, 80);
+        const body = String(d.body || m.content || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+        const icon = /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\//.test(String(d.icon_url || '')) ? String(d.icon_url) : avatar(a);
+        if (title || body) { try { onMessage({ title: title || 'Discord', body, icon }); } catch (_) { /* theirs */ } }
+        return;
+      }
+      if (!chan) return;
+      if (d.channel_id && String(d.channel_id) !== chan.id) return; // a late one from the call you left
+      if (evt === 'VOICE_STATE_CREATE' || evt === 'VOICE_STATE_UPDATE') { const p = people([d])[0]; if (p && p.id) { folks.set(p.id, p); push(); } }
+      else if (evt === 'VOICE_STATE_DELETE') { const id = d.user && d.user.id; if (id) { folks.delete(id); talking.delete(id); push(); } }
+      else if (evt === 'SPEAKING_START') { if (d.user_id && folks.has(String(d.user_id))) { talking.add(String(d.user_id)); push(); } }
+      else if (evt === 'SPEAKING_STOP') { if (d.user_id && talking.delete(String(d.user_id))) push(); }
+    }
+    // Connects when Discord is there, listens, and looks again every so often in case an event
+    // was missed. Quiet when Discord isn't running or isn't set up.
+    async function tick() {
+      if (!on || busy) return;
+      busy = true;
+      try {
+        const c = read();
+        if (!c.clientId || !c.secret) { if (chan) clear(); return; }
+        await ensure();
+        if (!on) return;
+        const s = sock;
+        if (wired !== s) {
+          chan = null; folks = new Map(); talking.clear(); // a new connection listens to nothing yet
+          await command('SUBSCRIBE', {}, 10000, 'VOICE_CHANNEL_SELECT');
+          if (sock !== s || !on) return;
+          wired = s; syncedAt = 0;
+        }
+        // Message notifications, once Discord has given the permission (also when it is given later).
+        if (msgs !== s && scopes.includes(MESSAGES)) {
+          const ok = await command('SUBSCRIBE', {}, 10000, 'NOTIFICATION_CREATE').then(() => true, () => false);
+          if (sock !== s || !on) return;
+          if (ok) msgs = s;
+        }
+        if (Date.now() - syncedAt >= (o.resyncMs || 20000)) {
+          const mine = ++seq;
+          const sel = await command('GET_SELECTED_VOICE_CHANNEL', {});
+          if (on && sock === s && mine === seq) { syncedAt = Date.now(); setChannel(sel || null); }
+        }
+      } catch (_) {
+        if (!sock || !authed) { wired = null; if (chan) clear(); }
+      } finally { busy = false; }
+    }
+    listeners.add(onEvent);
+    const timer = setInterval(tick, o.everyMs || 4000);
+    tick();
+    return { stop() { on = false; clearInterval(timer); listeners.delete(onEvent); }, tick };
+  }
+
   return {
     configured: () => { const c = read(); return !!(c.clientId && c.secret); },
     connected: () => !!(sock && authed),
-    connect, state, join, leave, toggle,
+    // Did Discord give the permission to read message notifications?
+    messagesAllowed: () => !!(sock && authed) && scopes.includes(MESSAGES),
+    // Asks Discord again with the app you already set up (to add that permission).
+    reapprove() { const c = read(); if (!c.clientId || !c.secret) return Promise.reject(new Error('Connect Discord for calls first')); return connect(c.clientId, c.secret); },
+    connect, state, join, leave, toggle, live,
     disconnect() { drop(); try { fs.unlinkSync(file); } catch (_) { /* already gone */ } },
     close: () => drop(),
     _encode: encode
