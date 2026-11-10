@@ -1,6 +1,6 @@
 {
- "version": "1.28.3",
- "notes": "Lighter while you play. Following a Steam or Epic game no longer starts PowerShell every 3 seconds: the launcher asks Windows directly whether anything changed, and PowerShell only when a new program appears, to confirm a game has closed, and for a routine check every 5 minutes (its answer still decides, as before). Pausing a game and spotting anti-cheat use the same direct list. The launcher's screens check the controller 4 times a second instead of 60 while they aren't in use.",
- "file": "CouchLauncher-update-1.28.3.zip",
- "size": 430177
+ "version": "1.28.4",
+ "notes": "Cable TV commercials. Breaks are 2 minutes at most: a half-hour show now has three short breaks during it and one after (it had two long ones), and shows still start on the hour and half hour. Commercials play at the best quality the recording has, up to 1080p (they were fetched at 360p). Widescreen 720p+ recordings are picked first and remembered; when a channel has none, the best of the others plays as it is.",
+ "file": "CouchLauncher-update-1.28.4.zip",
+ "size": 473576
 }
