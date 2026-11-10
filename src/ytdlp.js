@@ -15,6 +15,28 @@ const DENO_ZIP = process.platform === 'win32' ? 'deno-x86_64-pc-windows-msvc.zip
   : process.platform === 'linux' && process.arch === 'x64' ? 'deno-x86_64-unknown-linux-gnu.zip' : null;
 const ASSET = process.platform === 'win32' ? 'yt-dlp.exe' : process.platform === 'darwin' ? 'yt-dlp_macos' : 'yt-dlp';
 
+// The picture on its own (H.264 first: every PC plays it without effort) plus the sound on its
+// own, both as plain links; else one file with both.
+const FORMAT = 'bv[height<=1080][vcodec^=avc1][protocol^=http]+ba[protocol^=http]/bv[height<=1080][protocol^=http]+ba[protocol^=http]/best[height<=1080][acodec!=none][vcodec!=none]/best';
+// yt-dlp's description of a video (-J) -> what the player needs (see media() below), or null.
+function pickMedia(j) {
+  if (!j || typeof j !== 'object') return null;
+  const ok = (u) => typeof u === 'string' && /^https:\/\//.test(u);
+  const has = (x) => !!x && x !== 'none';
+  const num = (n) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Math.round(Number(n)) : 0);
+  const one = (j.formats || []).filter((f) => f && ok(f.url) && has(f.vcodec) && has(f.acodec) && /^https?$/.test(String(f.protocol || '')) && num(f.height) <= 720)
+    .sort((a, b) => num(b.height) - num(a.height))[0] || null;
+  const plain = one ? one.url : null;
+  const req = Array.isArray(j.requested_formats) ? j.requested_formats.filter((f) => f && ok(f.url)) : [];
+  const video = req.find((f) => has(f.vcodec));
+  const audio = req.find((f) => f !== video && has(f.acodec) && !has(f.vcodec));
+  if (video && audio) return { url: video.url, audio: audio.url, width: num(video.width || j.width), height: num(video.height || j.height), plain };
+  if (video && has(video.acodec)) return { url: video.url, audio: null, width: num(video.width || j.width), height: num(video.height || j.height), plain: plain || video.url };
+  if (ok(j.url)) return { url: j.url, audio: null, width: num(j.width), height: num(j.height), plain: plain || j.url };
+  if (one) return { url: one.url, audio: null, width: num(one.width), height: num(one.height), plain: one.url };
+  return null;
+}
+
 function createYtdlp(binDir) {
   const exe = path.join(binDir, ASSET);
   let installing = null;
@@ -131,24 +153,37 @@ function createYtdlp(binDir) {
     try { j = JSON.parse(out); } catch (_) { return []; }
     return (j.entries || []).filter((e) => e && /^[\w-]{11}$/.test(e.id || '')).map((e) => ({ id: e.id, title: String(e.title || '').slice(0, 160), duration: Number(e.duration) || 0 }));
   }
-  // A link the player can open directly (one file with picture and sound, 720p at most).
-  async function directUrl(id) {
+  // What the player needs to play a YouTube video:
+  //   { url, audio, width, height, plain }
+  // url: the picture, as good as the upload has, up to 1080p. YouTube keeps picture and sound
+  // apart above 360p, so `audio` is the sound's own link (null when `url` already has it).
+  // plain: one file with picture and sound (360p these days), for a player that can't take the
+  // two apart, or null.
+  async function media(id) {
     if (!/^[\w-]{11}$/.test(id)) throw new Error('Bad video id');
     await install();
     const js = await runtime();
-    const args = (js ? ['--js-runtimes', 'deno:' + deno] : []).concat(['-g', '--no-warnings', '--no-playlist', '-f', 'best[height<=720][acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]/best', 'https://www.youtube.com/watch?v=' + id]);
-    let out;
-    try { out = await run(args, 60000); } catch (e) {
-      // Without the JavaScript engine YouTube refuses every video: say that, not YouTube's vague reason.
-      const real = !js && DENO_ZIP ? new Error('the JavaScript engine yt-dlp needs couldn’t be set up' + (denoWhy ? ': ' + denoWhy : '')) : e;
-      if (!(await update())) throw real;
-      try { out = await run(args, 60000); } catch (e2) { throw !js && DENO_ZIP ? real : e2; }
-    }
+    const base = (js ? ['--js-runtimes', 'deno:' + deno] : []).concat(['--no-warnings', '--no-playlist']);
+    const page = 'https://www.youtube.com/watch?v=' + id;
+    const ask = async (args) => {
+      try { return await run(base.concat(args, page), 60000); } catch (e) {
+        // Without the JavaScript engine YouTube refuses every video: say that, not YouTube's vague reason.
+        const real = !js && DENO_ZIP ? new Error('the JavaScript engine yt-dlp needs couldn’t be set up' + (denoWhy ? ': ' + denoWhy : '')) : e;
+        if (!(await update())) throw real;
+        try { return await run(base.concat(args, page), 60000); } catch (e2) { throw !js && DENO_ZIP ? real : e2; }
+      }
+    };
+    let found = null;
+    try { found = pickMedia(JSON.parse(await ask(['-J', '-f', FORMAT]))); } catch (e) { found = null; if (/JavaScript engine|couldn’t be reached|sign in/i.test(String(e && e.message))) throw e; }
+    if (found) return found;
+    // Anything unexpected in that answer: the simple way it always worked (one file, 360p to 720p).
+    const out = await ask(['-g', '-f', 'best[height<=720][acodec!=none][vcodec!=none]/best[acodec!=none][vcodec!=none]/best']);
     const url = out.split(/\r?\n/).map((l) => l.trim()).find((l) => /^https:\/\//.test(l));
     if (!url) throw new Error('No playable link');
-    return url;
+    return { url, audio: null, width: 0, height: 0, plain: url };
   }
-  return { install, runtime, search, directUrl, update, get installed() { return have(); }, exe };
+  const directUrl = async (id) => { const m = await media(id); return m.plain || m.url; };
+  return { install, runtime, search, media, directUrl, update, get installed() { return have(); }, exe };
 }
 
-module.exports = { createYtdlp };
+module.exports = { createYtdlp, pickMedia, FORMAT };

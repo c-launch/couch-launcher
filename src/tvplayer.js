@@ -302,7 +302,9 @@ function startMpv(exe, o) {
       if (!sock) { queuedSubs = queuedSubs.concat(subs).slice(0, 25); return; }
       for (const s of subs) cmd('sub-add', s.url, 'auto', s.lang || 'sub', s.lang || '').catch(() => {});
     },
-    load: (url, title, startAt) => {
+    // extra.audio: the sound's own link (YouTube keeps picture and sound apart above 360p).
+    // Rejects with code NO_SEPARATE_AUDIO when this mpv won't take one: load the plain link then.
+    load: (url, title, startAt, extra) => {
       eof = false; state.pos = 0; state.dur = 0;
       cmd('set_property', 'force-media-title', String(title || '')).catch(() => {});
       // Where this file starts, set every time: otherwise mpv keeps the start it was opened with,
@@ -312,7 +314,12 @@ function startMpv(exe, o) {
       return cmd('set_property', 'options/start', start)
         .catch(() => cmd('set_property', 'options/start', startAt > 5 ? start : '0'))
         .catch(() => null)
-        .then(() => cmd('loadfile', url, 'replace'));
+        // Set every time as well: an episode loaded after a commercial must not get its sound.
+        .then(() => cmd('set_property', 'options/audio-files', extra && extra.audio ? [String(extra.audio)] : []).then(() => true, () => false))
+        .then((took) => {
+          if (extra && extra.audio && !took) throw Object.assign(new Error('This mpv can’t play picture and sound from two links'), { code: 'NO_SEPARATE_AUDIO' });
+          return cmd('loadfile', url, 'replace');
+        });
     },
     quit: () => {
       if (exited) return;

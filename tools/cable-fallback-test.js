@@ -11,10 +11,11 @@ const loads = [];
 const SUBS = [];
 const DEAD = new Set(), SILENT = new Set(), SHORT = new Set(), NOTICEV = new Set(); let lookups = [];
 let mpvCount = 0;
+const PLAYER = { noTwo: false, mute: false };
 function fakeMpv(url, title, at) {
   const m = new EventEmitter();
   m.alive = true; m.paused = false; mpvCount++;
-  m.load = async (u, t, a) => { loads.push({ u, t, a }); m.paused = false; if (![...SILENT].some((x) => u.endsWith(x))) setTimeout(() => m.emit('time', { pos: (a || 0) + 0.5, dur: [...SHORT].some((x) => u.endsWith(x)) ? 20 : u.includes('ep') ? 1320 : 900 }), 5); };
+  m.load = async (u, t, a, x) => { if (x && x.audio && PLAYER.noTwo) throw Object.assign(new Error('no'), { code: 'NO_SEPARATE_AUDIO' }); loads.push({ u, t, a, audio: (x && x.audio) || null }); m.paused = false; setTimeout(() => m.emit('tracks', { subs: [], audio: x && x.audio && PLAYER.mute ? [] : [{ id: 1, label: 'a', lang: '', selected: true }] }), 8); if (![...SILENT].some((x) => u.endsWith(x))) setTimeout(() => m.emit('time', { pos: (a || 0) + 0.5, dur: [...SHORT].some((x) => u.endsWith(x)) ? 20 : u.includes('ep') ? 1320 : 900 }), 5); };
   m.pause = (p) => { m.paused = !!p; return Promise.resolve(); };
   m.quit = () => { m.alive = false; };
   m.setSub = (id) => { SUBS.push(id); }; m.addSubs = () => {};
@@ -25,7 +26,7 @@ function fakeMpv(url, title, at) {
 }
 require.cache[require.resolve(SRC + 'tvplayer.js')] = { exports: { createEngine: () => ({ available: () => true, torrentUrl: async () => 'http://torrent' }), startMpv: (exe, o) => fakeMpv(o.url, o.title, o.startAt), extrasOk: async () => true, findMpv: () => 'C:\\mpv.exe' } };
 const YT = { searches: 0, direct: [], fail: false };
-require.cache[require.resolve(SRC + 'ytdlp.js')] = { exports: { createYtdlp: () => ({ install: async () => 'x', search: async (q) => { YT.searches++; if (YT.fail) throw new Error('offline'); const w = q.split(' commercial')[0]; return [1, 2, 3].map((i) => ({ id: (w.replace(/\W/g, '') + 'aaaaaaaaaaa').slice(0, 10) + i, title: w + ' commercial break 201' + i, duration: 900 })); }, directUrl: async (id) => { YT.direct.push(id); return 'https://yt/' + id; } }) } };
+require.cache[require.resolve(SRC + 'ytdlp.js')] = { exports: { createYtdlp: () => ({ install: async () => 'x', search: async (q) => { YT.searches++; if (YT.fail) throw new Error('offline'); const w = q.split(' commercial')[0]; return [1, 2, 3].map((i) => ({ id: (w.replace(/\W/g, '') + 'aaaaaaaaaaa').slice(0, 10) + i, title: w + ' commercial break 201' + i, duration: 900 })); }, media: async (id) => { YT.direct.push(id); if (YT.media) { const m = YT.media(id); if (m instanceof Error) throw m; if (m) return m; } return { url: 'https://yt/' + id, audio: null, width: 1280, height: 720, plain: 'https://yt/' + id }; } }) } };
 const showsFor = (q) => [{ type: 'series', items: [{ id: 'tt' + (Math.abs([...q].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)) % 1e7), name: q, releaseInfo: '2010–2014', type: 'series' }] }];
 require.cache[require.resolve(SRC + 'stremio.js')] = { exports: Object.assign({}, require(SRC + 'stremio.js'), {
   createStremio: () => ({
@@ -161,7 +162,8 @@ const step = async (sec) => { NOW += sec * 1000; await wait(320); };
   assert.ok(l9.u.startsWith('https://ep/') && l9.u !== l8.u && mpvCount === count && global.__mpv.alive, 'dead link: another episode, same player: ' + JSON.stringify(l9));
   assert.ok(!sent.some(([ch]) => ch === 'tv:ended'), 'not kicked out of the channel');
   // a commercial that can't be opened: another one, then the plain break card
-  await step(475 - 3); await wait(200);
+  { const on = handlers['tv:cableGuide'](NOW, NOW + 60e3).channels.find((x) => x.id === 'cn').programs.find((x) => x.start <= NOW && x.end > NOW);
+    await step(335 - Math.round((NOW - on.start) / 1000)); await wait(200); } // 5 s into the slot's first break (330 s in)
   assert.strictEqual(lastHud().part, 'ad');
   const a1 = loads.length;
   global.__mpv.emit('failed', ''); await wait(700);
@@ -185,6 +187,51 @@ const step = async (sec) => { NOW += sec * 1000; await wait(320); };
   sent.length = 0; await handlers['tv:cableTune']('nick'); await wait(400); cnt = mpvCount;
   global.__mpv.alive = false; global.__mpv.emit('exit', { code: 0 }); await wait(400);
   assert.ok(mpvCount === cnt && sent.some(([ch]) => ch === 'tv:ended'), 'closed by you: ends');
+  // 9) commercials: widescreen HD first, picture and sound together, and every way that can go wrong
+  {
+    const chan = (id) => handlers['tv:cableGuide'](NOW, NOW + 60e3).channels.find((x) => x.id === id).programs.find((x) => x.start <= NOW && x.end > NOW);
+    // (three recordings per channel here: …1 is a 4:3 box, …2 is 1080p widescreen in two links, …3 a small one-file box)
+    YT.media = (id) => (id.endsWith('1') ? { url: 'https://yt/v/' + id, audio: 'https://yt/a/' + id, width: 640, height: 480, plain: 'https://yt/p/' + id }
+      : id.endsWith('2') ? { url: 'https://yt/v/' + id, audio: 'https://yt/a/' + id, width: 1920, height: 1080, plain: 'https://yt/p/' + id }
+      : { url: 'https://yt/p/' + id, audio: null, width: 480, height: 360, plain: 'https://yt/p/' + id });
+    const toBreak = async (id, n) => { const on = chan(id); const at = [330, 780, 1230, 1680][n]; await step(at - 30 - Math.round((NOW - on.start) / 1000)); await wait(350); await step(35); await wait(250); return loads[loads.length - 1]; };
+    NOW += 31 * 60e3; sent.length = 0; YT.direct.length = 0;
+    await handlers['tv:cableTune']('nick'); await wait(400);
+    let ad = await toBreak('nick', 0);
+    assert.ok(/^https:\/\/yt\/v\/.*2$/.test(ad.u) && /^https:\/\/yt\/a\/.*2$/.test(ad.audio || ''), 'the widescreen 1080p one plays, picture and sound together: ' + JSON.stringify(ad));
+    assert.strictEqual(lastHud().part, 'ad');
+    // back to the show: its sound must not be the commercial's
+    await step(125); await wait(250);
+    let back = loads[loads.length - 1];
+    assert.ok(back.u.startsWith('https://ep/') && back.audio === null, 'the show loads without the commercial’s sound: ' + JSON.stringify(back));
+    // next break: the good one is remembered (opened once, not searched for again)
+    let d0 = YT.direct.length; ad = await toBreak('nick', 1);
+    assert.ok(/2$/.test(ad.u) && ad.audio && YT.direct.length - d0 <= 2, 'the good one again: ' + (YT.direct.length - d0) + ' lookups');
+    await step(125); await wait(250); d0 = YT.direct.length; ad = await toBreak('nick', 2);
+    assert.ok(/2$/.test(ad.u) && YT.direct.length - d0 === 1, 'all three are known by now: opened straight away (' + (YT.direct.length - d0) + ' lookup)');
+    // the sound's link doesn't open: the same commercial from its one-file link, from where it was
+    await step(125); await wait(250); PLAYER.mute = true;
+    ad = await toBreak('nick', 3);
+    assert.ok(ad.audio, 'played as two links first');
+    await wait(6300);
+    let again = loads[loads.length - 1];
+    assert.ok(/^https:\/\/yt\/p\/.*2$/.test(again.u) && again.audio === null && again.a >= ad.a, 'no sound: reloaded from the one-file link: ' + JSON.stringify(again));
+    PLAYER.mute = false;
+    // a player that won't take two links at all: the one-file link, and it isn't tried again
+    NOW += 31 * 60e3; await handlers['tv:cableTune']('cn'); await wait(400); PLAYER.noTwo = true;
+    ad = await toBreak('cn', 0);
+    assert.ok(/^https:\/\/yt\/p\/.*2$/.test(ad.u) && ad.audio === null && lastHud().part === 'ad', 'one-file link when two can’t be played: ' + JSON.stringify(ad));
+    await step(125); await wait(250); PLAYER.noTwo = false; // (even if it could now: remembered for this run)
+    ad = await toBreak('cn', 1);
+    assert.ok(/^https:\/\/yt\/p\//.test(ad.u) && ad.audio === null, 'not tried again');
+    // a channel with only box recordings: the best of them plays as it is
+    YT.media = (id) => (id.endsWith('1') ? { url: 'https://yt/p/' + id, audio: null, width: 640, height: 480, plain: 'https://yt/p/' + id } : id.endsWith('2') ? { url: 'https://yt/p/' + id, audio: null, width: 320, height: 240, plain: 'https://yt/p/' + id } : new Error('This video is not available'));
+    NOW += 31 * 60e3; await handlers['tv:cableTune']('disney'); await wait(400);
+    ad = await toBreak('disney', 0);
+    assert.ok(/^https:\/\/yt\/p\/.*1$/.test(ad.u) && lastHud().part === 'ad', 'only boxes: the 480p one, as it is: ' + JSON.stringify(ad));
+    YT.media = null;
+    assert.ok(!sent.some(([ch]) => ch === 'tv:ended'), 'still watching through all of it');
+  }
   handlers['tv:stop'] && await handlers['tv:stop']();
   console.log('cable fallback ok');
   process.exit(0);

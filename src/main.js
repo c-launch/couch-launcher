@@ -2605,6 +2605,53 @@ if (!app.requestSingleInstanceLock()) {
             return seen && diff <= 6 && !!after && !after.includes(child.pid) && !after.includes(kid.pid);
           } finally { try { kid.kill(); } catch (_) { /* gone */ } trackers.delete(sys); }
         });
+        // The real player (mpv, downloaded the way the launcher does it) with three tiny clips:
+        // it starts with the launcher's switches, plays picture and sound from two files, drops
+        // that sound again for the next file, and stays open when a file can't be opened.
+        if (process.env.COUCH_SELFTEST_MPV !== '0') {
+          const tvp = require('./tvplayer');
+          const ud = app.getPath('userData');
+          let mpv = null;
+          const until = async (fn, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return true; await wait(150); } return !!fn(); };
+          try {
+            let exe = null;
+            await step('mpvGot', async () => { exe = tvp.findMpv(process.env, null, ud) || await tvp.downloadMpv(ud); return !!exe && fs.existsSync(exe); });
+            const clips = path.join(ud, 'selftest-clips');
+            fs.mkdirSync(clips, { recursive: true });
+            for (const f of ['wide.mp4', 'tone.m4a', 'box.mp4']) fs.writeFileSync(path.join(clips, f), fs.readFileSync(path.join(__dirname, 'selftest', f)));
+            await step('mpvSwitches', () => tvp.extrasOk(exe));
+            let pos = 0, tracks = { audio: [], subs: [] }, failed = 0, exited = false;
+            await step('mpvStart', async () => {
+              mpv = tvp.startMpv(exe, { url: path.join(clips, 'box.mp4'), title: 'Couch Launcher self-test', startAt: 0, rect: { x: 40, y: 40, width: 640, height: 360 }, subLang: 'en,eng', idle: true });
+              mpv.on('time', (t) => { pos = t.pos; }); mpv.on('tracks', (t) => { tracks = t; }); mpv.on('failed', () => { failed++; }); mpv.on('exit', () => { exited = true; });
+              return (await until(() => pos > 0.2, 25000)) && tracks.audio.length === 1;
+            });
+            await step('mpvTwoFiles', async () => {
+              pos = 0; tracks = { audio: [], subs: [] };
+              await mpv.load(path.join(clips, 'wide.mp4'), 'two files', 0, { audio: path.join(clips, 'tone.m4a') });
+              mpv.pause(false);
+              const ok = await until(() => pos > 0.2 && tracks.audio.length === 1, 15000);
+              winRes.mpvTwoInfo = { pos, audio: tracks.audio.length };
+              return ok;
+            });
+            await step('mpvSoundDropped', async () => {
+              pos = 0; tracks = { audio: [{}, {}, {}], subs: [] };
+              await mpv.load(path.join(clips, 'wide.mp4'), 'picture only', 0);
+              mpv.pause(false);
+              await until(() => pos > 0.2, 15000); await wait(800);
+              winRes.mpvDropInfo = { pos, audio: tracks.audio.length };
+              return pos > 0.2 && tracks.audio.length === 0; // the picture-only clip has no sound of its own
+            });
+            await step('mpvBadFile', async () => {
+              await mpv.load(path.join(clips, 'not-there.mp4'), 'missing', 0);
+              const ok = await until(() => failed > 0, 10000);
+              await wait(500);
+              return ok && !exited && mpv.alive !== false;
+            });
+            await step('mpvPlaysAfter', async () => { pos = 0; await mpv.load(path.join(clips, 'box.mp4'), 'again', 0); mpv.pause(false); return until(() => pos > 0.2, 15000); });
+          } catch (e) { winRes.mpvError = String(e && e.message || e).slice(0, 200); }
+          finally { try { if (mpv) mpv.quit(); } catch (_) { /* gone */ } }
+        }
         await step('guard', () => { if (!guard) return false; guard.tick(); return guard.wantsPause() === false; });
         await step('pops', async () => { notify('Self-test', 'A pop-up from the build check.'); await wait(2500); return !!popsPart && popsPart.state.shown.length === 1; });
         await step('errors', () => { try { return fs.readFileSync(path.join(app.getPath('userData'), 'errors.log'), 'utf8').slice(-1500); } catch (_) { return ''; } });
@@ -2625,7 +2672,7 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 19000);
       setTimeout(async () => {
         // (Windows: its checks get up to a minute to finish.)
-        for (let i = 0; i < 80 && winRes.ran && !winRes.done; i++) await wait(500);
+        for (let i = 0; i < 400 && winRes.ran && !winRes.done; i++) await wait(500);
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
         try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, placements: placeCount, win: winRes, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }
