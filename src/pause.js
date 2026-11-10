@@ -5,7 +5,7 @@
 const { execFile } = require('child_process');
 
 function createPauser() {
-  const off = { available: false, async pause() {}, resumeAll() {}, isPaused: () => false };
+  const off = { available: false, async pause() {}, resumeAll() {}, resumeAfterPending: async () => {}, isPaused: () => false, has: () => false };
   if (process.platform === 'darwin') return createMacPauser();
   if (process.platform !== 'win32') return off;
   let api;
@@ -54,6 +54,7 @@ function createPauser() {
   return {
     available: true,
     isPaused: () => paused.size > 0,
+    has: (pid) => paused.has(pid),
     // stillWanted(): checked again right before pausing, in case you went back to the game meanwhile.
     pause(rootPids, stillWanted) {
       busy = busy.then(async () => {
@@ -97,6 +98,7 @@ function createMacPauser() {
   return {
     available: true,
     isPaused: () => paused.size > 0,
+    has: (pid) => paused.has(pid),
     pause(rootPids, stillWanted) {
       busy = busy.then(async () => {
         if (!rootPids.filter(Boolean).length) return;

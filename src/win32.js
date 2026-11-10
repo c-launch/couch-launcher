@@ -23,6 +23,15 @@ function createWin32() {
     const AttachThreadInput = u.func('__stdcall', 'AttachThreadInput', 'bool', ['uint32', 'uint32', 'bool']);
     const BringWindowToTop = u.func('__stdcall', 'BringWindowToTop', 'bool', ['uintptr_t']);
     const ShowWindow = u.func('__stdcall', 'ShowWindow', 'bool', ['uintptr_t', 'int']);
+    // Other programs' windows are only ever asked, never waited for: a game that is frozen or
+    // hung can't answer, and waiting for it would freeze the launcher (guide button and all).
+    const ShowWindowAsync = u.func('__stdcall', 'ShowWindowAsync', 'bool', ['uintptr_t', 'int']);
+    let IsHungAppWindow = null;
+    try { IsHungAppWindow = u.func('__stdcall', 'IsHungAppWindow', 'bool', ['uintptr_t']); } catch (_) { IsHungAppWindow = null; }
+    const pidOfWindow = (h) => { const p = [0]; GetWindowThreadProcessId(h, p); return p[0]; };
+    const isOwn = (h) => pidOfWindow(h) === process.pid;
+    const showWin = (h, how) => (isOwn(h) ? ShowWindow(h, how) : ShowWindowAsync(h, how));
+    const ASYNC = 0x4000; // SWP_ASYNCWINDOWPOS
     const FindWindowExW = u.func('__stdcall', 'FindWindowExW', 'uintptr_t', ['uintptr_t', 'uintptr_t', 'str16', 'str16']);
     const IsWindowVisible = u.func('__stdcall', 'IsWindowVisible', 'bool', ['uintptr_t']);
     const IsIconic = u.func('__stdcall', 'IsIconic', 'bool', ['uintptr_t']);
@@ -101,27 +110,33 @@ function createWin32() {
         if (!QueryNotify) return false;
         try { const st = [0]; return QueryNotify(st) === 0 && st[0] === 3; } catch (_) { return false; }
       },
-      minimize: (h) => ShowWindow(h, 6), // SW_MINIMIZE
-      restore: (h) => ShowWindow(h, 9),  // SW_RESTORE
+      minimize: (h) => showWin(h, 6), // SW_MINIMIZE
+      restore: (h) => showWin(h, 9),  // SW_RESTORE
       focus: (h) => SetForegroundWindow(h),
       // Takes focus even from the background: briefly share input with the program that has focus,
       // take it, then stop sharing. No fake key presses.
       // isGentle (set by the app): while an anti-cheat game runs, never share input with it.
+      // isFrozen(pid) (set by the app): a program the launcher paused. Input is never shared with
+      // one, nor with a window Windows reports as not responding: the launcher would hang with it.
       isGentle: null,
+      isFrozen: null,
       forceForeground(h) {
+        const top = () => { if (isOwn(h)) BringWindowToTop(h); else SetWindowPos(h, 0, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | ASYNC); };
         const fg = GetForegroundWindow();
-        if (!fg || Number(fg) === h || (typeof this.isGentle === 'function' && this.isGentle())) { BringWindowToTop(h); SetForegroundWindow(h); return; }
+        if (!fg || Number(fg) === h || (typeof this.isGentle === 'function' && this.isGentle())) { top(); SetForegroundWindow(h); return; }
         const pid = [0];
         const fgThread = GetWindowThreadProcessId(fg, pid);
         const me = GetCurrentThreadId();
-        const attached = fgThread && fgThread !== me && AttachThreadInput(me, fgThread, true);
-        try { BringWindowToTop(h); SetForegroundWindow(h); }
+        let stuck = false;
+        try { stuck = !!(IsHungAppWindow && IsHungAppWindow(fg)) || (typeof this.isFrozen === 'function' && !!this.isFrozen(pid[0])); } catch (_) { stuck = false; }
+        const attached = !stuck && fgThread && fgThread !== me && AttachThreadInput(me, fgThread, true);
+        try { top(); SetForegroundWindow(h); }
         finally { if (attached) AttachThreadInput(me, fgThread, false); }
       },
       // Moves and sizes a window (physical pixels) without changing focus or stacking.
       move(h, x, y, w, ht) {
-        if (IsZoomed(h)) ShowWindow(h, 9); // un-maximize first, or Windows snaps it back
-        return SetWindowPos(h, 0, x, y, w, ht, 0x4 | 0x10 | 0x20); // NOZORDER | NOACTIVATE | FRAMECHANGED
+        if (IsZoomed(h)) showWin(h, 9); // un-maximize first, or Windows snaps it back
+        return SetWindowPos(h, 0, x, y, w, ht, 0x4 | 0x10 | 0x20 | (isOwn(h) ? 0 : ASYNC)); // NOZORDER | NOACTIVATE | FRAMECHANGED
       },
       rect(h) {
         const r = {};
@@ -156,9 +171,9 @@ function createWin32() {
       },
       // Moves a window onto a screen area (physical pixels) and maximizes it there.
       fill(h, area, focus) {
-        if (IsIconic(h) || IsZoomed(h)) ShowWindow(h, 9); // restore first, or Windows keeps the old spot
-        SetWindowPos(h, 0, area.x + 60, area.y + 60, Math.max(480, area.width - 120), Math.max(360, area.height - 120), 0x4 | 0x10);
-        ShowWindow(h, 3); // SW_MAXIMIZE, on the monitor it's now on
+        if (IsIconic(h) || IsZoomed(h)) showWin(h, 9); // restore first, or Windows keeps the old spot
+        SetWindowPos(h, 0, area.x + 60, area.y + 60, Math.max(480, area.width - 120), Math.max(360, area.height - 120), 0x4 | 0x10 | (isOwn(h) ? 0 : ASYNC));
+        showWin(h, 3); // SW_MAXIMIZE, on the monitor it's now on
         if (focus !== false) this.forceForeground(h);
       },
       isZoomed: (h) => !!IsZoomed(h),
@@ -186,8 +201,8 @@ function createWin32() {
       close: (h) => PostMessageW(h, 0x10, 0, 0),
       // Un-minimizes a window and brings it to the front.
       show(h) {
-        if (IsIconic(h)) ShowWindow(h, 9); // SW_RESTORE
-        else ShowWindow(h, 5); // SW_SHOW
+        if (IsIconic(h)) showWin(h, 9); // SW_RESTORE
+        else showWin(h, 5); // SW_SHOW
         this.forceForeground(h);
         return true;
       },

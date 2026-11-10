@@ -1,6 +1,6 @@
 {
- "version": "1.27.6",
- "notes": "Cable TV: a link that can't be opened no longer closes the channel. The player stays open and another episode (or another commercial) goes on.",
- "file": "CouchLauncher-update-1.27.6.zip",
- "size": 403123
+ "version": "1.27.7",
+ "notes": "Guide and controller fixes for games. The guide can no longer leave a game frozen in front (GTA V: guide, Windows key and controller all seemed dead until Alt+Tab). The launcher no longer reads the controller or pulls the screen back while a game is in front, and a game handed the screen back really gets it (Fortnite). Controller-as-mouse is off while an anti-cheat game runs, and leftover virtual controllers are removed when a game starts.",
+ "file": "CouchLauncher-update-1.27.7.zip",
+ "size": 407078
 }

@@ -9,6 +9,7 @@ const { createControllerWatcher, loadXInput, readPads } = require('./hotkey');
 const { asGamepad } = require('./macpads');
 const anticheat = require('./anticheat');
 const { createPadMouse } = require('./padmouse');
+const { createFocusGuard } = require('./focusguard');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
 const { createDiscordRpc } = require('./discordrpc');
@@ -112,7 +113,7 @@ if (!app.requestSingleInstanceLock()) {
   // or when it starts with the computer). Without focus the screen can't read the controller
   // itself, so everything, the guide included, seemed to stop working.
   // wantFront: the launcher asked to be in front (and hasn't been left for another app since).
-  let wantFront = true, lastFocusTry = 0;
+  let wantFront = true, lastFocusTry = 0, frontAskedAt = 0;
   // Anything the launcher opens (a store, a link, a program) is where you're going next.
   for (const k of ['openExternal', 'openPath']) {
     try { const orig = shell[k].bind(shell); shell[k] = (...args) => { wantFront = false; return orig(...args); }; } catch (_) { /* left as is */ }
@@ -131,6 +132,19 @@ if (!app.requestSingleInstanceLock()) {
     }
     if (!wantFront || !win || win.isDestroyed() || !win.isVisible() || win.isMinimized() || win.isFocused()) return;
     if ((tvPart && tvPart.playing) || (yt && yt.isShown())) return;
+    // A game is running and its window is in front: the controller is the game's. Without this the launcher, sitting behind the game, kept reading
+    // the controller and pulling the screen back every few seconds, so the game lost the
+    // controller. (Only just after the launcher itself asked to come to the front does it insist.)
+    if (running && w32) {
+      let fg = null;
+      try { fg = w32.foreground(); } catch (_) { fg = null; }
+      if (fg && fg.pid !== process.pid) {
+        const r = running, since = Date.now() - frontAskedAt;
+        const known = (r.child && r.child.pid === fg.pid) || r.gamePid === fg.pid || (r.pids || []).includes(fg.pid) || fg.hwnd === r.gameHwnd || fg.hwnd === r.backTo || pauser.has(fg.pid);
+        const untracked = !r.child && !(r.pids || []).length && !r.gameHwnd; // a shortcut: its window can't be told apart
+        if ((known && since > 1500) || (untracked && since > 5000)) { wantFront = false; return; }
+      }
+    }
     send('pad:ext', gp);
     // Keep asking for the focus now and then; the keyboard and mouse need it.
     const now = Date.now();
@@ -211,9 +225,13 @@ if (!app.requestSingleInstanceLock()) {
   }
   const pauser = createPauser();
   // Controller as a mouse in Apple Music / Spotify (setting, on by default).
-  const padMouse = createPadMouse(loadXInput, () => !(lib && lib.settings && lib.settings.musicMouse === false));
+  // (Never while an anti-cheat game runs: a pointer and keys moved by a program are what those
+  // games kick for, and Fortnite switches to mouse-and-keyboard controls when it sees them.)
+  const padMouse = createPadMouse(loadXInput, () => !(lib && lib.settings && lib.settings.musicMouse === false) && !(running && running.protected));
   const w32 = createWin32();
   if (w32) w32.isGentle = () => !!(running && running.protected);
+  // A paused game's windows can't answer: never share input with one (the launcher would freeze too).
+  if (w32) w32.isFrozen = (pid) => pauser.has(pid);
 
   // Pause the game whenever the guide or the launcher is in front of it (setting, on by default).
   const wantPause = () => {
@@ -224,9 +242,39 @@ if (!app.requestSingleInstanceLock()) {
     return overlayShown() || !!(win && !win.isDestroyed() && win.isFocused());
   };
   function updatePause() {
+    if (guard) { guard.tick(); return; }
     if (wantPause()) pauser.pause(running.child ? [running.child.pid] : (running.pids || []), wantPause);
     else pauser.resumeAfterPending();
   }
+  // Windows: who really has the screen is checked several times a second while a game runs
+  // (focusguard.js), so a frozen game is never left in front, the guide never sits over a game
+  // that kept the screen, and a game handed the screen back really gets it.
+  let overlayOpenedAt = 0;
+  const guard = !w32 ? null : createFocusGuard({
+    now: Date.now, self: process.pid,
+    foreground: () => w32.foreground(),
+    game: () => {
+      const r = running;
+      if (!r || (tvPart && tvPart.playing) || (yt && yt.isShown())) return null;
+      return {
+        pids: [r.child ? r.child.pid : 0, r.gamePid || 0].concat(r.pids || []).filter(Boolean),
+        hwnds: [r.backTo, r.gameHwnd].filter(Boolean),
+        pausable: !!r.started && !r.closing && !r.protected && pauser.available && !(lib && lib.settings && lib.settings.pauseGame === false)
+      };
+    },
+    overlay: () => (overlayShown() ? { hwnd: w32.hwndOf(overlay), openedAt: overlayOpenedAt } : null),
+    launcherShown: () => !!(win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()),
+    isPaused: () => pauser.isPaused(),
+    isPausedPid: (pid) => pauser.has(pid),
+    pause: () => { const r = running; return pauser.pause(r.child ? [r.child.pid] : (r.pids || []), () => running === r && guard.wantsPause()); },
+    // At once (a frozen game must not stay in front), and again after a pause still being set up.
+    resume: () => { pauser.resumeAll(); pauser.resumeAfterPending(); },
+    stepAside: () => { if (running) guideInLauncher(running); },
+    dropOverlay: () => hideOverlay(false),
+    focusGame: (h) => { if (w32.exists(h)) w32.forceForeground(h); },
+    minimizeLauncher: () => { if (running && win && !win.isDestroyed() && !win.isMinimized()) win.minimize(); }
+  });
+  if (guard) setInterval(() => { if (running || pauser.isPaused()) guard.tick(); }, 150);
 
   function send(channel, payload) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -270,6 +318,8 @@ if (!app.requestSingleInstanceLock()) {
         if (fg && fg.pid !== process.pid && !(overlay && !overlay.isDestroyed() && fg.hwnd === w32.hwndOf(overlay))) running.backTo = fg.hwnd;
       } catch (_) { /* fine */ }
     }
+    overlayOpenedAt = Date.now();
+    if (guard) guard.cancelExpect();
     overlay.setBounds(targetDisplay().bounds);
     overlay.webContents.send('overlay:open', { gameId: running ? running.gameId : null, canClose: canClose(), tv: tvPart && tvPart.playing ? tvPart.now() : null, yt: ytGuide });
     // Mac: the launcher steps aside (app.hide) when you go back to a game, and a hidden app's
@@ -315,12 +365,13 @@ if (!app.requestSingleInstanceLock()) {
     if (!h) return;
     r.gameHwnd = h;
     w32.forceForeground(h);
-    // Ask once more a moment later, in case the game was still waking up.
-    setTimeout(() => { try { const fg = w32.foreground(); if (running === r && w32.exists(h) && (!fg || fg.hwnd !== h)) w32.forceForeground(h); } catch (_) { /* fine */ } }, 250);
+    // Checked again over the next moments, until the game really has the screen.
+    if (guard) guard.expectGame(h);
   }
   // Xbox button / View + Menu / Ctrl+Alt+Home.
   function guidePressed() {
     if (!win || win.isDestroyed()) return;
+    if (guard) guard.cancelExpect(); // whatever happens next is what you asked for
     // Watching something: stop there (your spot is saved) and come back with the guide open.
     // Watching something: it pauses and the guide opens over it; closing the guide carries on.
     if (tvPart && tvPart.playing) {
@@ -343,8 +394,7 @@ if (!app.requestSingleInstanceLock()) {
       // Exclusive full screen: nothing can float over the game, so step it aside and open the
       // guide on the launcher's own screen instead (Resume brings the game back).
       if (running.exclusive || (w32 && w32.exclusiveFullScreen())) { guideInLauncher(running); return; }
-      showOverlay();
-      checkOverlayKept(running);
+      showOverlay(); // (focusguard.js watches whether the game lets the guide keep the screen)
       return;
     }
     if (!win.isFocused()) {
@@ -357,6 +407,8 @@ if (!app.requestSingleInstanceLock()) {
 
   function guideInLauncher(r) {
     r.exclusive = true;
+    if (guard) guard.cancelExpect();
+    pauser.resumeAll(); // a frozen game can't step aside
     if (overlayShown()) { overlay.webContents.send('overlay:closed'); overlay.hide(); }
     if (w32) {
       try {
@@ -368,21 +420,9 @@ if (!app.requestSingleInstanceLock()) {
     }
     setTimeout(() => { if (running === r) bringBack(true); }, 150);
   }
-  // Some games in exclusive full screen take the screen right back, so the guide flickers and
-  // goes away. If that happens, use the launcher's own screen for this game from now on.
-  // Windows decides who's in front, not Electron: a game can keep the screen while Electron still
-  // thinks the guide has the focus (GTA V does, and anti-cheat games, which we don't push aside).
-  // Then the guide flickers and can't be controlled, so the game steps aside instead.
-  function checkOverlayKept(r) {
-    const check = () => {
-      if (running !== r || r.exclusive || !overlayShown() || !overlay || overlay.isDestroyed()) return;
-      let fg = null;
-      try { fg = w32 && w32.foreground(); } catch (_) { fg = null; }
-      if (fg && fg.pid !== process.pid) guideInLauncher(r);
-    };
-    setTimeout(check, 400);
-    setTimeout(check, 1000);
-  }
+  // (Some games take the screen right back from the guide, at once or seconds later: GTA V does,
+  // and anti-cheat games, which the launcher doesn't push aside. focusguard.js sees that for as
+  // long as the guide is open and has the game step aside, via guideInLauncher above.)
 
   // Stores opened from the launcher, closed when you press the Xbox button to come back.
   // Music apps and Discord are left alone (music and calls keep going); so are emulator
@@ -414,7 +454,8 @@ if (!app.requestSingleInstanceLock()) {
 
   function bringBack(showGuide) {
     if (!win || win.isDestroyed()) return;
-    wantFront = true;
+    wantFront = true; frontAskedAt = Date.now();
+    if (guard) guard.cancelExpect();
     if (win.isMinimized()) win.restore();
     if (MAC) { try { if (app.isHidden()) app.show(); } catch (_) { /* older Electron */ } }
     win.show();
@@ -640,6 +681,7 @@ if (!app.requestSingleInstanceLock()) {
       if (!r.monitorWatched) { r.monitorWatched = true; watchGameMonitor(r); }
       w32.placeBelow(w32.hwndOf(win), game.hwnd);
       w32.focus(game.hwnd);
+      if (guard) guard.expectGame(game.hwnd);
     } else if (MAC) {
       win.hide();
     } else {
@@ -906,6 +948,9 @@ if (!app.requestSingleInstanceLock()) {
       throw new Error('This game has no launch target');
     }
     controller.setGameRunning(true);
+    // Virtual controllers left over from a test or another game would show up in this game as
+    // extra controllers (some games, Fortnite among them, then listen to the wrong one).
+    if (vp && vpadsGame !== gameId) stopSteady();
     if (L.type !== 'emu') watchProtection(running, g);
     applyDisplay(running, g);
     if (g.source === 'roblox') running.forceClose = true; // Roblox ignores a normal close; nothing to save
@@ -1894,6 +1939,7 @@ if (!app.requestSingleInstanceLock()) {
         if (w32.isIconic(h)) w32.restore(h); // exclusive full-screen games were minimized for the guide
         w32.placeBelow(w32.hwndOf(win), h);
         w32.forceForeground(h);
+        if (guard) guard.expectGame(h);
       } else win.minimize();
     });
     return true;
