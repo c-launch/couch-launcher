@@ -10,9 +10,10 @@ const DIR = 'C:\\Games\\GTA V';
 
 function world() {
   const w = { t: 0, procs: new Map(), next: 100, slowCalls: 0, slowFails: false, listBroken: false, mismatch: [] };
-  w.add = (name, file, readable, ppid) => { const pid = w.next += 4; w.procs.set(pid, { pid, ppid: ppid || 4, name, file, readable: readable !== false }); return pid; };
+  // readable: the launcher can look at its file; wmi: PowerShell can (each is blind to some programs)
+  w.add = (name, file, readable, ppid, wmi) => { const pid = w.next += 4; w.procs.set(pid, { pid, ppid: ppid || 4, name, file, readable: readable !== false, wmi: wmi !== false }); return pid; };
   w.kill = (pid) => w.procs.delete(pid);
-  w.truth = () => Array.from(w.procs.values()).filter((p) => p.file.toLowerCase().startsWith(DIR.toLowerCase() + '\\') && !/crash|bugreport|errorreport|crashpad|werfault/i.test(p.name)).map((p) => p.pid).sort();
+  w.truth = () => Array.from(w.procs.values()).filter((p) => p.wmi && p.file.toLowerCase().startsWith(DIR.toLowerCase() + '\\') && !/crash|bugreport|errorreport|crashpad|werfault/i.test(p.name)).map((p) => p.pid).sort();
   w.self = w.add('Couch Launcher.exe', 'C:\\Apps\\Couch Launcher\\Couch Launcher.exe');
   w.add('System', '', false); w.add('csrss.exe', 'C:\\Windows\\System32\\csrss.exe', false); w.add('explorer.exe', 'C:\\Windows\\explorer.exe'); w.add('steam.exe', 'C:\\Steam\\steam.exe');
   w.api = { list: () => { if (w.listBroken) throw new Error('x'); return Array.from(w.procs.values()).map((p) => ({ pid: p.pid, ppid: p.ppid, name: p.name })); },
@@ -41,10 +42,11 @@ function world() {
   assert.ok(w.slowCalls - calls0 <= 1, 'waiting for the game with nothing changing: no PowerShell (' + (w.slowCalls - calls0) + ')');
   const boot = w.add('PlayGTAV.exe', DIR + '\\PlayGTAV.exe'); assert.deepStrictEqual(await w.ask(3000), [boot], 'the game appears: seen at once');
   const game = w.add('GTA5.exe', DIR + '\\GTA5.exe', true, boot); w.add('CrashReporter.exe', DIR + '\\CrashReporter.exe'); w.kill(boot);
-  assert.deepStrictEqual(await w.ask(), [game], 'bootstrapper gone, game there, crash reporter not counted');
+  assert.strictEqual(await w.ask(1500), null, 'asked PowerShell under 3 seconds ago (it was never asked more often than that): can’t tell yet');
+  assert.deepStrictEqual(await w.ask(1500), [game], 'bootstrapper gone, game there, crash reporter not counted');
   let c = w.slowCalls;
   for (let i = 0; i < 400; i++) { if (i % 7 === 0) { const x = w.add('chrome.exe', 'C:\\Chrome\\chrome.exe'); if (i % 14 === 0) w.kill(x); } assert.deepStrictEqual(await w.ask(), [game]); }
-  assert.ok(w.slowCalls - c <= 11, 'ten minutes of play, other programs coming and going: PowerShell ' + (w.slowCalls - c) + ' times instead of 400');
+  assert.ok(w.slowCalls - c <= 2, 'ten minutes of play, other programs coming and going: PowerShell ' + (w.slowCalls - c) + ' times instead of 400');
   // the game closes: said only once PowerShell agrees, then repeated without asking again
   w.kill(game); c = w.slowCalls;
   assert.deepStrictEqual(await w.ask(), []); assert.deepStrictEqual(await w.ask(), []); assert.strictEqual(w.slowCalls - c, 1, 'one confirmation at the end');
@@ -66,7 +68,7 @@ function world() {
   assert.strictEqual(await w.ask(3000), null, 'still can’t tell (as before, when PowerShell failed)');
   w.slowFails = false; assert.deepStrictEqual(await w.ask(3000), [g3]);
   w.slowFails = true; for (let i = 0; i < 4; i++) assert.deepStrictEqual(await w.ask(3000), [g3], 'known and unchanged: reported without PowerShell');
-  w.t += 61000; assert.deepStrictEqual(await w.tracker.pids(), [g3], 'a missed double-check changes nothing');
+  w.t += 301000; assert.deepStrictEqual(await w.tracker.pids(), [g3], 'a missed routine check changes nothing');
   w.kill(g3); assert.strictEqual(await w.ask(3000), null, 'its end isn’t claimed without confirmation');
   w.slowFails = false; assert.deepStrictEqual(await w.ask(3000), [], 'confirmed once PowerShell answers again');
 
@@ -80,12 +82,27 @@ function world() {
   assert.strictEqual(createProcs({ api: { list: () => { throw new Error('no'); }, pathOf: () => null }, self: 1, exe: 'x' }).ok(), false);
   let m = 0; const tn = createTracker(null, DIR, async () => { m++; return null; }); assert.strictEqual(await tn.pids(), null); assert.strictEqual(m, 1, 'no list at all (not Windows): the old way');
 
-  // 5) the two disagree (the list says in the folder, PowerShell says not): PowerShell wins, and it is written down
-  w = world(); await w.ask(); const odd = w.add('helper.exe', DIR + '\\helper.exe');
-  const realTruth = w.truth; w.truth = () => realTruth().filter((p) => p !== odd);
-  w.t += 61000; const r5 = await w.tracker.pids();
-  assert.ok(r5 === null || !r5.includes(odd)); await w.ask(3000);
-  assert.ok(w.mismatch.length >= 1 && /helper\.exe in->out/.test(w.mismatch[0]), 'difference noted: ' + w.mismatch);
+  // 5) programs the launcher can see in the folder but PowerShell can't (and the other way round):
+  //    PowerShell's word stands, as it always has; it is asked a few more times, then left alone
+  w = world(); await w.ask();
+  const ghost = w.add('service.exe', DIR + '\\service.exe', true, 4, false); c = w.slowCalls;
+  let last5 = 'x'; for (let i = 0; i < 60; i++) { last5 = await w.ask(3000); assert.ok(last5 === null || last5.length === 0, 'never counted, as before'); }
+  assert.deepStrictEqual(last5, [], 'and once PowerShell has been asked enough: nothing there');
+  assert.strictEqual(w.slowCalls - c, 4, 'asked four times in all about it: ' + (w.slowCalls - c));
+  const real5 = w.add('game.exe', DIR + '\\game.exe'); assert.deepStrictEqual(await w.ask(3000), [real5]);
+  w.kill(real5); assert.deepStrictEqual(await w.ask(3000), [], 'the game’s end isn’t hidden by the uncounted one');
+  assert.deepStrictEqual(w.mismatch, [], 'nothing unexpected noted');
+  // PowerShell a moment behind when the game starts: picked up on the next asking
+  w = world(); await w.ask();
+  const late = w.add('game.exe', DIR + '\\game.exe', true, 4, false);
+  assert.strictEqual(await w.ask(3000), null, 'in the folder but PowerShell says no: can’t tell yet, never “nothing there”'); w.procs.get(late).wmi = true;
+  assert.strictEqual(await w.ask(1500), null); assert.deepStrictEqual(await w.ask(1500), [late], 'seen 3 seconds later');
+  // a program whose file is elsewhere but PowerShell places in the folder (should never happen): its word, and noted
+  w = world(); await w.ask(); const odd = w.add('odd.exe', 'C:\\Elsewhere\\odd.exe');
+  assert.deepStrictEqual(await w.ask(3000), []);
+  const realTruth = w.truth; w.truth = () => realTruth().concat(odd).sort();
+  w.t += 5 * 60000; assert.deepStrictEqual((await w.tracker.pids()), [odd]);
+  assert.ok(w.mismatch.length === 1 && /odd\.exe out->in/.test(w.mismatch[0]), 'noted: ' + w.mismatch);
 
   // 6) family: a game started by a launcher exe
   w = world(); const a = w.add('launcher.exe', 'C:\\g\\launcher.exe'); const k1 = w.add('game.exe', 'C:\\g\\game.exe', true, a); const k2 = w.add('render.exe', 'C:\\g\\r.exe', false, k1); w.add('other.exe', 'C:\\o.exe');
@@ -101,12 +118,12 @@ function world() {
     w = world(); const mine = [];
     for (let i = 0; i < 120; i++) {
       const k = Math.floor(rnd() * 10);
-      if (k < 2) mine.push(w.add(['game.exe', 'GTA5.exe', 'CrashHandler.exe', 'sub.exe'][Math.floor(rnd() * 4)], DIR + '\\' + (rnd() < 0.5 ? 'bin\\' : '') + 'x' + i + '.exe', rnd() < 0.6));
+      if (k < 2) mine.push(w.add(['game.exe', 'GTA5.exe', 'CrashHandler.exe', 'sub.exe'][Math.floor(rnd() * 4)], DIR + '\\' + (rnd() < 0.5 ? 'bin\\' : '') + 'x' + i + '.exe', rnd() < 0.6, 4, rnd() < 0.85));
       else if (k < 4 && mine.length) w.kill(mine.splice(Math.floor(rnd() * mine.length), 1)[0]);
       else if (k < 6) w.add('bg' + i + '.exe', 'C:\\Other\\bg.exe', rnd() < 0.7);
       else if (k === 6) w.add('near.exe', DIR + ' Online\\near.exe'); // a folder whose name only starts the same
       w.slowFails = rnd() < 0.15;
-      const r = await w.ask([1500, 3000, 500, 7000, 61000][Math.floor(rnd() * 5)]);
+      const r = await w.ask([1500, 3000, 500, 7000, 301000][Math.floor(rnd() * 5)]);
       if (r && !r.length && w.truth().length) wrongEmpty++;
       ticks++;
     }

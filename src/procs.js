@@ -6,12 +6,10 @@
 // minutes. Starting a program just to ask that costs far more than the question. Windows
 // answers the same thing in about a millisecond through its "toolhelp" list.
 //
-// What that list can't always tell is where a program's file is: the launcher isn't allowed to
-// look at some programs (anti-cheat games, Windows' own services). PowerShell (through Windows'
-// management service) can. So createTracker() below only falls back to PowerShell for the
-// programs it can't see into, remembers the answer, and checks its own result against
-// PowerShell once a minute: if they ever differ, PowerShell's answer is used and the difference
-// is written to errors.log. The result is the same list as before, without the cost.
+// The two don't see exactly the same programs' files (each is blind to some the other can look
+// into), and the launcher has always gone by PowerShell's answer. So createTracker() below keeps
+// PowerShell as the one that decides, and uses Windows' list to know when there is nothing new
+// to ask it: the result is the same as before, without starting PowerShell while you play.
 //
 // Everything Windows-specific is in winApi(); the rest takes it as a parameter, so it can be
 // tested anywhere.
@@ -118,13 +116,26 @@ const NOT_THE_GAME = /crash|bugreport|errorreport|crashpad|werfault/i;
 //   o: { now, verifyMs, slowGapMs, onMismatch(detail) }
 // pids(): a Promise of the pids in the folder right now, or null when it can't be told this time
 // (exactly what the old way gave, so the code that uses it didn't have to change).
+//
+// The answer is always PowerShell's answer. What Windows' own list adds is knowing when there
+// is nothing new to ask:
+//   - a program whose file is somewhere else is not in the folder (PowerShell would say the same);
+//   - a program whose file is in the folder, or that can't be looked into, is asked about once
+//     (a few times if PowerShell says no to one this list saw in the folder: PowerShell can be a
+//     moment behind, and it can also be blind to programs this list sees; then its word stands);
+//   - a program that is gone is gone;
+//   - "nothing there" is confirmed with PowerShell before it is ever said;
+//   - and everything is checked against PowerShell again every few minutes.
+// So while a game is simply being played, PowerShell isn't started at all.
+const RETRY = [3000, 10000, 30000]; // asking again about a program PowerShell said no to
 function createTracker(procs, dir, slow, o) {
   o = o || {};
   const now = o.now || Date.now;
-  const VERIFY = o.verifyMs || 60000, SLOW_GAP = o.slowGapMs || 3000;
+  const VERIFY = o.verifyMs || 5 * 60000, SLOW_GAP = o.slowGapMs || 3000;
   const d = (dir.endsWith('\\') ? dir : dir + '\\').toLowerCase();
   // What is known about each program seen so far. key: pid + name (a pid can be used again by
-  // another program later). value: 'in' | 'out' | 'unknown' (can't look, PowerShell not asked yet).
+  // another program later). value: { s: 'in' | 'out' | 'ask', seen: file seen in the folder by
+  // this list, tries, at: when to ask (again) }
   const known = new Map();
   const key = (p) => p.pid + '|' + p.name.toLowerCase();
   let lastSlow = -Infinity, lastVerify = -Infinity, slowBusy = null, broken = false, emptyConfirmed = false;
@@ -136,17 +147,23 @@ function createTracker(procs, dir, slow, o) {
     lastSlow = now();
     slowBusy = Promise.resolve().then(slow).then((pids) => {
       if (!Array.isArray(pids)) return false;
-      const yes = new Set(pids);
+      const yes = new Set(pids), t = now();
       const diff = [];
       for (const p of alive) {
         if (NOT_THE_GAME.test(p.name)) continue;
-        const k = key(p), was = known.get(k), is = yes.has(p.pid) ? 'in' : 'out';
-        if (was === undefined) continue; // gone, and forgotten, while PowerShell was answering
-        if (was !== 'unknown' && was !== is) diff.push(p.name + ' ' + was + '->' + is);
-        known.set(k, is);
+        const st = known.get(key(p));
+        if (!st) continue; // gone, and forgotten, while PowerShell was answering
+        if (yes.has(p.pid)) {
+          if (st.s === 'out' && !st.seen) diff.push(p.name + ' out->in'); // (should never happen: noted)
+          st.s = 'in';
+        } else if (st.s === 'ask' && st.seen && st.tries < RETRY.length) {
+          st.at = t + RETRY[st.tries++]; // seen in the folder by this list: asked again later
+        } else {
+          st.s = 'out';
+        }
       }
       if (diff.length && o.onMismatch) { try { o.onMismatch(diff.slice(0, 6).join(', ')); } catch (_) { /* theirs */ } }
-      lastVerify = now();
+      lastVerify = t;
       return true;
     }, () => false).finally(() => { slowBusy = null; });
     return slowBusy;
@@ -161,33 +178,43 @@ function createTracker(procs, dir, slow, o) {
     // Forget programs that are gone; look at the new ones.
     const live = new Set(alive.map(key));
     for (const k of Array.from(known.keys())) if (!live.has(k)) known.delete(k);
-    let unknown = 0;
+    let asking = 0; // programs to ask PowerShell about now
     for (const p of alive) {
-      const k = key(p), was = known.get(k);
-      if (was === 'unknown') { unknown++; continue; }
-      if (was) continue;
-      if (NOT_THE_GAME.test(p.name) || !p.pid) { known.set(k, 'out'); continue; }
-      let file = null;
-      try { file = procs.pathOf(p.pid); } catch (_) { file = null; }
-      if (file) known.set(k, file.toLowerCase().startsWith(d) ? 'in' : 'out');
-      else { known.set(k, 'unknown'); unknown++; }
+      const k = key(p);
+      let st = known.get(k);
+      if (!st) {
+        st = { s: 'out', seen: false, tries: 0, at: 0 };
+        known.set(k, st);
+        if (!NOT_THE_GAME.test(p.name) && p.pid) {
+          let file = null;
+          try { file = procs.pathOf(p.pid); } catch (_) { file = null; }
+          if (!file) st.s = 'ask';                                             // can't look: PowerShell decides
+          else if (file.toLowerCase().startsWith(d)) { st.s = 'ask'; st.seen = true; } // in the folder: PowerShell confirms
+        }
+      }
+      if (st.s === 'ask' && st.at <= t) asking++;
     }
-    const answer = () => alive.filter((p) => known.get(key(p)) === 'in').map((p) => p.pid);
-    const empty = answer().length === 0;
+    // (While a program this list saw in the folder is still being asked about, "nothing there"
+    // isn't said: null, can't tell yet.)
+    const open = () => alive.some((p) => known.get(key(p)).s === 'ask');
+    const answer = () => { const a = alive.filter((p) => known.get(key(p)).s === 'in').map((p) => p.pid); return a.length || !open() ? a : null; };
+    const a0 = answer();
+    const empty = !!a0 && a0.length === 0, pending = a0 === null;
     if (!empty) emptyConfirmed = false;
-    // The old way is asked when there are programs that can't be looked into, when it's time to
-    // double-check, and before ever saying "nothing there" (never said on this list's word alone).
-    const need = unknown > 0 || t - lastVerify >= VERIFY || (empty && !emptyConfirmed);
-    if (!need) return answer();
-    // Asked a moment ago, or it didn't answer: with programs still unaccounted for, or with
+    const need = asking > 0 || t - lastVerify >= VERIFY || (empty && !emptyConfirmed);
+    if (!need) return a0;
+    // Asked a moment ago, or it didn't answer: with programs still to be asked about, or with
     // "nothing there" unconfirmed, the answer is "can't tell this time" (null, as the old way
-    // gave when PowerShell failed). Only a missed double-check lets what is known stand.
-    const unsure = unknown > 0 || empty;
-    if (t - lastSlow < SLOW_GAP && !slowBusy) return unsure ? null : answer();
+    // gave when PowerShell failed). Only a missed routine check lets what is known stand.
+    const unsure = asking > 0 || empty || pending;
+    // (PowerShell is asked at most every 3 seconds, as it always was; confirming that the game
+    // has closed doesn't wait for that, so its end is noticed as quickly as before.)
+    const gap = empty && !emptyConfirmed && asking === 0 ? Math.min(1000, SLOW_GAP) : SLOW_GAP;
+    if (t - lastSlow < gap && !slowBusy) return unsure ? null : a0;
     const answered = await askSlow(alive);
-    if (!answered) return unsure ? null : answer();
+    if (!answered) return unsure ? null : a0;
     const a = answer();
-    emptyConfirmed = a.length === 0;
+    emptyConfirmed = !!a && a.length === 0;
     return a;
   }
   return { pids, get known() { return known; } };
