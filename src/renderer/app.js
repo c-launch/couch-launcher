@@ -4365,20 +4365,34 @@
   }
 
   let extPads = null, extAt = 0;
-  api.on('pad:ext', (list) => { if (Array.isArray(list)) { extPads = list.map((p, i) => ({ id: String(p.id || 'Controller'), index: 'ext' + i, mapping: 'standard', connected: true, buttons: (p.buttons || []).map((on) => ({ pressed: !!on, value: on ? 1 : 0 })), axes: p.axes || [] })); extAt = performance.now(); } });
+  api.on('pad:ext', (list) => { if (Array.isArray(list)) { extPads = list.map((p, i) => ({ id: String(p.id || 'Controller'), index: 'ext' + i, mapping: 'standard', connected: true, buttons: (p.buttons || []).map((on) => ({ pressed: !!on, value: on ? 1 : 0 })), axes: p.axes || [] })); extAt = performance.now(); wakePads(); } });
   // Per controller: the buttons and stick seen let go at least once. A button or stick that has
   // never been let go (a pedal or a stick that rests at one end, a device that reports a button
   // as always held) is left out, so it can't block every other press.
   const padSeen = new Map();
   let suppressAt = 0;
   let tvCheckAt = 0, tvIdle = 0;
+  // While this screen isn't the one in use (it doesn't have the focus and the app core isn't
+  // sending the controller here: a game is being played, or the guide is hidden) it looks
+  // 4 times a second instead of 60. It did nothing with the controller in that state anyway;
+  // this only stops it waking up 60 times a second behind a game. It is back at full speed the
+  // moment it gets the focus or the controller is sent here, and at the latest a quarter of a
+  // second later.
+  let slowPoll = null, wasAway = false;
+  const wakePads = () => { if (slowPoll) { clearTimeout(slowPoll); slowPoll = null; requestAnimationFrame(pollPads); } };
+  window.addEventListener('focus', wakePads);
+  document.addEventListener('visibilitychange', wakePads);
   function pollPads(now) {
-    requestAnimationFrame(pollPads);
     // The app core reads the controller too, and sends it here when this window is on top but
     // wasn't given the focus (it can't read the controller itself then).
     const ext = extPads && now - extAt < 400;
+    const away = !document.hasFocus() && !ext;
+    if (away && !S.tvPlaying) slowPoll = setTimeout(() => { slowPoll = null; pollPads(performance.now()); }, 250);
+    else requestAnimationFrame(pollPads);
     if (S.tvPlaying) watchTvPlaying(now);
-    if ((!document.hasFocus() && !ext) || S.tvPlaying) { prevButtons.clear(); held.dir = null; suppressUntilRelease = true; suppressAt = now; return; }
+    if (away || S.tvPlaying) { wasAway = true; prevButtons.clear(); held.dir = null; suppressUntilRelease = true; suppressAt = now; return; }
+    // (Just back: buttons still held from the game are ignored from this moment, as before.)
+    if (wasAway) { wasAway = false; if (suppressUntilRelease) suppressAt = now; }
     let pads;
     try { pads = Array.from(navigator.getGamepads() || []); } catch (_) { return; }
     noteDirect(pads, now);

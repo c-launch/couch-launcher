@@ -28,6 +28,7 @@ const anticheat = require('./anticheat');
 const { createPadMouse } = require('./padmouse');
 const { createFocusGuard } = require('./focusguard');
 const { createPops } = require('./pops');
+const { createProcs, createTracker } = require('./procs');
 const { createXbox } = require('./xbox');
 const { createUpdater } = require('./updater');
 const { createDiscordRpc } = require('./discordrpc');
@@ -239,6 +240,12 @@ if (!app.requestSingleInstanceLock()) {
       if (running !== r || r.protected || ++tries > 60) { clearInterval(r.acTimer); return; }
       if (busy) return;
       busy = true;
+      // (Windows' own list when it can be had; the tasklist program otherwise.)
+      if (procs && procs.ok()) {
+        let names = null;
+        try { names = procs.asTasklist(); } catch (_) { names = null; }
+        if (names !== null) { busy = false; if (anticheat.processesShowProtection(names)) mark('service'); return; }
+      }
       execFile('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 8000 }, (err, out) => { busy = false; if (!err && anticheat.processesShowProtection(out)) mark('service'); });
     }, 5000);
   }
@@ -259,7 +266,10 @@ if (!app.requestSingleInstanceLock()) {
     }
     return !!(win && !win.isDestroyed() && win.isFocused());
   }
-  const pauser = createPauser(path.join(app.getPath('userData'), 'paused.json'));
+  // The list of running programs straight from Windows (procs.js): what PowerShell and
+  // tasklist were started for every few seconds during a game. null when it can't be had.
+  const procs = createProcs();
+  const pauser = createPauser(path.join(app.getPath('userData'), 'paused.json'), procs);
   // Controller as a mouse in Apple Music / Spotify (setting, on by default).
   // (Never while an anti-cheat game runs: a pointer and keys moved by a program are what those
   // games kick for, and Fortnite switches to mouse-and-keyboard controls when it sees them.)
@@ -813,6 +823,7 @@ if (!app.requestSingleInstanceLock()) {
 
   // Ends tracking of the current game, counts play time and returns to the launcher.
   function endGame(r, extra) {
+    if (r && r.dir) trackers.delete(r.dir);
     if (!r || running !== r) return;
     if (vpadsGame) stopSteady();
     restoreDisplay(r);
@@ -861,6 +872,7 @@ if (!app.requestSingleInstanceLock()) {
   }
   // Store games (Steam/Epic) start through their launcher, so find the game's own processes
   // by looking for programs running from the game's install folder.
+  const trackers = new Map(); // game folder -> its tracker (procs.js), while that game is running
   function pidsIn(dir) {
     return new Promise((resolve) => {
       if (MAC && dir) {
@@ -871,6 +883,21 @@ if (!app.requestSingleInstanceLock()) {
         });
       }
       if (process.platform !== 'win32' || !dir) return resolve(null);
+      // Windows: followed through Windows' own list of programs, which only falls back to the
+      // PowerShell question below for what it can't see into, to double-check once a minute,
+      // and before saying a game has closed (procs.js). Same answers, without starting
+      // PowerShell every 3 seconds while you play.
+      if (procs) {
+        let t = trackers.get(dir);
+        if (!t) { t = createTracker(procs, dir, () => pidsInSlow(dir), { onMismatch: (what) => logError('procs', dir + ': ' + what) }); trackers.set(dir, t); }
+        return resolve(t.pids().catch(() => pidsInSlow(dir))); // (anything unforeseen: the old way)
+      }
+      resolve(pidsInSlow(dir));
+    });
+  }
+  // The same question through PowerShell (Windows' management service sees every program's file).
+  function pidsInSlow(dir) {
+    return new Promise((resolve) => {
       const d = dir.endsWith('\\') ? dir : dir + '\\';
       // Crash reporters (Roblox, Unity, Unreal...) keep running after a game closes: ignore them.
       const ps = "$d='" + d.replace(/'/g, "''") + "'; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($d, [StringComparison]::OrdinalIgnoreCase) -and $_.Name -notmatch 'crash|bugreport|errorreport|crashpad|werfault' } | ForEach-Object { $_.ProcessId }";
@@ -2545,9 +2572,43 @@ if (!app.requestSingleInstanceLock()) {
             return frozen && !pauser.isPaused() && !fs.existsSync(note);
           } finally { try { kid.kill(); } catch (_) { /* gone */ } }
         });
+        // Windows' own list of programs (procs.js) against the programs it replaces, for real.
+        await step('procs', () => !!procs && procs.ok());
+        await step('procsList', async () => {
+          const csv = await new Promise((r) => execFile('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 20000 }, (err, out) => r(err ? '' : String(out))));
+          const theirs = csv.split(/\r?\n/).map((l) => /^"([^"]+)","(\d+)"/.exec(l.trim())).filter(Boolean).map((m) => m[2] + '|' + m[1].toLowerCase());
+          const t0 = Date.now(); const list = procs.list(); winRes.procsListMs = Date.now() - t0;
+          const mine = new Set(list.map((p) => p.pid + '|' + p.name.toLowerCase()));
+          const missing = theirs.filter((k) => !mine.has(k));
+          winRes.procsCounts = { tasklist: theirs.length, own: list.length, missing: missing.slice(0, 8) };
+          return theirs.length > 20 && missing.length <= 6 && Math.abs(list.length - theirs.length) <= 20;
+        });
+        await step('procsTrack', async () => {
+          const sys = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+          const kid = spawn(path.join(sys, 'cmd.exe'), ['/c', 'ping', '-n', '60', '127.0.0.1'], { windowsHide: true, stdio: 'ignore' });
+          try {
+            await wait(1500);
+            const fam = procs.family([kid.pid]);
+            const child = procs.list().find((p) => p.ppid === kid.pid && /^ping\.exe$/i.test(p.name));
+            const t0 = Date.now(); const slow = await pidsInSlow(sys); winRes.powershellMs = Date.now() - t0;
+            const t1 = Date.now(); const fast = await pidsIn(sys); winRes.trackerFirstMs = Date.now() - t1;
+            const t2 = Date.now(); const fast2 = await pidsIn(sys); winRes.trackerNextMs = Date.now() - t2;
+            const a = new Set(slow || []), b = new Set(fast2 || []);
+            const diff = [...a].filter((x) => !b.has(x)).length + [...b].filter((x) => !a.has(x)).length;
+            winRes.procsTrackInfo = { family: fam.length, child: !!child, slow: (slow || []).length, fast: (fast || []).length, fast2: (fast2 || []).length, diff };
+            const seen = !!child && fam.includes(child.pid) && b.has(child.pid) && a.has(child.pid) && b.has(kid.pid);
+            try { process.kill(child.pid); } catch (_) { /* gone */ }
+            try { kid.kill(); } catch (_) { /* gone */ }
+            await wait(3500);
+            const after = await pidsIn(sys);
+            winRes.procsTrackInfo.afterHasChild = !!after && after.includes(child.pid);
+            return seen && diff <= 6 && !!after && !after.includes(child.pid) && !after.includes(kid.pid);
+          } finally { try { kid.kill(); } catch (_) { /* gone */ } trackers.delete(sys); }
+        });
         await step('guard', () => { if (!guard) return false; guard.tick(); return guard.wantsPause() === false; });
         await step('pops', async () => { notify('Self-test', 'A pop-up from the build check.'); await wait(2500); return !!popsPart && popsPart.state.shown.length === 1; });
         await step('errors', () => { try { return fs.readFileSync(path.join(app.getPath('userData'), 'errors.log'), 'utf8').slice(-1500); } catch (_) { return ''; } });
+        winRes.done = true;
       }, 2500);
       // Notes when the app core was too busy to answer (anything over a quarter second).
       let tick = Date.now();
@@ -2562,7 +2623,9 @@ if (!app.requestSingleInstanceLock()) {
       setTimeout(() => { probe(win).then((v) => { probes.launcher = v; }); }, 8500);
       setTimeout(() => { probe(win).then((v) => { probes.launcher2 = v; }); }, 13000);
       setTimeout(() => { probe(overlay).then((v) => { probes.guide = v; }); }, 19000);
-      setTimeout(() => {
+      setTimeout(async () => {
+        // (Windows: its checks get up to a minute to finish.)
+        for (let i = 0; i < 80 && winRes.ran && !winRes.done; i++) await wait(500);
         let mac = null;
         try { mac = controller.macDebug ? controller.macDebug() : null; } catch (e) { mac = { error: e.message }; }
         try { fs.writeFileSync(path.join(dir, 'result.json'), JSON.stringify({ platform: process.platform, version: VERSION, controller: controller.available, guide: !!controller.guide, error: controller.error || null, mac, overlay: overlayShown(), windows: BrowserWindow.getAllWindows().length, placements: placeCount, win: winRes, probes, console: selftestLog }, null, 1)); } catch (_) { /* reported as missing */ }

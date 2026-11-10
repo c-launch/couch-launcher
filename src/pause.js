@@ -18,7 +18,8 @@ function createPausedNote(file) {
 }
 
 // noteFile: where the paused programs are written down (see createPausedNote).
-function createPauser(noteFile) {
+// procs: Windows' own list of programs (procs.js), when it can be had.
+function createPauser(noteFile, procs) {
   const off = { available: false, async pause() {}, resumeAll() {}, resumeAfterPending: async () => {}, isPaused: () => false, has: () => false };
   if (process.platform === 'darwin') return createMacPauser();
   if (process.platform !== 'win32') return off;
@@ -47,6 +48,8 @@ function createPauser(noteFile) {
   // A game started by an .exe may run its real game in a child process: include the whole family.
   function familyOf(rootPids) {
     return new Promise((resolve) => {
+      // From Windows' own list (a millisecond); PowerShell (about a second) only without it.
+      if (procs && procs.ok()) { try { return resolve(procs.family(rootPids)); } catch (_) { /* PowerShell below */ } }
       const ps = 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }';
       execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 10000 }, (err, out) => {
         const all = new Set(rootPids);

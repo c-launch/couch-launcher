@@ -15,7 +15,8 @@ node tools/pops-test.js && node tools/discord-live-test.js || { echo "Not publis
 # Nor one where the fail-safes don't hold: an update that can't show its screen is dropped for
 # the built-in app, saved files survive a cut-off save, Cable TV's schedule has no holes (also on
 # the days the clocks change) and swaps in another episode or restarts its player when one fails.
-node tools/update-failsafe-test.js && node tools/safe-files-test.js && TZ=America/New_York node tools/cable-schedule-test.js && node tools/cable-fallback-test.js || { echo "Not published: a fail-safe check failed."; exit 1; }
+# And a store game's programs are followed correctly without starting PowerShell each time.
+node tools/procs-test.js && node tools/update-failsafe-test.js && node tools/safe-files-test.js && TZ=America/New_York node tools/cable-schedule-test.js && node tools/cable-fallback-test.js || { echo "Not published: a fail-safe check failed."; exit 1; }
 python3 -c "import json,sys; p='package.json'; d=json.load(open(p)); d['version']=sys.argv[1]; open(p,'w').write(json.dumps(d, indent=2)+'\\n')" "$V"
 ./make-update.sh "$V" "$NOTES" >/dev/null
 Z="CouchLauncher-update-$V.zip"
