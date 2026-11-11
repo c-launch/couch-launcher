@@ -1196,7 +1196,8 @@
         '<p class="field-note" style="margin-top:1.4rem;font-size:1.6rem">' + (S.info.sharedWithLauncher
           ? 'Your addons, your list, what you’ve watched and your Cable TV channels are the same ones Couch Launcher uses' + (S.info.sharedSignIn ? ', and so is your Stremio sign-in.' : '. Your Stremio sign-in is kept separately here.')
           : 'Couch Launcher isn’t set up on this ' + PCW + '. If you install it later, it will use the same addons, list and history.') + '</p>' +
-        '<div class="btn-row" style="margin-top:3rem"><button class="btn big primary" data-nav data-key="ab-update" data-zone="body" data-action="update-check">' + icon('refresh') + 'Check for update</button></div>' +
+        '<div class="btn-row" style="margin-top:3rem"><button class="btn big primary" data-nav data-key="ab-update" data-zone="body" data-action="update-check">' + icon('refresh') + 'Check for update</button>' +
+        '<button class="btn big" data-nav data-key="ab-report" data-zone="body" data-action="tv-report">Copy player report</button></div>' +
         '<p class="field-note" style="margin-top:1.6rem;font-size:1.5rem">Couch TV and Couch Launcher share one version and one update; each installs it for itself.</p>';
     }
     return '<div class="sect-h about-h"><img class="about-logo" src="logo.png" alt=""><div><h2>Couch Launcher</h2><p>Version ' + esc(S.info.version || '') + '</p></div></div><dl class="kv">' +
@@ -4065,6 +4066,7 @@
         return refreshContent();
       }
       case 'tv-open': return TVAPP ? TV().open() : openApp('tv');
+      case 'tv-report': try { await api.tvReport(); toast('Copied. Paste it where you’re asked for it (start a video first, so it shows how that looks).'); } catch (e) { toast(e.message, true); } return;
       case 'tvapp-full': try { S.tvFull = !!(await api.tvFullscreen()); } catch (e) { toast(e.message, true); } return refreshContent();
       case 'yt-reset': {
         if (!(await confirmBox('Sign out of YouTube?', 'YouTube forgets your account and settings on this ' + PCW + '.', 'Sign out', true))) return;

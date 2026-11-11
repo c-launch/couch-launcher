@@ -40,7 +40,7 @@ class BW extends EventEmitter {
     super(); this.o = o || {}; this.visible = false; this.min = false; this.max = false; this.full = false; this.dead = false; wins.push(this);
     this.bounds = { x: o.x != null ? o.x : 320, y: o.y != null ? o.y : 140, width: o.width, height: o.height };
     this.sent = [];
-    this.webContents = Object.assign(new EventEmitter(), { focus: () => { this.wcFocus = (this.wcFocus || 0) + 1; }, send: (ch, v) => this.sent.push([ch, v]), setWindowOpenHandler: (f) => { this.openHandler = f; }, reload: () => { this.reloads = (this.reloads || 0) + 1; }, forcefullyCrashRenderer() {} });
+    this.webContents = Object.assign(new EventEmitter(), { executeJavaScript: async () => null, focus: () => { this.wcFocus = (this.wcFocus || 0) + 1; }, send: (ch, v) => this.sent.push([ch, v]), setWindowOpenHandler: (f) => { this.openHandler = f; }, reload: () => { this.reloads = (this.reloads || 0) + 1; }, forcefullyCrashRenderer() {} });
     setTimeout(() => this.emit('ready-to-show'), 5);
   }
   loadFile(f, o) { this.file = String(f); this.loadOpts = o || null; return Promise.resolve(); }
@@ -50,7 +50,7 @@ class BW extends EventEmitter {
   setFullScreen(on) { this.full = !!on; this.emit(on ? 'enter-full-screen' : 'leave-full-screen'); } isFullScreen() { return this.full; }
   getBounds() { return this.bounds; } getNormalBounds() { return this.bounds; } setBounds(b) { Object.assign(this.bounds, b); }
   getContentBounds() { return { x: this.bounds.x + 8, y: this.bounds.y + 31, width: this.bounds.width - 16, height: this.bounds.height - 39 }; }
-  isFocused() { return this.focusedNow !== false; } isVisible() { return this.visible; }
+  isFocused() { return this.focusedNow !== false; } isVisible() { return this.visible; } isFocusable() { return this.o.focusable !== false; }
   setAlwaysOnTop(on) { this.onTop = !!on; } setIgnoreMouseEvents(on) { this.ignoresMouse = !!on; }
   getNativeWindowHandle() { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(1000 + wins.indexOf(this))); return b; }
 }
@@ -84,7 +84,10 @@ require.cache[path.join(SRC, 'tvplayer.js')] = { id: 'p', filename: path.join(SR
 // The window calls for the picture inside the window, pretended (world.embed: whether they can be had).
 world.embed = true; world.fits = 0; world.focusPid = process.pid;
 require.cache[path.join(SRC, 'couchtv', 'embed.js')] = { id: 'e', filename: path.join(SRC, 'couchtv', 'embed.js'), loaded: true, exports: { createEmbed: () => (world.embed ? {
-  child: () => 777, inside: () => ({ width: 1264, height: 721 }), fit: () => { world.fits++; return true; }, focusPid: () => world.focusPid } : null) } };
+  child: () => 777, inside: () => ({ width: 1264, height: 721 }), fit: () => { world.fits++; return true; }, focusPid: () => world.focusPid,
+  describe: (h) => ({ hwnd: h, pid: 1 }), children: () => [], pile: () => [], windowAt: () => ({ hwnd: 0 }),
+  createHost: (owner) => { world.host = { owner, shown: false, at: null, under: 0, alive: true }; world.hosts = (world.hosts || 0) + 1; return 555; }, isWindow: () => !!(world.host && world.host.alive),
+  showHost: (h, on) => { world.host.shown = !!on; return true; }, placeHost: (h, b2, under) => { world.host.at = b2; world.host.under = under; return true; }, destroyHost: () => { world.host.alive = false; return true; } } : null) } };
 process.setMaxListeners(200); // (the app core is started many times in this one process)
 // (Windows unpacks update zips with its own tar; here a stand-in with the same call.)
 fs.mkdirSync(path.join(TMP, 'bin'), { recursive: true });
@@ -137,7 +140,7 @@ const freshStart = () => {
   const preload = fs.readFileSync(path.join(SRC, 'preload.js'), 'utf8');
   const channels = [...preload.matchAll(/call\('(tv:[A-Za-z]+)'/g)].map((m) => m[1]).filter((c) => c !== 'tv:guideStop');
   assert.ok(channels.length > 30);
-  for (const ch of channels.concat(['lib:load', 'lib:save', 'app:info', 'app:started', 'log:error', 'pads:get', 'fs:list', 'fs:pick', 'fs:stat', 'tvapp:fullscreen', 'tv:key', 'hud:act', 'update:check', 'update:install'])) assert.ok(handlers[ch], 'answers ' + ch);
+  for (const ch of channels.concat(['lib:load', 'lib:save', 'app:info', 'app:started', 'log:error', 'pads:get', 'fs:list', 'fs:pick', 'fs:stat', 'tvapp:fullscreen', 'tvapp:report', 'tv:key', 'hud:act', 'update:check', 'update:install'])) assert.ok(handlers[ch], 'answers ' + ch);
   for (const ch of ['launch', 'scan', 'overlay:hide', 'app:power', 'yt:open']) assert.ok(!handlers[ch], 'has nothing to do with ' + ch);
 
   // ---------- settings: started from the launcher's, then its own
@@ -185,7 +188,9 @@ const freshStart = () => {
   const movie = { meta: { id: 'tt7', type: 'movie', name: 'A Movie' }, stream: { url: 'https://example.com/a.mkv' } };
   await call('tv:play', movie);
   let pl = players[players.length - 1];
-  assert.strictEqual(pl.o.wid, 1000, 'the player is told to draw inside Couch TV’s window: ' + pl.o.wid);
+  assert.strictEqual(pl.o.wid, 555, 'the player is told to draw into the picture window laid over Couch TV’s: ' + pl.o.wid);
+  assert.ok(world.host.owner === 1000 && world.host.shown && world.host.alive, 'which belongs to Couch TV’s window and is showing');
+  assert.deepStrictEqual(world.host.at, w.getContentBounds(), 'exactly over the inside of the window');
   let hud = wins[wins.length - 1];
   assert.ok(hud !== w && /hud\.html$/.test(hud.file) && hud.loadOpts && hud.loadOpts.query.mouse === '1', 'the controls are the mouse kind');
   assert.strictEqual(hud.o.parent, w, 'the controls belong to the window');
@@ -197,6 +202,8 @@ const freshStart = () => {
   const f0 = world.fits;
   w.bounds = { x: 400, y: 200, width: 1000, height: 700 }; w.emit('move'); w.emit('resize');
   assert.deepStrictEqual(hud.bounds, w.getContentBounds(), 'the controls follow the window');
+  assert.deepStrictEqual(world.host.at, w.getContentBounds(), 'and so does the picture');
+  assert.strictEqual(world.host.under, 1000 + wins.indexOf(hud), 'kept just under the controls');
   assert.ok(world.fits > f0, 'and the picture is fitted again');
   // the mouse on the controls
   await sleep(40);
@@ -232,6 +239,8 @@ const freshStart = () => {
   await call('tv:key', 'ESC', false, 0); await sleep(60);
   assert.ok(!pl.alive && !hud.visible, 'Esc ends it');
   assert.ok(!world.calls.slice(fe).some((c) => /^front/.test(c)), 'the window is not pushed to the front when it ends');
+  assert.ok(!world.host.shown, 'the picture window is put away when it ends');
+  const rep1 = await call('tvapp:report'); assert.ok(rep1.version && rep1.canEmbed === true && fs.existsSync(path.join(OWN, 'player-report.json')), 'the player report is there');
   assert.ok(w.sent.some(([ch]) => ch === 'tv:ended'));
   assert.strictEqual(await call('tv:key', 'TOGGLE', false, 0), false, 'keys do nothing when nothing plays');
   assert.strictEqual(await call('hud:act', 'toggle', null), false);
@@ -245,7 +254,8 @@ const freshStart = () => {
   await call('hud:act', 'exit', null); await call('tv:key', 'B', false, 0); await call('tv:key', 'B', false, 0); await sleep(60);
   assert.ok(!players[players.length - 1].alive, 'ended');
   l9.settings.tvInWindow = true; await call('lib:save', l9);
-  await call('tv:play', movie); assert.strictEqual(players[players.length - 1].o.wid, 1000, 'and back inside the window');
+  await call('tv:play', movie); assert.strictEqual(players[players.length - 1].o.wid, 555, 'and back inside the window');
+  assert.ok(world.host.shown && world.hosts === 1, 'the same picture window again');
   assert.strictEqual(wins[wins.length - 1].o.parent, w);
   await call('hud:act', 'exit', null); await sleep(60);
   assert.ok(!players[players.length - 1].alive, 'the Back button ends it');

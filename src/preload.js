@@ -140,6 +140,7 @@ contextBridge.exposeInMainWorld('launcher', {
   youtubeReset: () => call('yt:reset'),
   hudAct: (a, x) => call('hud:act', String(a || ''), typeof x === 'number' ? x : typeof x === 'string' ? x : null),
   tvKey: (name, repeat, heldMs) => call('tv:key', String(name || ''), !!repeat, Number(heldMs) || 0),
+  tvReport: () => call('tvapp:report'),
   tvFullscreen: (on) => call('tvapp:fullscreen', on == null ? null : !!on),
   tvStatus: () => call('tv:status'),
   tvLinkCreate: () => call('tv:linkCreate'),
