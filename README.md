@@ -189,6 +189,16 @@ Open it from the dock (the TV button). It's Stremio with an Apple TV–style loo
 - **Xbox / PS button while watching:** the video pauses and the guide opens over it. *Resume watching* (or the button again) carries on; *Stop watching* saves your spot and goes back.
 - Opening a title, its poster grows into the page (and shrinks back into its row when you go back).
 
+## Couch TV
+
+Movies & TV and Cable TV as an app of their own, for when you want to watch without the launcher. Download **CouchTV-Setup-…exe** (Windows) or **CouchTV-…-mac-….dmg** (Mac) from the same release page.
+
+- **A normal window:** resize it, move it, maximize it. **F11** (or Settings › Full screen, or the button on the video) switches full screen. It opens where you left it.
+- **Mouse, trackpad and keyboard:** every Home row has an arrow at each end; two fingers sideways (or Shift + the wheel) slides a row; Back is at the top left; arrows, Enter and Esc work everywhere. A controller works too.
+- **Videos play inside the window (Windows)** with controls you can click: play / pause, the bar, −10 / +30, subtitles, audio, episodes, full screen, Back. Keys: Space play / pause · ← → scrub · J / L −10 s / +30 s · C subtitles · A audio · F full screen · Esc. Cable TV has buttons for channel up / down, what's on, captions and the guide; ↑ / ↓ change channel. Settings › *Play videos in the window* off makes them take the whole screen instead. On a Mac videos take the whole screen.
+- **Shared with Couch Launcher:** your addons, list, what you've watched, Cable TV channels and the video player. On Windows your Stremio sign-in too; on a Mac sign in once in Couch TV. Couch TV's own settings (look, quality, subtitles) are separate.
+- **Updates:** Couch TV and Couch Launcher have one version and one update; each installs it for itself (Settings › About › Check for update).
+
 ## YouTube
 
 Open it from the dock (the play button). It's YouTube's TV interface, the one smart TVs and consoles use, full screen on your chosen display.

@@ -2,7 +2,7 @@
 // Small parts of Couch TV's app core that don't need the app itself (so they can be tested).
 
 // The settings Couch TV has (everything else in the launcher's settings means nothing here).
-const OWN = ['tvMode', 'tvIntro', 'tvQuality', 'tvAutoPlay', 'tvSubLang', 'mpvPath', 'cableAds', 'cableSubs', 'cableLast', 'tvSignInSeen', 'reduceMotion'];
+const OWN = ['tvMode', 'tvIntro', 'tvQuality', 'tvAutoPlay', 'tvSubLang', 'mpvPath', 'cableAds', 'cableSubs', 'cableLast', 'tvSignInSeen', 'reduceMotion', 'tvInWindow'];
 // (Changed by the app core itself: what the screen sends back never overwrites them.)
 const CORE = ['mpvPath', 'cableSubs'];
 

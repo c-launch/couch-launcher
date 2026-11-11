@@ -1,10 +1,20 @@
 // Reads what Couch TV's build check found (src/couchtv/selftest.js) and says whether it is right.
 'use strict';
 const r = require(require('path').resolve(process.argv[2]));
-const show = Object.assign({}, r); delete show.console;
+const show = Object.assign({}, r); delete show.console; delete show.thumb; delete show.thumbFull;
+for (const k of ['thumb', 'thumbFull']) if (r[k]) console.log('PICTURE ' + k + ' ' + r[k] + ' END');
 console.log(JSON.stringify(show, null, 1));
 for (const c of (r.console || []).filter((x) => x[0] >= 2).slice(0, 20)) console.log('screen said:', JSON.stringify(c));
 const bad = [];
+// The Mac: that it starts as its own app with the TV screens up. (Videos take the whole screen
+// there, and the launcher's sign-in key is a Windows thing.)
+if (process.argv.includes('--mac')) {
+  const s0 = r.screen || {};
+  const ok = r.done === true && r.title === 'Couch TV' && /Couch TV$/.test(String(r.userData || '')) && s0.stage === 'running' && s0.tvapp === true && s0.layer === true && s0.topbar === 'none' && !String(r.errors || '').trim();
+  if (!ok) { console.error('Couch TV did not come up right on the Mac'); process.exit(1); }
+  console.log('Couch TV starts on the Mac.');
+  process.exit(0);
+}
 const want = (ok, what) => { if (!ok) bad.push(what); };
 const s = r.screen || {}, z = r.resized || {};
 want(r.done === true, 'the check did not finish');
@@ -20,6 +30,7 @@ want(r.fullscreen === true, 'full screen and back did not work');
 want(r.sharedKey === 'koffi' || r.sharedKey === 'powershell', 'the launcher’s sign-in key could not be had (' + r.sharedKey + ')');
 want(r.sharedRead === true, 'what the launcher saved could not be read: ' + r.sharedRead);
 want(r.status && typeof r.status.signedIn === 'boolean', 'Movies & TV did not answer: ' + JSON.stringify(r.status));
+want(r.embed === true, 'a video does not play inside the window as it should: ' + r.embed + ' ' + JSON.stringify(r.embedInfo || {}));
 want(r.files && r.files.ownTv === false, 'a second copy of the Movies & TV data was made');
 want(!String(r.errors || '').trim(), 'errors.log is not empty:\n' + r.errors);
 if (bad.length) { console.error('Couch TV is not right on Windows:\n - ' + bad.join('\n - ')); process.exit(1); }

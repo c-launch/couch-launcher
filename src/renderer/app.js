@@ -1163,7 +1163,8 @@
         '<button class="btn big' + (m === 'light' ? ' primary' : '') + '" data-nav data-key="tv-light" data-zone="body" data-action="tv-mode" data-mode="light" aria-pressed="' + (m === 'light') + '">' + icon('star') + 'Light</button></div>' +
         (TVAPP ? '<div class="toggles" style="grid-template-columns:1fr;margin-top:1.6rem">' +
           '<button class="toggle-row" data-nav data-key="tv-full" data-zone="body" data-action="tvapp-full"><span><div>Full screen</div><div class="d">Couch TV opens in a window you can size and move. F11 switches too.</div></span><span class="status ok">' + (S.tvFull ? 'On' : 'Off') + '</span></button>' +
-          toggleHTML('tv-motion', 'Reduce motion', !!s.reduceMotion, 'Fewer animations.', 'set-toggle', 'data-k="reduceMotion"') + '</div>' : '') +
+          toggleHTML('tv-motion', 'Reduce motion', !!s.reduceMotion, 'Fewer animations.', 'set-toggle', 'data-k="reduceMotion"') +
+          (S.info.canEmbed ? toggleHTML('tv-inwin', 'Play videos in the window', s.tvInWindow !== false, 'Off: videos take the whole screen, as in Couch Launcher.', 'set-toggle', 'data-k="tvInWindow"') : '') + '</div>' : '') +
         '<div class="sub-h">Stremio account</div><div class="toggles" style="grid-template-columns:1fr">' +
         (!t ? '<p class="field-note">Checking…</p>' : t.signedIn
           ? row('tv-out', 'tv-signout', 'Signed in' + (t.email ? ' as ' + t.email : ''), 'Your addons, library and Continue Watching sync with the Stremio app.', 'Sign out')
@@ -1194,7 +1195,9 @@
         '<p class="field-note" style="font-size:1.6rem">Movies, series and Cable TV from Couch Launcher, as an app of its own.</p>' +
         '<p class="field-note" style="margin-top:1.4rem;font-size:1.6rem">' + (S.info.sharedWithLauncher
           ? 'Your addons, your list, what you’ve watched and your Cable TV channels are the same ones Couch Launcher uses' + (S.info.sharedSignIn ? ', and so is your Stremio sign-in.' : '. Your Stremio sign-in is kept separately here.')
-          : 'Couch Launcher isn’t set up on this ' + PCW + '. If you install it later, it will use the same addons, list and history.') + '</p>';
+          : 'Couch Launcher isn’t set up on this ' + PCW + '. If you install it later, it will use the same addons, list and history.') + '</p>' +
+        '<div class="btn-row" style="margin-top:3rem"><button class="btn big primary" data-nav data-key="ab-update" data-zone="body" data-action="update-check">' + icon('refresh') + 'Check for update</button></div>' +
+        '<p class="field-note" style="margin-top:1.6rem;font-size:1.5rem">Couch TV and Couch Launcher share one version and one update; each installs it for itself.</p>';
     }
     return '<div class="sect-h about-h"><img class="about-logo" src="logo.png" alt=""><div><h2>Couch Launcher</h2><p>Version ' + esc(S.info.version || '') + '</p></div></div><dl class="kv">' +
       '<dt>Games</dt><dd>' + games().length + '</dd><dt>Controllers</dt><dd>' + padCount() + ' connected</dd>' +
@@ -3712,7 +3715,7 @@
       if (r.status !== 'ready' && r.offline) { if (!silent) toast('Couldn’t check online: ' + r.offline, true); return; }
       if (r.status === 'none') { if (!silent) toast('No updates yet'); return; }
       if (r.status === 'current') { if (!silent) toast('You’re up to date (version ' + r.version + ')'); return; }
-      const ok = await confirmBox('New version available · ' + r.version, (r.notes ? r.notes + ' ' : '') + 'Update now? The launcher restarts by itself; it only takes a few seconds.', 'Update now', false, { cancelLabel: 'Later', focusOk: true });
+      const ok = await confirmBox('New version available · ' + r.version, (r.notes ? r.notes + ' ' : '') + 'Update now? ' + (TVAPP ? 'Couch TV' : 'The launcher') + ' restarts by itself; it only takes a few seconds.', 'Update now', false, { cancelLabel: 'Later', focusOk: true });
       if (!ok) return;
       toast('Installing update…');
       clearTimeout(saveTimer);
@@ -4505,7 +4508,7 @@
   const KEYDIRS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   document.addEventListener('keydown', (e) => {
     noteActivity();
-    if (S.tvPlaying) return; // the player has the keyboard
+    if (S.tvPlaying) { if (TVAPP) tvPlayerKey(e); return; } // the player has the keyboard (Couch TV: its window does, and passes the keys on)
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     if (TVAPP && ['Shift', 'CapsLock', 'NumLock', 'ScrollLock'].includes(e.key)) return; // (Shift + wheel is a mouse gesture: the pointer stays)
     const top = topLayer();
@@ -4518,6 +4521,21 @@
     const b = KEYMAP[e.key];
     if (b) { e.preventDefault(); if (!e.repeat) button(b); }
   });
+  // Couch TV, while something plays inside its window: the keys work the player's controls.
+  //   Space / K play-pause · ← → scrub · J −10 s · L +30 s · ↑ ↓ (Cable TV: channels) · Enter select
+  //   C subtitles · A audio · F full screen · Esc leave full screen, then back
+  const PLAYER_KEYS = { ' ': 'TOGGLE', k: 'TOGGLE', Enter: 'A', Escape: 'ESC', Backspace: 'B', ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT',
+    f: 'FULL', c: 'Y', y: 'Y', a: 'X', j: 'LB', l: 'RB', PageUp: 'RB', PageDown: 'LB' };
+  const keyDownAt = {};
+  function tvPlayerKey(e) {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const name = PLAYER_KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (!name) return;
+    e.preventDefault();
+    const t = Date.now();
+    if (!e.repeat || !keyDownAt[name]) keyDownAt[name] = t;
+    try { api.tvKey(name, !!e.repeat, t - keyDownAt[name]).catch(() => {}); } catch (_) { /* older app core */ }
+  }
   let mouseTimer = null;
   let lastMouse = null;
   document.addEventListener('mousemove', () => noteActivity(true));
@@ -4654,7 +4672,7 @@
   api.on('tv:ended', (p) => { suppressUntilRelease = true; TV().ended(p); if (S.view === 'settings' && S.setTab === 'tv' && !layers.length) loadTvSettings(); });
   (async () => { try { S.pads = await api.pads(); tickClock(); } catch (_) { /* not available */ } })();
   api.on('game:started', (p) => { if (S.playing && p && S.playing.id === p.gameId) S.playing.started = true; });
-  api.on('update:found', (r) => { if (!S.playing) checkForUpdate(true, r); });
+  api.on('update:found', (r) => { if (!S.playing && !(TVAPP && S.tvPlaying)) checkForUpdate(true, r); });
   api.on('overlay', () => { suppressUntilRelease = true; setInput('pad'); openGuide({ fromGame: true }); });
   api.on('guide', () => { suppressUntilRelease = true; setInput('pad'); noteActivity(); if (idle) { closeIdle(); return; } toggleGuide(!!S.playing); });
   api.on('window:focus', () => {
@@ -4719,6 +4737,7 @@
     requestAnimationFrame(pollPads);
     window.__stage = 'running';
     try { api.started().catch(() => {}); } catch (_) { /* fine */ }
+    if (S.info.updateFailed) toast('The last update couldn’t start, so the previous version is running. Details: ' + S.info.updateFailed, true);
     api.on('tvapp:fullscreen', (on) => { S.tvFull = !!on; document.documentElement.classList.toggle('tvapp-full', !!on); if (!layers.length && S.setTab === 'tv') refreshContent(); });
   }
   async function init() {

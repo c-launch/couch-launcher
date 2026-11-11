@@ -134,26 +134,52 @@ function setupTv(ctx) {
   }
 
   // ---------- playback
-  function hudWindow() {
-    if (hud && !hud.isDestroyed()) return hud;
-    const b = targetDisplay().bounds;
-    hud = new BrowserWindow({
+  // Couch TV (Windows): the picture is drawn inside its window instead of over the whole
+  // screen. ctx.embed says how: wid() is that window's handle (null: full screen, as in the
+  // launcher), bounds() where its inside is on the screen, parent() the window itself,
+  // fullscreen() switches it to full screen and back. The controls are then a see-through
+  // window that belongs to it, lies exactly over its inside, and takes the mouse.
+  const emb = () => { try { return ctx.embed && ctx.embed.wid() ? ctx.embed : null; } catch (_) { return null; } };
+  function hudWindow(e) {
+    if (hud && !hud.isDestroyed() && hud.inWindow === !!e) return hud;
+    if (hud && !hud.isDestroyed()) hud.destroy();
+    const b = e ? e.bounds() : targetDisplay().bounds;
+    hud = new BrowserWindow(Object.assign({
       x: b.x, y: b.y, width: b.width, height: b.height, transparent: true, frame: false, show: false, focusable: false,
       skipTaskbar: true, resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
       hasShadow: false, backgroundColor: '#00000000',
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
-    });
-    hud.setIgnoreMouseEvents(true);
-    hud.setAlwaysOnTop(true, 'screen-saver');
-    hud.loadFile(path.join(__dirname, 'renderer', 'hud.html'));
+    }, e ? { parent: e.parent() } : {}));
+    hud.inWindow = !!e;
+    if (!e) { hud.setIgnoreMouseEvents(true); hud.setAlwaysOnTop(true, 'screen-saver'); }
+    hud.loadFile(path.join(__dirname, 'renderer', 'hud.html'), e ? { query: { mouse: '1' } } : undefined);
     hud.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     hud.webContents.on('will-navigate', (e) => e.preventDefault());
-    hud.on('closed', () => { hud = null; });
+    { const h = hud; h.on('closed', () => { if (hud === h) hud = null; }); }
     // A crashed controls page is thrown away (made again the next time it's needed).
     { const h = hud; h.webContents.on('render-process-gone', () => { try { if (!h.isDestroyed()) h.destroy(); } catch (_) { /* gone */ } }); }
     return hud;
   }
   const hudSend = (v) => { if (hud && !hud.isDestroyed()) hud.webContents.send('hud', v); };
+  // The controls, shown where this session's picture is.
+  function showHud(s) {
+    const e = s.embed || null, h = hudWindow(e);
+    h.setBounds(e ? e.bounds() : targetDisplay().bounds);
+    h.showInactive();
+    if (!e) h.setAlwaysOnTop(true, 'screen-saver');
+  }
+  // The player's window: put over the screen (the launcher), or left where it is drawn (Couch TV).
+  const place = (s) => (s.embed ? () => {} : presentApp(['mpv.exe'], playerTitle, 15000));
+  // A click or the mouse moving over the controls (Couch TV).
+  handle('hud:act', (a, x) => {
+    const s = session;
+    if (!s || !s.embed || !s.controls) return false;
+    a = String(a || '');
+    if (a === 'fullscreen') { s.embed.fullscreen(); return true; }
+    if (a === 'front') { s.embed.front(); return true; }
+    if (typeof s.controls.mouse === 'function') s.controls.mouse(a, typeof x === 'number' && Number.isFinite(x) ? x : typeof x === 'string' ? x.slice(0, 8) : null);
+    return true;
+  });
 
   async function streamUrl(stream, video) {
     if (stream.url) {
@@ -196,18 +222,17 @@ function setupTv(ctx) {
     if (session) end('switch');
     const startAt = req.startAt != null ? Number(req.startAt) : tv().resumeAt(meta.id, videoId);
     const rect = toPx(targetDisplay().bounds);
+    const embed = emb();
     const mpv = tvp.startMpv(exe, {
+      wid: embed ? embed.wid() : null,
       url, title: meta.name + (video ? ' · ' + epLabel(video) : ''), startAt, rect,
       subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: stream.headers || null
     });
-    const s = session = { mpv, meta, video, videoId, stream, pos: startAt || 0, dur: 0, savedAt: Date.now(), subPicked: false, ended: false };
+    const s = session = { mpv, meta, video, videoId, stream, pos: startAt || 0, dur: 0, savedAt: Date.now(), subPicked: false, ended: false, embed };
     s.controls = createTvControls({ act: (a, x) => onAct(s, a, x), render: hudSend });
     s.controls.setInfo(infoFor(meta, video));
-    const h = hudWindow();
-    h.setBounds(targetDisplay().bounds);
-    h.showInactive();
-    h.setAlwaysOnTop(true, 'screen-saver');
-    s.stopPlace = presentApp(['mpv.exe'], playerTitle, 15000);
+    showHud(s);
+    s.stopPlace = place(s);
     s.timer = setInterval(() => {
       if (session !== s) return;
       s.controls.tick();
@@ -230,12 +255,9 @@ function setupTv(ctx) {
     let s = session && session.cable ? session : null;
     if (!s) {
       if (session) end('switch');
-      s = session = { cable: { channelId, token: 0, partTok: 0, segI: -1 }, mpv: null, meta: null, video: null, videoId: null, pos: 0, dur: 0, ended: false, exe };
+      s = session = { cable: { channelId, token: 0, partTok: 0, segI: -1 }, mpv: null, meta: null, video: null, videoId: null, pos: 0, dur: 0, ended: false, exe, embed: emb() };
       s.controls = createCableControls({ act: (a, x) => onCableAct(s, a, x), render: hudSend });
-      const h = hudWindow();
-      h.setBounds(targetDisplay().bounds);
-      h.showInactive();
-      h.setAlwaysOnTop(true, 'screen-saver');
+      showHud(s);
       s.timer = setInterval(() => cableTick(s), 250);
     }
     cableLoad(s, channelId);
@@ -394,9 +416,9 @@ function setupTv(ctx) {
     else if (two && (!s.mpv || !s.mpv.alive)) { if (!ad.plain) throw new Error('This commercial needs the player open'); url = ad.plain; ad.audio = null; }
     if (!s.mpv || !s.mpv.alive) {
       await tvp.extrasOk(s.exe); // (which optional switches this mpv accepts)
-      s.mpv = tvp.startMpv(s.exe, { url, title, startAt: at, rect: toPx(targetDisplay().bounds), subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: (s.stream && s.stream.headers) || null, idle: true });
+      s.mpv = tvp.startMpv(s.exe, { wid: s.embed ? s.embed.wid() : null, url, title, startAt: at, rect: toPx(targetDisplay().bounds), subLang: SUBLANG[settings().tvSubLang || 'en'] || 'en,eng', headers: (s.stream && s.stream.headers) || null, idle: true });
       if (s.stopPlace) s.stopPlace();
-      s.stopPlace = presentApp(['mpv.exe'], playerTitle, 15000);
+      s.stopPlace = place(s);
       wire(s);
     } else {
       s.loading = { at: Date.now(), expect: at > 5 ? at : 0 };
@@ -472,18 +494,13 @@ function setupTv(ctx) {
   // is only shows when it is opened, so that is remembered (cable().adNote) and the ones not
   // opened yet are tried a few at a time. When a channel has none (TV was 4:3 and low
   // resolution for most of these years), the best of the others plays, as it is.
-  const wideHd = (i) => !!i && i.h >= 720 && i.w / i.h >= 1.6;
   async function prepareAd(channelId, need, quick) {
     const list = await cable().adsFor(channelId);
     if (!list.length) { adWhy = cable().adWhy || 'none were found on YouTube'; return null; }
     const long = list.filter((v) => v.duration >= need + 20);
     const pool = (long.length ? long : list).slice();
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-    const info = (v) => cable().adInfo(v.id);
-    const good = pool.filter((v) => wideHd(info(v))), fresh = pool.filter((v) => !info(v));
-    const rest = pool.filter((v) => info(v) && !wideHd(info(v))).sort((a, b) => info(b).h - info(a).h);
-    // Enough good ones known: one of those. Otherwise a few not opened yet first.
-    const order = (good.length >= 4 ? good.slice(0, 2) : []).concat(fresh.slice(0, 3), good, rest, fresh.slice(3));
+    const order = adOrder(pool, (v) => cable().adInfo(v.id), quick);
     let best = null;
     for (const v of order.slice(0, quick ? 2 : 4)) {
       const room = v.duration - need - 10;
@@ -706,6 +723,11 @@ function setupTv(ctx) {
   return {
     get playing() { return !!session; },
     input(mask, lx, ly) { if (session && session.controls) session.controls.input(mask, lx, ly); },
+    // Couch TV: a key pressed while something plays in its window; and its window moved or
+    // changed size (the controls go with it).
+    key(name, repeat, heldMs) { if (session && session.controls && typeof session.controls.key === 'function') session.controls.key(String(name || ''), !!repeat, Number(heldMs) || 0); },
+    follow() { const s = session; if (s && s.embed && hud && !hud.isDestroyed() && hud.inWindow) { try { hud.setBounds(s.embed.bounds()); } catch (_) { /* closing */ } } },
+    get inWindow() { return !!(session && session.embed); },
     stop: (reason) => end(reason || 'back'),
     // The guide over what you're watching: pause (and hide the player controls) while it's open,
     // carry on when it closes. Something you'd already paused stays paused.
@@ -725,10 +747,7 @@ function setupTv(ctx) {
       if (s.cable) cableLoad(s, s.cable.channelId);
       else if (s.resumeAfterGuide) s.mpv.pause(false);
       s.resumeAfterGuide = false;
-      const h = hudWindow();
-      h.setBounds(targetDisplay().bounds);
-      h.showInactive();
-      h.setAlwaysOnTop(true, 'screen-saver');
+      showHud(s);
     },
     get inGuide() { return !!(session && session.inGuide); },
     now() {
@@ -745,4 +764,16 @@ function setupTv(ctx) {
   };
 }
 
-module.exports = { setupTv, SUBLANG };
+// Which commercial recordings to open, in order (pool: already shuffled; info(v): what is known
+// of one's picture, { w, h }, or nothing when it hasn't been opened yet).
+// Enough good ones known: one of those. Otherwise a few not opened yet first; except in a
+// hurry (the break is starting now and nothing was got ready: only two are opened), when a
+// good one already known goes first, so a boxy one never plays in place of it.
+const wideHd = (i) => !!i && i.h >= 720 && i.w / i.h >= 1.6;
+function adOrder(pool, info, quick) {
+  const good = pool.filter((v) => wideHd(info(v))), fresh = pool.filter((v) => !info(v));
+  const rest = pool.filter((v) => info(v) && !wideHd(info(v))).sort((a, b) => info(b).h - info(a).h);
+  return Array.from(new Set((good.length >= 4 ? good.slice(0, 2) : quick ? good.slice(0, 1) : []).concat(fresh.slice(0, 3), good, rest, fresh.slice(3))));
+}
+
+module.exports = { setupTv, SUBLANG, adOrder, wideHd };

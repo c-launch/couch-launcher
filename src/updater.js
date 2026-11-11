@@ -12,7 +12,9 @@ function run(cmd, args) {
 }
 
 // folders: every place to look for update zips (Downloads, G:\\launcher, ...). The newest zip wins.
-function createUpdater({ userData, folders, currentVersion, newer }) {
+// needs: files an update must have to be of any use to this app (Couch TV: its own app core,
+// which updates from before it existed don't have); one without them counts as no update.
+function createUpdater({ userData, folders, currentVersion, newer, needs }) {
   const staging = path.join(userData, 'update-staging');
   const target = path.join(userData, 'update');
   let ready = null; // { version, notes, zip }
@@ -61,6 +63,7 @@ function createUpdater({ userData, folders, currentVersion, newer }) {
     try { info = JSON.parse(fs.readFileSync(path.join(staging, 'version.json'), 'utf8')); } catch (_) { throw new Error('That update file is damaged. Download it again.'); }
     if (!fs.existsSync(path.join(staging, 'src', 'main.js')) || !fs.existsSync(path.join(staging, 'src', 'renderer', 'index.html'))) throw new Error('That update file is incomplete. Download it again.');
     if (!newer(info.version, currentVersion)) { fs.rmSync(staging, { recursive: true, force: true }); return { status: 'current', version: currentVersion }; }
+    if ((needs || []).some((f) => !fs.existsSync(path.join(staging, f)))) { fs.rmSync(staging, { recursive: true, force: true }); return { status: 'none' }; }
     ready = { version: info.version, notes: info.notes || '', zip };
     return { status: 'ready', version: info.version, notes: ready.notes };
   }

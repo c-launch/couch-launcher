@@ -96,3 +96,44 @@ body { font-family: Inter, "Segoe UI", system-ui, sans-serif; color: #fff; font-
 .cb-menu-hints > span { display: flex; align-items: center; gap: .5vw; }
 .cb-why { margin-top: 3vh; font-size: .95vw; color: rgba(235,235,245,.45); max-width: 50vw; }
 .cb-why:empty { display: none; }
+
+/* ---------- Couch TV: the same controls inside its window, worked with the mouse ---------- */
+.m-only { display: none !important; }
+body.mouse { cursor: default; }
+body.mouse.idle, body.mouse.idle * { cursor: none !important; }
+body.mouse .p-only { display: none !important; }
+body.mouse .m-only { display: flex !important; }
+body.mouse button { font: inherit; color: inherit; border: 0; margin: 0; cursor: pointer; }
+.mb { width: 3.4vw; height: 3.4vw; min-width: 34px; min-height: 34px; padding: 0; border-radius: 50%; align-items: center; justify-content: center; flex-shrink: 0;
+  background: rgba(40,40,46,.78); backdrop-filter: blur(16px); transition: transform .15s, background .15s, color .15s; }
+.mb svg { width: 52%; height: 52%; }
+.mb.t { font-size: 1.05vw; font-weight: 700; }
+.mb.big { width: 6vw; height: 6vw; min-width: 56px; min-height: 56px; }
+.mb:hover, .mt:hover { background: #fff; color: #0a0a0c; transform: scale(1.06); }
+.mb:active, .mt:active { transform: scale(.96); }
+.mt { align-items: center; gap: .5vw; padding: 1.1vh 1.3vw; border-radius: 99px; background: rgba(40,40,46,.78); backdrop-filter: blur(16px); font-size: 1.05vw; font-weight: 600; transition: transform .15s, background .15s, color .15s; }
+.mt svg { width: 1.3vw; height: 1.3vw; min-width: 14px; min-height: 14px; }
+.mt.on { background: #fff; color: #0a0a0c; }
+body.mouse .head { display: flex; align-items: center; gap: 1.6vw; top: 5vh; }
+.mplay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); align-items: center; gap: 2.4vw; }
+#m-toggle .i-play, #m-toggle .i-pause { display: none; width: 100%; height: 100%; align-items: center; justify-content: center; }
+#m-toggle.paused .i-play, #m-toggle:not(.paused) .i-pause { display: flex; }
+body.mouse .center:not(:empty) ~ .mplay, body.mouse .center:not(:empty) + .mplay { display: none !important; } /* "Loading" / a message takes the middle */
+body.mouse #hud.hidden { pointer-events: none; }
+body.mouse .bar { cursor: pointer; height: .9vh; min-height: 8px; }
+body.mouse .bar::before { content: ""; position: absolute; left: 0; right: 0; top: -1.6vh; bottom: -1.6vh; } /* easier to hit */
+body.mouse .bar:hover .knob { opacity: 1; }
+body.mouse .btn, body.mouse .mi { cursor: pointer; }
+body.mouse .btn:hover, body.mouse .mi:hover { background: #fff; color: #0a0a0c; }
+body.mouse .menu-list { overflow-y: auto; scrollbar-width: thin; }
+.un-m { gap: .8vw; }
+.cb-strip-m { position: absolute; left: 4vw; top: 5vh; align-items: center; gap: .8vw; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.cb-strip-m.on { opacity: 1; pointer-events: auto; }
+.cb-strip-m { z-index: 5; }
+/* (Lists keep inside the window however much the controls are enlarged: --z.) */
+body.mouse .menu { bottom: calc(21vh / var(--z, 1)); max-height: calc(66vh / var(--z, 1)); display: flex; flex-direction: column; }
+body.mouse .menu[hidden] { display: none; }
+body.mouse #cb-menu { bottom: calc(8vh / var(--z, 1)); max-height: calc(80vh / var(--z, 1)); }
+body.mouse .menu-list { max-height: none; flex: 1 1 auto; min-height: 0; }
+body.mouse .upnext { bottom: calc(26vh / var(--z, 1)); }
+body.mouse .menu, body.mouse .upnext { z-index: 4; }

@@ -9,10 +9,27 @@
 const { app, BrowserWindow, ipcMain, shell, Menu, safeStorage, dialog, screen, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+// Fail-safe for updates (as in the launcher). boot.js falls back to the built-in app when an
+// update can't be loaded at all. This covers the update that loads but never gets as far as
+// showing its first screen: each start is counted until the screen reports it is up; after two
+// starts in a row that didn't get there, this stops right here, and boot.js runs the built-in
+// app instead. Only when running as an installed update.
+const UPDATE_RUN = (() => { try { return path.resolve(__dirname).startsWith(path.join(path.resolve(app.getPath('userData')), 'update') + path.sep); } catch (_) { return false; } })();
+const healthFile = () => path.join(app.getPath('userData'), 'update-health.json');
+const readHealth = () => { try { const h = JSON.parse(fs.readFileSync(healthFile(), 'utf8')); return h && typeof h === 'object' ? h : null; } catch (_) { return null; } };
+if (UPDATE_RUN) {
+  const h = readHealth();
+  if (h && h.version === global.couchVersion && !h.ok && h.starts >= 2) {
+    try { fs.unlinkSync(healthFile()); } catch (_) { /* gone */ }
+    throw new Error('This update didn’t get to its first screen twice in a row');
+  }
+}
 const library = require('../library');
 const { readJson, writeJson } = require('../safefile');
 const { createWin32 } = require('../win32');
 const { registerFsBrowse } = require('./fsbrowse');
+const { createEmbed } = require('./embed');
 const { CORE, pickOwn, onScreen } = require('./util');
 
 const MAC = process.platform === 'darwin';
@@ -38,6 +55,18 @@ process.on('unhandledRejection', (err) => logError('unhandled', err));
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // (Update fail-safe, see the top of this file: one more start that hasn't shown its screen yet.)
+  let healthy = !UPDATE_RUN;
+  if (UPDATE_RUN) {
+    const h = readHealth(), same = h && h.version === global.couchVersion;
+    if (same && h.ok) healthy = true;
+    else { try { fs.mkdirSync(app.getPath('userData'), { recursive: true }); fs.writeFileSync(healthFile(), JSON.stringify({ version: global.couchVersion, starts: same ? (Number(h.starts) || 0) + 1 : 1, ok: false })); } catch (_) { /* not counted */ } }
+  }
+  const markHealthy = () => {
+    if (healthy) return;
+    healthy = true;
+    try { fs.writeFileSync(healthFile(), JSON.stringify({ version: global.couchVersion, starts: 0, ok: true })); } catch (_) { /* counted again next time */ }
+  };
   let win = null;
   let tvPart = null;
   const file = () => path.join(app.getPath('userData'), 'settings.json');
@@ -65,6 +94,19 @@ if (!app.requestSingleInstanceLock()) {
   const persistSoon = () => { clearTimeout(saveT); saveT = setTimeout(persist, 500); };
 
   const w32 = createWin32();
+  // The player's picture inside this window (Windows; see embed.js). Without it, or with
+  // Settings › Play videos in the window switched off, videos take the whole screen.
+  const embedApi = createEmbed();
+  const hwnd = () => { const b = win.getNativeWindowHandle(); return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0); };
+  const fitPlayer = () => { try { if (embedApi && tvPart && tvPart.inWindow && win && !win.isDestroyed()) embedApi.fit(hwnd()); } catch (_) { /* the player follows by itself too */ } };
+  const follow = () => { try { if (tvPart) tvPart.follow(); } catch (_) { /* closing */ } fitPlayer(); };
+  const embed = {
+    wid: () => (embedApi && lib && lib.settings.tvInWindow !== false && win && !win.isDestroyed() && !win.isMinimized() ? hwnd() : null),
+    bounds: () => win.getContentBounds(),
+    parent: () => win,
+    fullscreen: () => { if (win && !win.isDestroyed()) win.setFullScreen(!win.isFullScreen()); },
+    front: () => { if (win && !win.isDestroyed() && !win.isFocused()) bringBack(); }
+  };
   function send(channel, payload) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
   }
@@ -155,6 +197,9 @@ if (!app.requestSingleInstanceLock()) {
     win.on('page-title-updated', (e) => e.preventDefault()); // the page is the launcher's: the title stays "Couch TV"
     win.loadFile(path.join(SRC, 'renderer', 'index.html'), { query: { tvapp: '1' } });
     for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) win.on(ev, rememberWindow);
+    // What plays inside the window (its picture and the controls over it) goes where it goes.
+    for (const ev of ['resize', 'move', 'maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen']) win.on(ev, follow);
+    for (const ev of ['maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen']) win.on(ev, () => setTimeout(follow, 300)); // (once the change has settled)
     win.on('focus', () => send('window:focus'));
     win.on('enter-full-screen', () => send('tvapp:fullscreen', true));
     win.on('leave-full-screen', () => send('tvapp:fullscreen', false));
@@ -206,11 +251,11 @@ if (!app.requestSingleInstanceLock()) {
       return true;
     });
     handle('app:info', () => ({
-      platform: process.platform, version: VERSION, tvApp: true, windowed: true, updateFailed: null,
-      hotkey: false, guideButton: false, guideError: null, autostart: null, emulators: {},
+      platform: process.platform, version: VERSION, tvApp: true, windowed: true, updateFailed: global.couchUpdateFailed || null,
+      hotkey: false, guideButton: false, guideError: null, autostart: null, emulators: {}, canEmbed: !!embedApi,
       sharedWithLauncher: fs.existsSync(path.join(SHARED, 'library.json')), sharedSignIn: !!storeOpts.other
     }));
-    handle('app:started', () => true);
+    handle('app:started', () => { markHealthy(); return true; });
     let screenErrors = 0;
     handle('log:error', (what) => { if (screenErrors++ < 40) logError('screen', String(what || '').slice(0, 1500)); return true; });
     handle('pads:get', () => []);
@@ -220,13 +265,22 @@ if (!app.requestSingleInstanceLock()) {
       return win.isFullScreen();
     });
     registerFsBrowse(handle, { app, dialog, win: () => win });
+    // A key pressed while something plays inside the window (the keyboard stays with Couch TV).
+    handle('tv:key', (name, repeat, heldMs) => {
+      if (!tvPart || !tvPart.playing || !win || win.isDestroyed()) return false;
+      name = String(name || '');
+      if (name === 'FULL') { if (!repeat) win.setFullScreen(!win.isFullScreen()); }
+      else if (name === 'ESC') { if (!repeat) { if (win.isFullScreen()) win.setFullScreen(false); else tvPart.key('B', false, 0); } }
+      else tvPart.key(name, !!repeat, Number(heldMs) || 0);
+      return true;
+    });
 
     // ---------- Movies & TV (the launcher's own part, keeping its files in the launcher's folder)
     tvPart = require('../tvmain').setupTv({
       app, safeStorage, shell, clipboard, BrowserWindow, handle, send,
       settings: () => lib.settings, saveSettings: () => persist(),
       targetDisplay, toPx, presentApp, bringBack,
-      dataDir: SHARED, storeOpts
+      dataDir: SHARED, storeOpts, embed
     });
 
     // The controller, while a video is playing (the player's own controls). The rest of the
@@ -240,15 +294,58 @@ if (!app.requestSingleInstanceLock()) {
         if (playing && !controller) {
           controller = require('../hotkey').createControllerWatcher({
             onGuide() {}, onCombo() {}, onPress() {}, onBack() {}, usePs: () => true,
-            onButtons: (mask, lx, ly) => { if (tvPart && tvPart.playing) tvPart.input(mask, lx, ly); }
+            // (Inside the window: only while Couch TV is the program in use, so a controller
+            // used for something else doesn't also work what is playing here.)
+            onButtons: (mask, lx, ly) => { if (tvPart && tvPart.playing && (!tvPart.inWindow || (win && !win.isDestroyed() && win.isFocused()))) tvPart.input(mask, lx, ly); }
           });
         }
         if (controller) { if (playing) controller.start(); else controller.stop(); }
       } catch (err) { logError('controller', err); }
     }, 500);
+    // While something plays inside the window: its picture fills the window, and the keyboard
+    // stays with Couch TV (the player's picture must never end up holding it).
+    setInterval(() => {
+      if (!embedApi || !tvPart || !tvPart.inWindow || !win || win.isDestroyed()) return;
+      fitPlayer();
+      try { if (win.isFocused() && embedApi.focusPid() !== process.pid) win.webContents.focus(); } catch (_) { /* next time */ }
+    }, 700);
+
+    // ---------- updates (the launcher's own update files: one version for both)
+    const UPDATE_REPO = 'c-launch/couch-launcher';
+    const updDir = () => path.join(app.getPath('userData'), 'downloads');
+    let updater = null;
+    const upd = () => updater || (updater = require('../updater').createUpdater({
+      userData: app.getPath('userData'), folders: [updDir(), app.getPath('downloads')], currentVersion: VERSION,
+      newer: global.couchNewer || ((a, b) => String(a) !== String(b) && String(a).localeCompare(String(b), undefined, { numeric: true }) > 0),
+      needs: [path.join('src', 'couchtv', 'main.js')]
+    }));
+    async function checkAll(online) {
+      let netErr = null;
+      if (online) { try { await upd().download(UPDATE_REPO, updDir()); } catch (e) { netErr = e; } }
+      const r = await upd().check();
+      if (r.status !== 'ready' && netErr) r.offline = String(netErr.message || netErr);
+      return r;
+    }
+    handle('update:check', () => checkAll(true));
+    handle('update:install', () => {
+      const v = upd().install();
+      setTimeout(() => { app.relaunch(); app.exit(0); }, 300);
+      return v;
+    });
+    // Looked for a few seconds after starting, then every 3 hours (never while something plays).
+    let offered = null;
+    const autoCheck = async () => {
+      if (process.env.COUCH_TV_SELFTEST || (tvPart && tvPart.playing)) return;
+      try {
+        const r = await checkAll(true);
+        if (r.status === 'ready' && !(tvPart && tvPart.playing) && offered !== r.version) { offered = r.version; send('update:found', r); }
+      } catch (_) { /* checked again later or from Settings */ }
+    };
+    setTimeout(autoCheck, 5000);
+    setInterval(autoCheck, 3 * 60 * 60 * 1000);
 
     createWindow();
-    if (process.env.COUCH_TV_SELFTEST) require('./selftest').run({ app, win: () => win, logError, storeOpts, SHARED, safeStorage });
+    if (process.env.COUCH_TV_SELFTEST) require('./selftest').run({ app, win: () => win, logError, storeOpts, SHARED, safeStorage, embedApi, hwnd, tvPart });
   });
 
   app.on('before-quit', () => { try { if (tvPart) tvPart.quit(); } catch (_) { /* closing anyway */ } });

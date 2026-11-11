@@ -138,6 +138,8 @@ contextBridge.exposeInMainWorld('launcher', {
   openXblSite: () => call('link:open', 'https://xbl.io'),
   youtubeOpen: () => call('yt:open'),
   youtubeReset: () => call('yt:reset'),
+  hudAct: (a, x) => call('hud:act', String(a || ''), typeof x === 'number' ? x : typeof x === 'string' ? x : null),
+  tvKey: (name, repeat, heldMs) => call('tv:key', String(name || ''), !!repeat, Number(heldMs) || 0),
   tvFullscreen: (on) => call('tvapp:fullscreen', on == null ? null : !!on),
   tvStatus: () => call('tv:status'),
   tvLinkCreate: () => call('tv:linkCreate'),

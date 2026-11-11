@@ -40,7 +40,7 @@ class BW extends EventEmitter {
     super(); this.o = o || {}; this.visible = false; this.min = false; this.max = false; this.full = false; this.dead = false; wins.push(this);
     this.bounds = { x: o.x != null ? o.x : 320, y: o.y != null ? o.y : 140, width: o.width, height: o.height };
     this.sent = [];
-    this.webContents = Object.assign(new EventEmitter(), { send: (ch, v) => this.sent.push([ch, v]), setWindowOpenHandler: (f) => { this.openHandler = f; }, reload: () => { this.reloads = (this.reloads || 0) + 1; }, forcefullyCrashRenderer() {} });
+    this.webContents = Object.assign(new EventEmitter(), { focus: () => { this.wcFocus = (this.wcFocus || 0) + 1; }, send: (ch, v) => this.sent.push([ch, v]), setWindowOpenHandler: (f) => { this.openHandler = f; }, reload: () => { this.reloads = (this.reloads || 0) + 1; }, forcefullyCrashRenderer() {} });
     setTimeout(() => this.emit('ready-to-show'), 5);
   }
   loadFile(f, o) { this.file = String(f); this.loadOpts = o || null; return Promise.resolve(); }
@@ -49,7 +49,9 @@ class BW extends EventEmitter {
   maximize() { this.max = true; } isMaximized() { return this.max; }
   setFullScreen(on) { this.full = !!on; this.emit(on ? 'enter-full-screen' : 'leave-full-screen'); } isFullScreen() { return this.full; }
   getBounds() { return this.bounds; } getNormalBounds() { return this.bounds; } setBounds(b) { Object.assign(this.bounds, b); }
-  setAlwaysOnTop() {} setIgnoreMouseEvents() {}
+  getContentBounds() { return { x: this.bounds.x + 8, y: this.bounds.y + 31, width: this.bounds.width - 16, height: this.bounds.height - 39 }; }
+  isFocused() { return this.focusedNow !== false; } isVisible() { return this.visible; }
+  setAlwaysOnTop(on) { this.onTop = !!on; } setIgnoreMouseEvents(on) { this.ignoresMouse = !!on; }
   getNativeWindowHandle() { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(1000 + wins.indexOf(this))); return b; }
 }
 const electron = { app, BrowserWindow: BW,
@@ -66,6 +68,30 @@ const world = { calls: [] };
 require.cache[path.join(SRC, 'win32.js')] = { id: 'w', filename: path.join(SRC, 'win32.js'), loaded: true, exports: { createWin32: () => ({
   hwndOf: (bw) => 1000 + wins.indexOf(bw), forceForeground: (h) => world.calls.push('front ' + h), findAppWindow: () => null, rect: () => null, move() {} }) } };
 require.cache[path.join(SRC, 'hotkey.js')] = { id: 'h', filename: path.join(SRC, 'hotkey.js'), loaded: true, exports: { createControllerWatcher: (o) => { world.ctl = o; return { start() { world.calls.push('pad start'); }, stop() { world.calls.push('pad stop'); } }; } } };
+// The player, pretended: what it was started with is kept, and it "plays" (reports its time).
+const players = [];
+world.hasMpv = false;
+function fakeMpv(o) {
+  const m = new EventEmitter();
+  Object.assign(m, { o, alive: true, paused: false, seeks: [], togglePause() { m.paused = !m.paused; m.emit('pause', m.paused); }, pause(p) { m.paused = !!p; return Promise.resolve(); },
+    seek(x, how) { m.seeks.push([how, x]); }, setSub() {}, setAudio() {}, addSubs() {}, load: async () => {}, quit() { if (m.alive) { m.alive = false; setTimeout(() => m.emit('exit', { code: 0 }), 5); } } });
+  players.push(m);
+  setTimeout(() => m.emit('time', { pos: 12, dur: 1000 }), 10);
+  return m;
+}
+require.cache[path.join(SRC, 'tvplayer.js')] = { id: 'p', filename: path.join(SRC, 'tvplayer.js'), loaded: true, exports: {
+  createEngine: () => ({ available: () => false }), findMpv: () => (world.hasMpv ? 'C:\\mpv\\mpv.exe' : null), installMpv: async () => 'C:\\mpv\\mpv.exe', extrasOk: async () => true, startMpv: (exe, o) => fakeMpv(o) } };
+// The window calls for the picture inside the window, pretended (world.embed: whether they can be had).
+world.embed = true; world.fits = 0; world.focusPid = process.pid;
+require.cache[path.join(SRC, 'couchtv', 'embed.js')] = { id: 'e', filename: path.join(SRC, 'couchtv', 'embed.js'), loaded: true, exports: { createEmbed: () => (world.embed ? {
+  child: () => 777, inside: () => ({ width: 1264, height: 721 }), fit: () => { world.fits++; return true; }, focusPid: () => world.focusPid } : null) } };
+process.setMaxListeners(200); // (the app core is started many times in this one process)
+// (Windows unpacks update zips with its own tar; here a stand-in with the same call.)
+fs.mkdirSync(path.join(TMP, 'bin'), { recursive: true });
+fs.writeFileSync(path.join(TMP, 'bin', 'tar'), '#!/bin/sh\n[ "$1" = "-xf" ] && [ "$3" = "-C" ] || exit 2\nexec unzip -q "$2" -d "$4"\n', { mode: 0o755 });
+process.env.PATH = path.join(TMP, 'bin') + path.delimiter + process.env.PATH;
+// (No internet in this test: looking for an update online just fails, as when offline.)
+global.fetch = async () => { throw new Error('offline'); };
 const errors = [];
 process.on('unhandledRejection', (e) => errors.push(e && e.stack || e));
 process.on('uncaughtException', (e) => { console.error(e); process.exit(1); });
@@ -77,7 +103,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const copy = (v) => (v === undefined ? v : JSON.parse(JSON.stringify(v)));
 const call = async (ch, ...a) => { assert.ok(handlers[ch], 'no handler for ' + ch); const r = copy(await handlers[ch](...a.map(copy))); if (!r.ok) throw new Error(r.error); return r.value; };
 const freshStart = () => {
-  for (const k of Object.keys(require.cache)) if (k.startsWith(path.join(SRC, 'couchtv')) || /[\\/]src[\\/](tvmain|stremio|cable|library)\.js$/.test(k)) delete require.cache[k];
+  for (const k of Object.keys(require.cache)) if ((k.startsWith(path.join(SRC, 'couchtv')) && !/embed\.js$/.test(k)) || /[\\/]src[\\/](tvmain|stremio|cable|library)\.js$/.test(k)) delete require.cache[k];
+  for (const k of Object.keys(require.cache)) if (k.startsWith(TMP)) delete require.cache[k];
+  for (const k of ['couchVersion', 'couchBuiltIn', 'couchNewer', 'couchUpdateFailed', 'couchTvShared']) delete global[k];
   for (const k of Object.keys(handlers)) delete handlers[k];
   app.removeAllListeners(); wins.length = 0; delete paths.userData;
   require(path.join(SRC, 'couchtv', 'boot.js'));
@@ -109,8 +137,8 @@ const freshStart = () => {
   const preload = fs.readFileSync(path.join(SRC, 'preload.js'), 'utf8');
   const channels = [...preload.matchAll(/call\('(tv:[A-Za-z]+)'/g)].map((m) => m[1]).filter((c) => c !== 'tv:guideStop');
   assert.ok(channels.length > 30);
-  for (const ch of channels.concat(['lib:load', 'lib:save', 'app:info', 'app:started', 'log:error', 'pads:get', 'fs:list', 'fs:pick', 'fs:stat', 'tvapp:fullscreen'])) assert.ok(handlers[ch], 'answers ' + ch);
-  for (const ch of ['launch', 'scan', 'overlay:hide', 'app:power', 'update:install', 'yt:open']) assert.ok(!handlers[ch], 'has nothing to do with ' + ch);
+  for (const ch of channels.concat(['lib:load', 'lib:save', 'app:info', 'app:started', 'log:error', 'pads:get', 'fs:list', 'fs:pick', 'fs:stat', 'tvapp:fullscreen', 'tv:key', 'hud:act', 'update:check', 'update:install'])) assert.ok(handlers[ch], 'answers ' + ch);
+  for (const ch of ['launch', 'scan', 'overlay:hide', 'app:power', 'yt:open']) assert.ok(!handlers[ch], 'has nothing to do with ' + ch);
 
   // ---------- settings: started from the launcher's, then its own
   const lib = await call('lib:load');
@@ -150,6 +178,76 @@ const freshStart = () => {
   await call('tv:cableSetEras', [eras[0].id]); await sleep(500);
   assert.ok(fs.existsSync(path.join(LAUNCHER, 'cable.json')), 'Cable TV’s channels are kept in the launcher’s folder');
   await assert.rejects(call('tv:play', { meta: { id: 'tt1', type: 'movie', name: 'X' } }), /NO_MPV|mpv/i, 'without a player it says so');
+
+  // ---------- a video plays inside the window (Windows)
+  world.hasMpv = true;
+  assert.strictEqual((await call('app:info')).canEmbed, true);
+  const movie = { meta: { id: 'tt7', type: 'movie', name: 'A Movie' }, stream: { url: 'https://example.com/a.mkv' } };
+  await call('tv:play', movie);
+  let pl = players[players.length - 1];
+  assert.strictEqual(pl.o.wid, 1000, 'the player is told to draw inside Couch TV’s window: ' + pl.o.wid);
+  let hud = wins[wins.length - 1];
+  assert.ok(hud !== w && /hud\.html$/.test(hud.file) && hud.loadOpts && hud.loadOpts.query.mouse === '1', 'the controls are the mouse kind');
+  assert.strictEqual(hud.o.parent, w, 'the controls belong to the window');
+  assert.ok(hud.o.focusable === false && hud.o.transparent && !hud.ignoresMouse && !hud.onTop, 'see-through, take the mouse, never the keyboard, not above other programs');
+  assert.deepStrictEqual(hud.bounds, w.getContentBounds(), 'the controls lie exactly over the inside of the window');
+  assert.ok(hud.visible);
+  assert.ok(!world.calls.some((c) => /^front 100[1-9]/.test(c)), 'no other window is pushed to the front');
+  // the window moves and is resized: the controls and the picture go with it
+  const f0 = world.fits;
+  w.bounds = { x: 400, y: 200, width: 1000, height: 700 }; w.emit('move'); w.emit('resize');
+  assert.deepStrictEqual(hud.bounds, w.getContentBounds(), 'the controls follow the window');
+  assert.ok(world.fits > f0, 'and the picture is fitted again');
+  // the mouse on the controls
+  await sleep(40);
+  assert.strictEqual(await call('hud:act', 'toggle', null), true); assert.ok(pl.paused, 'a click pauses');
+  await call('hud:act', 'toggle', null); assert.ok(!pl.paused);
+  await call('hud:act', 'seekFrac', 0.5); assert.deepStrictEqual(pl.seeks.pop(), ['absolute', 500]);
+  await call('hud:act', 'seekBy', 30); assert.deepStrictEqual(pl.seeks.pop(), ['relative', 30]);
+  await call('hud:act', 'fullscreen', null); assert.ok(w.full, 'the full screen button');
+  await call('hud:act', 'fullscreen', null); assert.ok(!w.full);
+  w.focusedNow = false; const fr = world.calls.length; await call('hud:act', 'front', null);
+  assert.ok(world.calls.slice(fr).includes('front 1000'), 'clicking the picture brings Couch TV forward'); w.focusedNow = true;
+  await call('hud:act', 'nonsense', {}); await call('hud:act');
+  // the keyboard
+  assert.strictEqual(await call('tv:key', 'TOGGLE', false, 0), true); assert.ok(pl.paused, 'Space pauses');
+  await call('tv:key', 'TOGGLE', false, 0);
+  await call('tv:key', 'RB', false, 0); assert.deepStrictEqual(pl.seeks.pop(), ['relative', 30]);
+  await call('tv:key', 'FULL', false, 0); assert.ok(w.full, 'F goes full screen');
+  await call('tv:key', 'ESC', false, 0); assert.ok(!w.full && players[players.length - 1].alive, 'Esc leaves full screen first');
+  // the keyboard is kept with Couch TV if the player's picture ever takes it
+  world.focusPid = 4242; const wf = w.wcFocus || 0; await sleep(800);
+  assert.ok((w.wcFocus || 0) > wf, 'the keyboard is taken back from the picture'); world.focusPid = process.pid;
+  // the controller only while Couch TV is the program in use
+  await sleep(600);
+  assert.ok(world.calls.includes('pad start') && world.ctl, 'the controller is read while playing');
+  const BIT_A = 0x1000;
+  w.focusedNow = false; world.ctl.onButtons(BIT_A, 0, 0); world.ctl.onButtons(0, 0, 0); assert.ok(!pl.paused, 'not while another program is in use');
+  w.focusedNow = true; world.ctl.onButtons(BIT_A, 0, 0); world.ctl.onButtons(0, 0, 0); assert.ok(pl.paused, 'A pauses');
+  world.ctl.onButtons(BIT_A, 0, 0); world.ctl.onButtons(0, 0, 0);
+  // Esc (not full screen) goes back: the video ends, the screens are told, the controls go
+  // (as with B on a controller: the first hides the controls, the next goes back)
+  await call('tv:key', 'ESC', false, 0); assert.ok(pl.alive);
+  await call('tv:key', 'ESC', false, 0); await sleep(60);
+  assert.ok(!pl.alive && !hud.visible, 'Esc ends it');
+  assert.ok(w.sent.some(([ch]) => ch === 'tv:ended'));
+  assert.strictEqual(await call('tv:key', 'TOGGLE', false, 0), false, 'keys do nothing when nothing plays');
+  assert.strictEqual(await call('hud:act', 'toggle', null), false);
+  await sleep(600); assert.ok(world.calls.includes('pad stop'), 'the controller is let go afterwards');
+  // switched off in Settings: the whole screen, as in the launcher
+  const l9 = await call('lib:load'); l9.settings.tvInWindow = false; await call('lib:save', l9);
+  await call('tv:play', movie);
+  pl = players[players.length - 1]; hud = wins[wins.length - 1];
+  assert.ok(!pl.o.wid && pl.o.rect && pl.o.rect.width === 1920, 'full screen when switched off');
+  assert.ok(!hud.o.parent && hud.ignoresMouse && hud.onTop && hud.bounds.width === 1920, 'with the launcher’s kind of controls');
+  await call('hud:act', 'exit', null); await call('tv:key', 'B', false, 0); await call('tv:key', 'B', false, 0); await sleep(60);
+  assert.ok(!players[players.length - 1].alive, 'ended');
+  l9.settings.tvInWindow = true; await call('lib:save', l9);
+  await call('tv:play', movie); assert.strictEqual(players[players.length - 1].o.wid, 1000, 'and back inside the window');
+  assert.strictEqual(wins[wins.length - 1].o.parent, w);
+  await call('hud:act', 'exit', null); await sleep(60);
+  assert.ok(!players[players.length - 1].alive, 'the Back button ends it');
+  world.hasMpv = false;
 
   // ---------- small things
   assert.strictEqual(await call('app:started'), true);
@@ -207,6 +305,75 @@ const freshStart = () => {
   freshStart(); await sleep(60);
   assert.strictEqual((await call('lib:load')).settings.tvQuality, '4K');
   wins[0].dead = true;
+
+  // ---------- without the window calls (they couldn't be loaded): full screen, nothing breaks
+  world.embed = false; world.hasMpv = true;
+  for (const k of Object.keys(require.cache)) if (/embed\.js$/.test(k)) { /* kept: it reads world.embed when asked */ }
+  freshStart(); await sleep(60);
+  assert.strictEqual((await call('app:info')).canEmbed, false);
+  await call('tv:play', { meta: { id: 'tt7', type: 'movie', name: 'A Movie' }, stream: { url: 'https://example.com/a.mkv' } });
+  assert.ok(!players[players.length - 1].o.wid, 'full screen without them');
+  await call('tv:key', 'B', false, 0); await call('tv:key', 'B', false, 0); await sleep(60);
+  wins.forEach((x) => { x.dead = true; }); world.embed = true; world.hasMpv = false;
+
+  // ---------- updates: the launcher's update files, installed for Couch TV itself
+  {
+    const BUILT = require(path.join(ROOT, 'package.json')).version;
+    const UPD = path.join(OWN, 'update');
+    const putUpdate = (version, withTv) => {
+      fs.rmSync(UPD, { recursive: true, force: true }); fs.mkdirSync(UPD, { recursive: true });
+      fs.cpSync(SRC, path.join(UPD, 'src'), { recursive: true });
+      if (!withTv) fs.rmSync(path.join(UPD, 'src', 'couchtv'), { recursive: true, force: true });
+      fs.writeFileSync(path.join(UPD, 'version.json'), JSON.stringify({ version }));
+    };
+    const started = async () => { freshStart(); await sleep(60); const i = await call('app:info'); return { info: i, file: wins[0].file, fromUpdate: wins[0].file.startsWith(UPD) }; };
+    const stop = () => { wins.forEach((x) => { x.dead = true; }); };
+    // nothing checked online is ready: says so, offline
+    let r0 = await started();
+    assert.ok(!r0.fromUpdate && r0.info.version === BUILT && !r0.info.updateFailed);
+    const chk = await call('update:check');
+    assert.ok(chk.status === 'none' && /offline/.test(chk.offline || ''), JSON.stringify(chk));
+    await assert.rejects(call('update:install'), /Check for the update first/);
+    stop();
+    // a newer update that has Couch TV in it: runs from the update
+    putUpdate('999.0.0', true);
+    r0 = await started();
+    assert.ok(r0.fromUpdate && r0.info.version === '999.0.0', 'runs the installed update: ' + r0.file);
+    assert.strictEqual(wins[0].o.title, 'Couch TV');
+    assert.strictEqual(await call('app:started'), true); stop();
+    for (let n = 0; n < 4; n++) { r0 = await started(); assert.ok(r0.fromUpdate, 'an update that showed its screen is kept, start ' + (n + 2)); stop(); }
+    // an older one, or one from before Couch TV existed: the built-in app
+    putUpdate('0.0.1', true); r0 = await started(); assert.ok(!r0.fromUpdate && r0.info.version === BUILT, 'an older update is ignored'); stop();
+    putUpdate('999.0.0', false); r0 = await started(); assert.ok(!r0.fromUpdate && !r0.info.updateFailed, 'an update without Couch TV in it is ignored'); stop();
+    // one that never shows its screen: two starts, then the built-in app, and it says so
+    putUpdate('999.1.0', true);
+    for (const n of [1, 2]) { r0 = await started(); assert.ok(r0.fromUpdate, 'start ' + n + ' runs it'); stop(); }
+    r0 = await started();
+    assert.ok(!r0.fromUpdate && /first screen/.test(r0.info.updateFailed || '') && r0.info.version === BUILT, 'third start: the built-in app: ' + JSON.stringify(r0.info));
+    assert.ok(!fs.existsSync(UPD) && fs.readdirSync(OWN).some((f) => f.startsWith('update-failed-')), 'the update is set aside');
+    stop();
+    r0 = await started(); assert.ok(!r0.fromUpdate && !r0.info.updateFailed, 'and it keeps starting'); stop();
+    // one that can't even be loaded: the built-in app at once
+    putUpdate('999.2.0', true); fs.writeFileSync(path.join(UPD, 'src', 'couchtv', 'main.js'), 'this is not a program {');
+    r0 = await started();
+    assert.ok(!r0.fromUpdate && r0.info.updateFailed && wins.length === 1, 'a broken update never stops Couch TV starting');
+    stop();
+    // an update zip found in its folder: checked, installed, restarted into
+    const zipDir = path.join(TMP, 'zip'); fs.mkdirSync(path.join(zipDir, 'in'), { recursive: true });
+    fs.cpSync(SRC, path.join(zipDir, 'in', 'src'), { recursive: true });
+    fs.writeFileSync(path.join(zipDir, 'in', 'version.json'), JSON.stringify({ version: '998.0.0', notes: 'New things' }));
+    fs.mkdirSync(path.join(OWN, 'downloads'), { recursive: true });
+    require('child_process').execFileSync('zip', ['-qr', path.join(OWN, 'downloads', 'CouchLauncher-update-998.0.0.zip'), 'version.json', 'src'], { cwd: path.join(zipDir, 'in') });
+    r0 = await started();
+    const found = await call('update:check');
+    assert.ok(found.status === 'ready' && found.version === '998.0.0' && found.notes === 'New things', JSON.stringify(found));
+    let relaunched = 0; app.relaunch = () => { relaunched++; }; app.exit = () => {};
+    assert.strictEqual(await call('update:install'), '998.0.0'); await sleep(400);
+    assert.strictEqual(relaunched, 1, 'restarts itself');
+    stop();
+    r0 = await started(); assert.ok(r0.fromUpdate && r0.info.version === '998.0.0', 'and runs the new version'); await call('app:started'); stop();
+    fs.rmSync(UPD, { recursive: true, force: true }); fs.rmSync(path.join(OWN, 'downloads'), { recursive: true, force: true });
+  }
 
   // ---------- already running: the second one leaves at once
   lock = false; const q0 = quits;

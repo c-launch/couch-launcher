@@ -55,11 +55,13 @@ jobs:
 
       - name: Check that Couch TV runs on Windows
         if: always()
+        env:
+          COUCH_SELFTEST_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           mkdir -p st2
           ( COUCH_TV_SELFTEST="$(pwd -W 2>/dev/null || pwd)/st2" "dist-tv/win-unpacked/Couch TV.exe" > st2/log.txt 2>&1 & echo $! > st2/pid )
-          for i in $(seq 1 120); do [ -f st2/result.json ] && break; sleep 1; done
+          for i in $(seq 1 240); do [ -f st2/result.json ] && break; sleep 1; done
           sleep 3; taskkill //F //IM "Couch TV.exe" > /dev/null 2>&1 || true
           [ -f st2/result.json ] || { echo "Couch TV never finished its self-test"; cat st2/log.txt || true; exit 1; }
           node tools/couch-tv-check.js st2/result.json

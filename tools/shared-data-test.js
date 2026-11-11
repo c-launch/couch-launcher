@@ -190,6 +190,21 @@ const read = (dir) => JSON.parse(fs.readFileSync(path.join(dir, 'tv.json'), 'utf
     assert.deepStrictEqual(util.pickOwn({ tvMode: 'light', theme: 'frosted', games: 1, tvQuality: '4K', displayId: 7 }), { tvMode: 'light', tvQuality: '4K' });
     assert.deepStrictEqual(util.pickOwn(null), {});
   }
+  // ---------- which commercial is opened first (in a hurry: a good one already known)
+  {
+    const { adOrder } = require(path.join(ROOT, 'src', 'tvmain.js'));
+    const known = { w1: { w: 1920, h: 1080 }, w2: { w: 1280, h: 720 }, b1: { w: 640, h: 480 }, b2: { w: 480, h: 360 } };
+    const info = (v) => known[v.id];
+    const ids = (l) => l.map((v) => v.id).join(' ');
+    const pool = ['f1', 'b2', 'f2', 'w1', 'f3', 'b1', 'f4', 'w2'].map((id) => ({ id }));
+    assert.strictEqual(ids(adOrder(pool, info, false)), 'f1 f2 f3 w1 w2 b1 b2 f4', 'with time: a few not opened yet, then the good, then the best of the rest');
+    assert.strictEqual(ids(adOrder(pool, info, true)).split(' ')[0], 'w1', 'in a hurry: a known good one first');
+    assert.strictEqual(ids(adOrder(pool, info, true)), 'w1 f1 f2 f3 w2 b1 b2 f4', 'nothing listed twice');
+    assert.strictEqual(ids(adOrder(pool.filter((v) => v.id[0] !== 'w'), info, true)), 'f1 f2 f3 b1 b2 f4', 'in a hurry with no good one known: as before');
+    const many = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id })), allGood = () => ({ w: 1920, h: 1080 });
+    assert.strictEqual(ids(adOrder(many, allGood, false)), 'a b c d e');
+    assert.strictEqual(ids(adOrder([], info, true)), '');
+  }
   fs.rmSync(TMP, { recursive: true, force: true });
   console.log('shared data ok');
 })().catch((e) => { console.error(e); process.exit(1); });

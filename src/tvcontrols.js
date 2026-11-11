@@ -173,8 +173,35 @@ function createTvControls({ act, render, now }) {
     return changed;
   }
 
+  // Couch TV: the controls worked with the mouse (clicks on what view() draws)...
+  function mouse(a, x) {
+    st.lastInput = now();
+    if (a === 'wake') { if (!st.hud) { st.hud = true; draw(); } return; }
+    if (st.upNext) { if (a === 'press' && (x === 'A' || x === 'B')) press(x); draw(); return; }
+    if (a === 'menuPick') { if (st.menu && st.menu.items[x | 0]) { st.menu.index = x | 0; pick(); } }
+    else if (a === 'menuClose') st.menu = null;
+    else if (st.menu) st.menu = null; // a click anywhere else closes the list first
+    else if (a === 'toggle') { st.target = null; act('toggle'); show(); }
+    else if (a === 'seekFrac') { if (st.dur > 0) { const t = clampT(Math.max(0, Math.min(1, Number(x) || 0)) * st.dur); st.target = null; act('seekTo', t); st.pos = t; } show(); st.focus = 'bar'; }
+    else if (a === 'seekBy') { commit(); act('seekBy', Number(x) || 0); flash((x > 0 ? '+' : '−') + Math.abs(Number(x) || 0) + ' s'); show(); }
+    else if (a === 'button') { const it = buttons()[x | 0]; show(); if (it) openMenu(it.id); }
+    else if (a === 'exit') { act('exit'); return; }
+    draw();
+  }
+  // ...and with the keyboard (a key at a time: name is a button or a direction; repeat: the key
+  // is being held, for heldMs).
+  function key(name, repeat, heldMs) {
+    const dir = { UP: 'up', DOWN: 'down', LEFT: 'left', RIGHT: 'right' }[name];
+    if (dir) moveDir(dir, !repeat, repeat ? Math.max(FIRST_REPEAT, Number(heldMs) || 0) : 0);
+    else if (name === 'TOGGLE') { if (st.menu || st.upNext) press('A'); else { st.lastInput = now(); st.target = null; act('toggle'); show(); } }
+    else if (!repeat && ['A', 'B', 'X', 'Y', 'LB', 'RB', 'START'].includes(name)) press(name);
+    else return;
+    // (A direction let go: where it was scrubbed to is jumped to a moment later, as with a pad.)
+    tick(); draw();
+  }
+
   return {
-    input, tick: () => { if (tick()) draw(); }, view, BIT,
+    input, mouse, key, tick: () => { if (tick()) draw(); }, view, BIT,
     setInfo(info) { st.info = Object.assign({ title: '', subtitle: '', isSeries: false, episodes: [] }, info); st.btn = 0; st.upNext = null; st.menu = null; st.target = null; st.buffering = true; show(); draw(); },
     setTime(pos, dur) { st.pos = pos; if (dur > 0) st.dur = dur; },
     setPaused(p) { st.paused = !!p; if (p) show(); else st.lastInput = now(); draw(); },
