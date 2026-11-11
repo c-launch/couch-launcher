@@ -61,6 +61,13 @@ window.CouchTV = function (k) {
     const l = $('.tv-arrow.l', wrap), r = $('.tv-arrow.r', wrap);
     if (l) l.classList.toggle('off', !(row.scrollLeft > 2));
     if (r) r.classList.toggle('off', !(max > 2 && row.scrollLeft < max - 2));
+    // Level with the middle of the row's pictures (not of the pictures and the words under them).
+    const card = row.firstElementChild, pic = card && (card.querySelector('.tv-wimg') || card);
+    if (pic && pic.offsetHeight) {
+      let top = pic.offsetHeight / 2, el = pic;
+      while (el && el !== wrap) { top += el.offsetTop; el = el.offsetParent; }
+      if (el === wrap) for (const a of [l, r]) if (a) a.style.top = top + 'px';
+    }
   }
   function rowArrows(root) {
     const all = () => { for (const row of $$('.tv-rowwrap > .tv-row', root)) syncArrows(row); };
