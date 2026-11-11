@@ -93,7 +93,7 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
     return { at, part };
   };
   const magenta = (p) => p[0] > 170 && p[2] > 170 && p[1] < 100;
-  const thumb = (part) => part.resize({ width: 300, quality: 'good' }).toJPEG(55).toString('base64');
+  const thumb = (part) => part.resize({ width: 720, quality: 'good' }).toJPEG(62).toString('base64');
   const sameSize = () => { const c = embedApi.child(hwnd()), a = c ? embedApi.inside(c) : null, b = embedApi.inside(hwnd()); return !!a && !!b && Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1 ? a : null; };
   const hudWin = () => BrowserWindow.getAllWindows().find((x) => x !== w && !x.isDestroyed() && x.isVisible());
   const hudOver = () => { const h = hudWin(); if (!h) return false; const a = h.getBounds(), b = w.getContentBounds(); return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1; };
@@ -115,9 +115,12 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
     // paused with a click on the controls: they stay up, with the play button in the middle
     await js("window.launcher.hudAct('toggle', null)"); await wait(1200);
     let s1 = await shot();
-    out.centre = s1.at(0.5, 0.5); out.pixelPaused = s1.at(0.22, 0.45);
+    out.pixelPaused = s1.at(0.22, 0.45);
     res.thumb = thumb(s1.part);
-    out.controlsDrawn = out.centre[1] > 150; // (the play button's white mark, where the plain picture has no green at all)
+    // (the white play button, where the plain picture has no green at all: looked for where the controls say it is)
+    const spot = await hudWin().webContents.executeJavaScript("(() => { const r = document.getElementById('m-toggle').getBoundingClientRect(); return [(r.left + r.width * 0.2) / innerWidth, (r.top + r.height / 2) / innerHeight, Math.round(r.width)]; })()", true);
+    out.button = spot; out.buttonPixel = s1.at(spot[0], spot[1]);
+    out.controlsDrawn = spot[2] >= 30 && out.buttonPixel[1] > 150;
     out.keyboardOurs = w.isFocused() ? embedApi.focusPid() === process.pid : 'not in front';
     // resized: the picture and the controls go with the window
     w.setSize(840, 560); await wait(1500);

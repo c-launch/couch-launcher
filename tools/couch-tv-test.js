@@ -228,8 +228,10 @@ const freshStart = () => {
   // Esc (not full screen) goes back: the video ends, the screens are told, the controls go
   // (as with B on a controller: the first hides the controls, the next goes back)
   await call('tv:key', 'ESC', false, 0); assert.ok(pl.alive);
+  const fe = world.calls.length;
   await call('tv:key', 'ESC', false, 0); await sleep(60);
   assert.ok(!pl.alive && !hud.visible, 'Esc ends it');
+  assert.ok(!world.calls.slice(fe).some((c) => /^front/.test(c)), 'the window is not pushed to the front when it ends');
   assert.ok(w.sent.some(([ch]) => ch === 'tv:ended'));
   assert.strictEqual(await call('tv:key', 'TOGGLE', false, 0), false, 'keys do nothing when nothing plays');
   assert.strictEqual(await call('hud:act', 'toggle', null), false);

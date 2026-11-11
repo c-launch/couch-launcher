@@ -22,7 +22,7 @@ window.CouchTV = function (k) {
     T.layer = openLayer({
       className: 'tv-layer tv-' + mode(),
       html: '<div class="tv"><div class="tv-backdrop" aria-hidden="true"></div><header class="tv-top">' +
-        (k.standalone ? '<button class="tv-backbtn off" type="button" tabindex="-1" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>' : '') +
+        (k.standalone ? '<button class="tv-backbtn off" type="button" tabindex="-1" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 5l-7 7 7 7"/></svg></button>' : '') +
         '<nav class="tv-nav" aria-label="Sections"></nav>' +
         '<button class="tv-me" data-nav data-key="tvn-settings" data-lock="tvnav" data-zone="tvnav" data-act="settings" aria-label="' + (k.standalone ? 'Settings' : 'Movies & TV settings') + '">' + icon('gear') + '</button></header>' +
         '<main class="tv-scroll"></main><footer class="tv-hints"></footer>' + introHTML() + '</div>',
@@ -288,7 +288,7 @@ window.CouchTV = function (k) {
   const sectionHTML = (title, inner, cls) => '<section class="tv-sec' + (cls ? ' ' + cls : '') + '" data-block><h2>' + esc(title) + '</h2>' + inner + '</section>';
   // Couch TV (used with a mouse or trackpad): each row has an arrow at either end, see rowArrows.
   const arrowHTML = (d) => '<button class="tv-arrow ' + (d < 0 ? 'l' : 'r') + ' off" type="button" tabindex="-1" data-dir="' + d + '" aria-label="' + (d < 0 ? 'Scroll back' : 'Scroll on') + '">' +
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (d < 0 ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7') + '"/></svg></button>';
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (d < 0 ? 'M15.5 5l-7 7 7 7' : 'M8.5 5l7 7-7 7') + '"/></svg></button>';
   const rowHTML = (inner) => (k.standalone ? '<div class="tv-rowwrap">' + arrowHTML(-1) + '<div class="tv-row">' + inner + '</div>' + arrowHTML(1) + '</div>' : '<div class="tv-row">' + inner + '</div>');
   const empty = (text, btn) => '<div class="tv-empty"><p>' + text + '</p>' + (btn || '') + '</div>';
 

@@ -97,43 +97,71 @@ body { font-family: Inter, "Segoe UI", system-ui, sans-serif; color: #fff; font-
 .cb-why { margin-top: 3vh; font-size: .95vw; color: rgba(235,235,245,.45); max-width: 50vw; }
 .cb-why:empty { display: none; }
 
-/* ---------- Couch TV: the same controls inside its window, worked with the mouse ---------- */
+/* ---------- Couch TV: the same controls inside its window, worked with the mouse ----------
+   Sized like a desktop player's (not a TV's across the room): everything here is in em, and the
+   em grows only a little with the window. */
 .m-only { display: none !important; }
-body.mouse { cursor: default; }
+body.mouse { cursor: default; font-size: clamp(12.5px, calc(.45vw + 8.5px), 17px); }
 body.mouse.idle, body.mouse.idle * { cursor: none !important; }
 body.mouse .p-only { display: none !important; }
 body.mouse .m-only { display: flex !important; }
-body.mouse button { font: inherit; color: inherit; border: 0; margin: 0; cursor: pointer; }
-.mb { width: 3.4vw; height: 3.4vw; min-width: 34px; min-height: 34px; padding: 0; border-radius: 50%; align-items: center; justify-content: center; flex-shrink: 0;
-  background: rgba(40,40,46,.78); backdrop-filter: blur(16px); transition: transform .15s, background .15s, color .15s; }
-.mb svg { width: 52%; height: 52%; }
-.mb.t { font-size: 1.05vw; font-weight: 700; }
-.mb.big { width: 6vw; height: 6vw; min-width: 56px; min-height: 56px; }
-.mb:hover, .mt:hover { background: #fff; color: #0a0a0c; transform: scale(1.06); }
-.mb:active, .mt:active { transform: scale(.96); }
-.mt { align-items: center; gap: .5vw; padding: 1.1vh 1.3vw; border-radius: 99px; background: rgba(40,40,46,.78); backdrop-filter: blur(16px); font-size: 1.05vw; font-weight: 600; transition: transform .15s, background .15s, color .15s; }
-.mt svg { width: 1.3vw; height: 1.3vw; min-width: 14px; min-height: 14px; }
-.mt.on { background: #fff; color: #0a0a0c; }
-body.mouse .head { display: flex; align-items: center; gap: 1.6vw; top: 5vh; }
-.mplay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); align-items: center; gap: 2.4vw; }
+body.mouse button { font: inherit; color: inherit; border: 0; margin: 0; padding: 0; cursor: pointer; }
+/* round buttons: the mark sits exactly in the middle */
+.mb, .mt { display: inline-flex; box-sizing: border-box; align-items: center; justify-content: center; flex-shrink: 0; line-height: 1; background: rgba(255,255,255,.12); backdrop-filter: blur(16px); transition: transform .12s, background .12s, color .12s; }
+.mb { width: 2.5em; height: 2.5em; border-radius: 50%; }
+.mb svg, .mt svg { display: block; width: 1.25em; height: 1.25em; flex: none; }
+.mb.t { font-size: .95em; width: 2.65em; height: 2.65em; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.mb.big { width: 2.9em; height: 2.9em; background: #fff; color: #0a0a0c; }
+.mb.big svg { width: 1.45em; height: 1.45em; }
+.mb:hover, .mt:hover { background: #fff; color: #0a0a0c; transform: scale(1.07); }
+.mb.big:hover { background: #fff; transform: scale(1.07); }
+.mb:active, .mt:active { transform: scale(.95); }
+.mt { gap: .35em; height: 2.5em; white-space: nowrap; padding: 0 1em 0 .7em; border-radius: 99px; font-size: 1em; font-weight: 600; }
+.mt.on { background: #fff; color: #0a0a0c; padding: 0 1.1em; }
+.un-m .mt { padding: 0 1.1em; }
+/* top: Back, and what is playing */
+body.mouse .shade-top { height: 9em; }
+body.mouse .shade-bottom { height: 13em; }
+body.mouse .head { display: flex; align-items: center; gap: .9em; left: 1.6em; top: 1.3em; right: 1.6em; }
+body.mouse .title { font-family: inherit; font-size: 1.3em; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.mouse .sub { margin-top: .15em; font-size: .95em; }
+body.mouse .sub:empty { display: none; }
+body.mouse .center { font-size: 1.05em; padding: .6em 1.1em; }
+body.mouse .center.spin::before { width: 1em; height: 1em; margin-right: .6em; vertical-align: -.15em; border-width: .16em; }
+body.mouse .center.err { font-size: 1em; max-width: 34em; }
+/* bottom: the bar, then play and the rest in one row */
+body.mouse .controls { left: 1.6em; right: 1.6em; bottom: 1.2em; }
+body.mouse .bar { cursor: pointer; height: .32em; min-height: 4px; }
+body.mouse .bar:hover, body.mouse .bar.focus { height: .5em; }
+body.mouse .bar::before { content: ""; position: absolute; left: 0; right: 0; top: -.8em; bottom: -.8em; } /* easier to hit */
+body.mouse .knob { width: .95em; height: .95em; margin: -.475em 0 0 -.475em; }
+body.mouse .bar:hover .knob { opacity: 1; }
+body.mouse .tip { bottom: 1.5em; padding: .3em .6em; border-radius: .5em; font-size: .9em; }
+body.mouse .times { margin-top: .55em; font-size: .9em; }
+body.mouse .row { margin-top: .5em; gap: .6em; justify-content: flex-start; }
+.mplay { align-items: center; gap: .55em; margin-right: auto; }
 #m-toggle .i-play, #m-toggle .i-pause { display: none; width: 100%; height: 100%; align-items: center; justify-content: center; }
 #m-toggle.paused .i-play, #m-toggle:not(.paused) .i-pause { display: flex; }
-body.mouse .center:not(:empty) ~ .mplay, body.mouse .center:not(:empty) + .mplay { display: none !important; } /* "Loading" / a message takes the middle */
+body.mouse .btns { gap: .5em; }
+body.mouse .btn { cursor: pointer; height: 2.5em; box-sizing: border-box; padding: 0 1em; border-radius: 99px; gap: .4em; font-size: .95em; font-weight: 600; line-height: 1; background: rgba(255,255,255,.12); transform: none; }
+body.mouse .btn:hover { background: #fff; color: #0a0a0c; }
 body.mouse #hud.hidden { pointer-events: none; }
-body.mouse .bar { cursor: pointer; height: .9vh; min-height: 8px; }
-body.mouse .bar::before { content: ""; position: absolute; left: 0; right: 0; top: -1.6vh; bottom: -1.6vh; } /* easier to hit */
-body.mouse .bar:hover .knob { opacity: 1; }
-body.mouse .btn, body.mouse .mi { cursor: pointer; }
-body.mouse .btn:hover, body.mouse .mi:hover { background: #fff; color: #0a0a0c; }
-body.mouse .menu-list { overflow-y: auto; scrollbar-width: thin; }
-.un-m { gap: .8vw; }
-.cb-strip-m { position: absolute; left: 4vw; top: 5vh; align-items: center; gap: .8vw; opacity: 0; pointer-events: none; transition: opacity .2s; }
-.cb-strip-m.on { opacity: 1; pointer-events: auto; }
-.cb-strip-m { z-index: 5; }
-/* (Lists keep inside the window however much the controls are enlarged: --z.) */
-body.mouse .menu { bottom: calc(21vh / var(--z, 1)); max-height: calc(66vh / var(--z, 1)); display: flex; flex-direction: column; }
+/* lists and the Up next card: beside the bottom row, inside the window whatever its size */
+body.mouse .menu, body.mouse .upnext { z-index: 4; right: 1.6em; bottom: 7.6em; }
+body.mouse .menu { width: 19em; max-width: calc(100vw - 3.2em); max-height: calc(100vh - 12.5em); padding: .7em 0 .5em; border-radius: .9em; display: flex; flex-direction: column; }
 body.mouse .menu[hidden] { display: none; }
-body.mouse #cb-menu { bottom: calc(8vh / var(--z, 1)); max-height: calc(80vh / var(--z, 1)); }
-body.mouse .menu-list { max-height: none; flex: 1 1 auto; min-height: 0; }
-body.mouse .upnext { bottom: calc(26vh / var(--z, 1)); }
-body.mouse .menu, body.mouse .upnext { z-index: 4; }
+body.mouse .menu h2 { margin: 0 1.1em .5em; font-size: 1em; }
+body.mouse .menu-list { max-height: none; flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+body.mouse .mi { cursor: pointer; gap: .6em; margin: 0 .4em; padding: .55em .7em; border-radius: .55em; font-size: .95em; }
+body.mouse .mi .ck { width: 1em; }
+body.mouse .mi:hover { background: #fff; color: #0a0a0c; }
+body.mouse .upnext { width: 19em; max-width: calc(100vw - 3.2em); padding: 1em 1.1em; border-radius: .9em; }
+body.mouse .un-k { font-size: .78em; }
+body.mouse .un-t { margin: .35em 0 .9em; font-size: 1.05em; }
+.un-m { gap: .5em; }
+/* Cable TV: its buttons at the top left while the mouse moves; the banner a size smaller */
+.cb-strip-m { position: absolute; z-index: 5; left: 1.6em; top: 1.3em; align-items: center; gap: .5em; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.cb-strip-m.on { opacity: 1; pointer-events: auto; }
+body.mouse .cb-banner, body.mouse .cb-num, body.mouse .cb-break, body.mouse .cb-card > *, body.mouse .cb-status { zoom: var(--cz, 1); }
+body.mouse #cb-menu { bottom: 1.6em; max-height: calc(100vh - 6em); }
+body.mouse .cb-menu-note { margin: .5em 1.1em 0; font-size: .85em; }

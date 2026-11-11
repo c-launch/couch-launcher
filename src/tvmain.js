@@ -715,7 +715,9 @@ function setupTv(ctx) {
     if (hud && !hud.isDestroyed()) { hudSend({ visible: false }); hud.hide(); }
     tv().flush();
     if (reason !== 'switch') {
-      bringBack(false);
+      // (Couch TV, inside its window: the window is where it was; it isn't pushed in front of
+      // whatever else you are doing when an episode ends.)
+      if (!s.embed) bringBack(false);
       send('tv:ended', { id: s.meta ? s.meta.id : null, videoId: s.videoId, reason, error: error || null, cable: s.cable ? s.cable.channelId : null });
     }
   }

@@ -117,8 +117,9 @@
     const api = window.launcher || {};
     const send = (a, x) => { try { if (api.hudAct) api.hudAct(a, x).catch(() => {}); } catch (_) { /* older app core */ } };
     document.body.classList.add('mouse', 'idle');
-    // Sized for a window, not a TV across the room: the same layout, larger in a small window.
-    const fit = () => { const z = Math.max(1, Math.min(1.9, 1500 / Math.max(320, window.innerWidth))); document.body.style.zoom = String(z); document.body.style.setProperty('--z', String(z)); };
+    // Cable TV's banner and cards were drawn for a TV across the room: a size smaller here, but
+    // never too small to read in a small window.
+    const fit = () => { document.body.style.setProperty('--cz', String(Math.max(.72, Math.min(1.25, 1080 / Math.max(320, window.innerWidth))))); };
     fit(); window.addEventListener('resize', fit);
     // Moving the mouse brings the controls up (and the pointer back); they go away again by themselves.
     let wokeAt = 0, idleT = null, lastXY = null;
