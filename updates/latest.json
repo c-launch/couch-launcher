@@ -1,6 +1,6 @@
 {
- "version": "1.29.1",
- "notes": "Couch TV: the player controls are sized like a desktop player's, every button's icon sits in its middle, and spacing is even throughout (Cable TV's Guide button no longer runs into its edge; row arrows line up with the pictures).",
- "file": "CouchLauncher-update-1.29.1.zip",
- "size": 512654
+ "version": "1.29.2",
+ "notes": "Couch TV: play / pause and the −10 / +30 skips are back in the middle of the picture at a comfortable size; the bottom row is calmer (time on the left; subtitles, audio, episodes and full screen on the right, evenly spaced).",
+ "file": "CouchLauncher-update-1.29.2.zip",
+ "size": 512803
 }

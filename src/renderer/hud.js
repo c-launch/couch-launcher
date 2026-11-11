@@ -93,7 +93,7 @@
     $('left').textContent = dur > 0 ? '−' + fmt(dur - at) : '';
     $('h-a').textContent = v.target != null ? 'Jump here' : v.paused ? 'Play' : 'Pause';
     $('btns').innerHTML = (v.buttons || []).map((b, i) => '<div class="btn' + (v.focus === 'btns' && v.btn === i && !v.menu ? ' focus' : '') + '" data-m="button" data-x="' + i + '">' + esc(b.label) + '</div>').join('');
-    if (MOUSE) $('m-toggle').classList.toggle('paused', !!v.paused);
+    if (MOUSE) { $('m-toggle').classList.toggle('paused', !!v.paused); $('m-time').textContent = fmt(at) + (dur > 0 ? ' / ' + fmt(dur) : ''); }
     const c = $('center');
     c.className = 'center' + (v.error ? ' err' : v.buffering && !v.paused ? ' spin' : '');
     c.textContent = v.error ? v.error : v.flash ? v.flash : v.buffering && !v.paused ? 'Loading' : '';
