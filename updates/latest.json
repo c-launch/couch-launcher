@@ -1,6 +1,6 @@
 {
- "version": "1.29.3",
- "notes": "Couch TV: play / pause and the −10 / +30 skips sit in the middle of the bottom row, with the time on the left and subtitles, audio, episodes and full screen on the right.",
- "file": "CouchLauncher-update-1.29.3.zip",
- "size": 512934
+ "version": "1.29.4",
+ "notes": "Couch TV: fixes the show playing unseen behind the page and the on-screen buttons not taking clicks (both happened on PCs with a graphics card). The picture now has a window of its own laid over Couch TV's, and the mouse reaches the controls a way that doesn't depend on the graphics card. Settings › About › Copy player report describes how it is set up on your PC if it still isn't right.",
+ "file": "CouchLauncher-update-1.29.4.zip",
+ "size": 518909
 }

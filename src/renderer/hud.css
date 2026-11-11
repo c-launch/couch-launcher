@@ -116,7 +116,7 @@ body.mouse button { font: inherit; color: inherit; border: 0; margin: 0; cursor:
 .mb.big { width: 3em; height: 3em; background: #fff; color: #0a0a0c; }
 .mb.big svg { width: 1.5em; height: 1.5em; }
 .mright { display: flex; align-items: center; justify-content: flex-end; gap: .6em; min-width: 0; }
-.mb:hover, .mt:hover { background: #fff; color: #0a0a0c; transform: scale(1.07); }
+.mb:hover, .mb.hov, .mt:hover, .mt.hov { background: #fff; color: #0a0a0c; transform: scale(1.07); }
 .mb:active, .mt:active { transform: scale(.95); }
 .mt { gap: .3em; height: calc(2.5em / .95); white-space: nowrap; padding: 0 1em; border-radius: 99px; font-weight: 600; }
 body.mouse .mt { font-size: .95em; }
@@ -137,10 +137,10 @@ body.mouse .center.err { font-size: 1em; max-width: 34em; }
 /* bottom: the bar, then play and the rest in one row */
 body.mouse .controls { left: 1.8em; right: 1.8em; bottom: 1.5em; }
 body.mouse .bar { cursor: pointer; height: .32em; min-height: 4px; }
-body.mouse .bar:hover, body.mouse .bar.focus { height: .5em; }
+body.mouse .bar:hover, body.mouse .bar.hov, body.mouse .bar.focus { height: .5em; }
 body.mouse .bar::before { content: ""; position: absolute; left: 0; right: 0; top: -.8em; bottom: -.8em; } /* easier to hit */
 body.mouse .knob { width: .95em; height: .95em; margin: -.475em 0 0 -.475em; }
-body.mouse .bar:hover .knob { opacity: 1; }
+body.mouse .bar:hover .knob, body.mouse .bar.hov .knob { opacity: 1; }
 body.mouse .tip { bottom: 1.5em; padding: .3em .6em; border-radius: .5em; font-size: .9em; }
 body.mouse .times { display: none; }
 .mtime { align-items: center; justify-self: start; height: 2.5em; font-size: .95em; font-weight: 500; color: rgba(235,235,245,.86); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -149,7 +149,7 @@ body.mouse .row { margin-top: .8em; display: grid; grid-template-columns: minmax
 #m-toggle.paused .i-play, #m-toggle:not(.paused) .i-pause { display: flex; }
 body.mouse .btns { gap: .6em; }
 body.mouse .btn { cursor: pointer; height: calc(2.5em / .95); box-sizing: border-box; justify-content: center; padding: 0 1em; border-radius: 99px; gap: 0; white-space: pre; font-size: .95em; font-weight: 600; line-height: 1; background: rgba(255,255,255,.12); transform: none; }
-body.mouse .btn:hover { background: #fff; color: #0a0a0c; }
+body.mouse .btn:hover, body.mouse .btn.hov { background: #fff; color: #0a0a0c; }
 body.mouse #hud.hidden { pointer-events: none; }
 /* lists and the Up next card: beside the bottom row, inside the window whatever its size */
 body.mouse .menu, body.mouse .upnext { z-index: 4; right: 1.8em; bottom: 6.6em; }
@@ -159,7 +159,7 @@ body.mouse .menu h2 { margin: 0 1.1em .5em; font-size: 1em; }
 body.mouse .menu-list { max-height: none; flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 body.mouse .mi { cursor: pointer; gap: .6em; margin: 0 .4em; padding: .55em .7em; border-radius: .55em; font-size: .95em; }
 body.mouse .mi .ck { width: 1em; }
-body.mouse .mi:hover { background: #fff; color: #0a0a0c; }
+body.mouse .mi:hover, body.mouse .mi.hov { background: #fff; color: #0a0a0c; }
 body.mouse .upnext { width: 19em; max-width: calc(100vw - 3.2em); padding: 1em 1.1em; border-radius: .9em; }
 body.mouse .un-k { font-size: .78em; }
 body.mouse .un-t { margin: .35em 0 .9em; font-size: 1.05em; }

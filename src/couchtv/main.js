@@ -98,10 +98,39 @@ if (!app.requestSingleInstanceLock()) {
   // Settings › Play videos in the window switched off, videos take the whole screen.
   const embedApi = createEmbed();
   const hwnd = () => { const b = win.getNativeWindowHandle(); return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0); };
-  const fitPlayer = () => { try { if (embedApi && tvPart && tvPart.inWindow && win && !win.isDestroyed()) embedApi.fit(hwnd()); } catch (_) { /* the player follows by itself too */ } };
-  const follow = () => { try { if (tvPart) tvPart.follow(); } catch (_) { /* closing */ } fitPlayer(); };
+  // The host: a plain black window of Couch TV's own laid over the inside of its window, which
+  // the player draws into (see embed.js for why not into the window itself).
+  let host = 0, hostGone = null, hostIdleSince = 0;
+  const hostPlace = () => {
+    if (!host || !win || win.isDestroyed()) return;
+    let under = 0;
+    try { under = tvPart && tvPart.hudHwnd ? tvPart.hudHwnd() : 0; } catch (_) { under = 0; }
+    try { embedApi.placeHost(host, toPx(win.getContentBounds()), under); } catch (_) { /* next time */ }
+  };
+  const hostDrop = () => { clearTimeout(hostGone); hostGone = null; if (host) { try { embedApi.destroyHost(host); } catch (_) { /* gone with the window */ } host = 0; } };
+  const fitPlayer = () => { try { if (embedApi && host && tvPart && tvPart.inWindow) embedApi.fit(host); } catch (_) { /* the player follows by itself too */ } };
+  const follow = () => { try { if (tvPart) tvPart.follow(); } catch (_) { /* closing */ } hostPlace(); fitPlayer(); };
   const embed = {
-    wid: () => (embedApi && lib && lib.settings.tvInWindow !== false && win && !win.isDestroyed() && !win.isMinimized() ? hwnd() : null),
+    // The window the player draws into (made the first time; kept a moment after a video ends
+    // in case the next one starts), or null: videos then take the whole screen.
+    wid: () => {
+      if (!embedApi || !lib || lib.settings.tvInWindow === false || !win || win.isDestroyed() || win.isMinimized()) return null;
+      try {
+        clearTimeout(hostGone); hostGone = null;
+        if (host && !embedApi.isWindow(host)) host = 0;
+        if (!host) host = embedApi.createHost(hwnd());
+        if (!host) return null;
+        hostPlace();
+        embedApi.showHost(host, true);
+        hostIdleSince = 0;
+        return host;
+      } catch (err) { logError('picture window', err); return null; }
+    },
+    release: () => {
+      if (!host) return;
+      try { embedApi.showHost(host, false); } catch (_) { /* gone */ }
+      clearTimeout(hostGone); hostGone = setTimeout(hostDrop, 4000);
+    },
     bounds: () => win.getContentBounds(),
     parent: () => win,
     fullscreen: () => { if (win && !win.isDestroyed()) win.setFullScreen(!win.isFullScreen()); },
@@ -203,7 +232,7 @@ if (!app.requestSingleInstanceLock()) {
     win.on('focus', () => send('window:focus'));
     win.on('enter-full-screen', () => send('tvapp:fullscreen', true));
     win.on('leave-full-screen', () => send('tvapp:fullscreen', false));
-    win.on('close', () => { clearTimeout(saveT); persist(); });
+    win.on('close', () => { clearTimeout(saveT); persist(); hostDrop(); });
     win.on('closed', () => { win = null; app.quit(); });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -265,6 +294,40 @@ if (!app.requestSingleInstanceLock()) {
       return win.isFullScreen();
     });
     registerFsBrowse(handle, { app, dialog, win: () => win });
+    // The player report (Settings › About): how the windows that make up "a video inside the
+    // window" really are on this PC, for when it doesn't look or work right. Also written to
+    // player-report.json in Couch TV's settings folder a few seconds after a video starts.
+    async function report() {
+      const r = { version: VERSION, at: new Date().toISOString(), platform: process.platform, canEmbed: !!embedApi, inWindow: !!(tvPart && tvPart.inWindow), playing: !!(tvPart && tvPart.playing), setting: lib.settings.tvInWindow !== false };
+      const tryTo = async (name, fn) => { try { r[name] = await fn(); } catch (e) { r[name] = 'error: ' + String((e && e.message) || e).slice(0, 160); } };
+      await tryTo('gpu', () => app.getGPUFeatureStatus());
+      await tryTo('display', () => { const d = targetDisplay(); return { scale: d.scaleFactor, bounds: d.bounds }; });
+      await tryTo('window', () => ({ bounds: win.getBounds(), content: win.getContentBounds(), contentPx: toPx(win.getContentBounds()), focused: win.isFocused(), full: win.isFullScreen(), max: win.isMaximized() }));
+      await tryTo('hud', () => tvPart.hudInfo());
+      await tryTo('acts', () => tvPart.hudActs().map(([t, a]) => a + '@' + (Date.now() - t)));
+      await tryTo('mouseSeen', () => tvPart.mouseSeen());
+      if (embedApi) {
+        const me = hwnd();
+        await tryTo('main', () => embedApi.describe(me));
+        await tryTo('mainChildren', () => embedApi.children(me).slice(0, 12));
+        await tryTo('host', () => (host ? embedApi.describe(host) : null));
+        await tryTo('hostChildren', () => (host ? embedApi.children(host) : []));
+        await tryTo('picture', () => { const c = host ? embedApi.child(host) : 0; return c ? { inside: embedApi.inside(c), hostInside: embedApi.inside(host), pid: embedApi.describe(c).pid } : null; });
+        await tryTo('pile', () => { const pids = [process.pid]; try { const c = host ? embedApi.child(host) : 0; if (c) pids.push(embedApi.describe(c).pid); } catch (_) { /* ours only */ } const hh = tvPart.hudHwnd(); return embedApi.pile(pids).slice(0, 14).map((w) => Object.assign(w, { is: w.hwnd === me ? 'main' : w.hwnd === host ? 'host' : w.hwnd === hh ? 'controls' : '' })); });
+        await tryTo('under', () => {
+          const c = toPx(win.getContentBounds()), out = { middle: embedApi.windowAt(c.x + c.width / 2, c.y + c.height / 2) };
+          const p = r.hud && r.hud.page && r.hud.page.toggle;
+          if (p) { const k = c.width / r.hud.page.w; out.play = embedApi.windowAt(c.x + p[0] * k, c.y + p[1] * k); out.playAt = [Math.round(c.x + p[0] * k), Math.round(c.y + p[1] * k)]; }
+          return out;
+        });
+        await tryTo('keyboard', () => ({ pid: embedApi.focusPid(), ours: process.pid }));
+      }
+      try { fs.writeFileSync(path.join(app.getPath('userData'), 'player-report.json'), JSON.stringify(r, null, 1)); } catch (_) { /* shown anyway */ }
+      return r;
+    }
+    handle('tvapp:report', async () => { const r = await report(); try { clipboard.writeText(JSON.stringify(r)); } catch (_) { /* returned anyway */ } return r; });
+    let reportedFor = false;
+    setInterval(() => { const on = !!(tvPart && tvPart.inWindow); if (on && !reportedFor) setTimeout(() => { report().catch(() => {}); }, 6000); reportedFor = on; }, 1000);
     // A key pressed while something plays inside the window (the keyboard stays with Couch TV).
     handle('tv:key', (name, repeat, heldMs) => {
       if (!tvPart || !tvPart.playing || !win || win.isDestroyed()) return false;
@@ -305,8 +368,11 @@ if (!app.requestSingleInstanceLock()) {
     // While something plays inside the window: its picture fills the window, and the keyboard
     // stays with Couch TV (the player's picture must never end up holding it).
     setInterval(() => {
-      if (!embedApi || !tvPart || !tvPart.inWindow || !win || win.isDestroyed()) return;
-      fitPlayer();
+      if (!embedApi || !tvPart || !win || win.isDestroyed()) return;
+      // (A host left showing with nothing playing in it, whatever went wrong: taken away.)
+      if (host && !hostGone && !tvPart.inWindow) { if (!hostIdleSince) hostIdleSince = Date.now(); else if (Date.now() - hostIdleSince > 3000) embed.release(); } else hostIdleSince = 0;
+      if (!tvPart.inWindow) return;
+      hostPlace(); fitPlayer();
       try { if (win.isFocused() && embedApi.focusPid() !== process.pid) win.webContents.focus(); } catch (_) { /* next time */ }
     }, 700);
 
@@ -345,7 +411,7 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(autoCheck, 3 * 60 * 60 * 1000);
 
     createWindow();
-    if (process.env.COUCH_TV_SELFTEST) require('./selftest').run({ app, win: () => win, logError, storeOpts, SHARED, safeStorage, embedApi, hwnd, tvPart });
+    if (process.env.COUCH_TV_SELFTEST) require('./selftest').run({ app, win: () => win, logError, storeOpts, SHARED, safeStorage, embedApi, hwnd, tvPart, host: () => host, toPx, report });
   });
 
   app.on('before-quit', () => { try { if (tvPart) tvPart.quit(); } catch (_) { /* closing anyway */ } });

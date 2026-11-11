@@ -151,7 +151,12 @@ function setupTv(ctx) {
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
     }, e ? { parent: e.parent() } : {}));
     hud.inWindow = !!e;
-    if (!e) { hud.setIgnoreMouseEvents(true); hud.setAlwaysOnTop(true, 'screen-saver'); }
+    // The controls never take the mouse themselves (on a PC with a graphics card a see-through
+    // window can't be relied on to: clicks went straight through it). Inside Couch TV's window
+    // the mouse reaches what is under them instead: the player's picture, or Couch TV's page
+    // where there is no picture yet, and each passes it on (hudMouse below).
+    hud.setIgnoreMouseEvents(true);
+    if (!e) hud.setAlwaysOnTop(true, 'screen-saver');
     hud.loadFile(path.join(__dirname, 'renderer', 'hud.html'), e ? { query: { mouse: '1' } } : undefined);
     hud.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     hud.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -171,7 +176,22 @@ function setupTv(ctx) {
   // The player's window: put over the screen (the launcher), or left where it is drawn (Couch TV).
   const place = (s) => (s.embed ? () => {} : presentApp(['mpv.exe'], playerTitle, 15000));
   // A click or the mouse moving over the controls (Couch TV).
+  // Where the pointer is / was clicked, as parts of the picture's width and height.
+  let lastMove = 0;
+  function hudMouse(s, t, x, y) {
+    if (!s || s !== session || !s.embed || !hud || hud.isDestroyed() || !hud.inWindow) return false;
+    if (!['move', 'click', 'leave', 'back'].includes(t) || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    if (t === 'move') { const n = Date.now(); if (n - lastMove < 30) return true; lastMove = n; }
+    if (t === 'back') { if (s.controls && typeof s.controls.key === 'function') s.controls.key('B', false, 0); return true; }
+    mouseSeen.push(t[0]); if (mouseSeen.length > 40) mouseSeen.shift();
+    hud.webContents.send('hud:mouse', { t, x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) });
+    return true;
+  }
+  const mouseSeen = [];
+  handle('hud:mouse', (t, x, y) => hudMouse(session, String(t || ''), Number(x), Number(y)));
+  const hudActs = []; // the last few, for the player report (Couch TV › Settings › About)
   handle('hud:act', (a, x) => {
+    hudActs.push([Date.now(), String(a || '').slice(0, 12)]); if (hudActs.length > 24) hudActs.shift();
     const s = session;
     if (!s || !s.embed || !s.controls) return false;
     a = String(a || '');
@@ -555,6 +575,7 @@ function setupTv(ctx) {
   }
   function wire(s) {
     const { mpv } = s;
+    mpv.on('mouse', (m) => hudMouse(s, m.t, m.x, m.y));
     mpv.on('time', ({ pos, dur }) => {
       if (session !== s) return;
       // Switching episodes: the old one's last positions can still arrive. Skip them until the
@@ -718,6 +739,7 @@ function setupTv(ctx) {
       // (Couch TV, inside its window: the window is where it was; it isn't pushed in front of
       // whatever else you are doing when an episode ends.)
       if (!s.embed) bringBack(false);
+      else if (typeof s.embed.release === 'function') { try { s.embed.release(); } catch (_) { /* closing */ } }
       send('tv:ended', { id: s.meta ? s.meta.id : null, videoId: s.videoId, reason, error: error || null, cable: s.cable ? s.cable.channelId : null });
     }
   }
@@ -730,6 +752,19 @@ function setupTv(ctx) {
     key(name, repeat, heldMs) { if (session && session.controls && typeof session.controls.key === 'function') session.controls.key(String(name || ''), !!repeat, Number(heldMs) || 0); },
     follow() { const s = session; if (s && s.embed && hud && !hud.isDestroyed() && hud.inWindow) { try { hud.setBounds(s.embed.bounds()); } catch (_) { /* closing */ } } },
     get inWindow() { return !!(session && session.embed); },
+    // (The controls window's handle, so the picture can be kept just under it; whether what plays is paused.)
+    hudHwnd() { if (!hud || hud.isDestroyed() || !hud.inWindow || !hud.isVisible()) return 0; const b = hud.getNativeWindowHandle(); return b.length >= 8 ? Number(b.readBigUInt64LE(0)) : b.readUInt32LE(0); },
+    get paused() { const c = session && session.controls; return !!(c && c.state && c.state.paused); },
+    // For the player report: what reached the controls from the mouse, and where the controls are.
+    hudActs: () => hudActs.slice(),
+    mouseSeen: () => mouseSeen.join(''),
+    async hudInfo() {
+      if (!hud || hud.isDestroyed()) return null;
+      const b = hud.getBounds();
+      let page = null;
+      try { page = await hud.webContents.executeJavaScript("(() => { const e = document.getElementById('m-toggle'), r = e ? e.getBoundingClientRect() : null; return { w: innerWidth, h: innerHeight, mouse: document.body.classList.contains('mouse'), idle: document.body.classList.contains('idle'), toggle: r ? [r.left + r.width / 2, r.top + r.height / 2, r.width] : null, cable: !document.getElementById('cable').hidden }; })()", true); } catch (e) { page = { error: String(e.message || e).slice(0, 120) }; }
+      return { bounds: b, visible: hud.isVisible(), inWindow: !!hud.inWindow, focusable: hud.isFocusable(), page };
+    },
     stop: (reason) => end(reason || 'back'),
     // The guide over what you're watching: pause (and hide the player controls) while it's open,
     // carry on when it closes. Something you'd already paused stays paused.

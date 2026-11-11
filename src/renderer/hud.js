@@ -123,47 +123,60 @@
     // never too small to read in a small window.
     const fit = () => { document.body.style.setProperty('--cz', String(Math.max(.72, Math.min(1.25, 1080 / Math.max(320, window.innerWidth))))); };
     fit(); window.addEventListener('resize', fit);
-    // Moving the mouse brings the controls up (and the pointer back); they go away again by themselves.
-    let wokeAt = 0, idleT = null, lastXY = null;
-    document.addEventListener('mousemove', (e) => {
-      const xy = e.screenX + ',' + e.screenY;
+    // The mouse. In Couch TV it never comes to this window itself: it is passed on from the
+    // player's picture or the page underneath as a place in the window ('hud:mouse', below).
+    // (Opened in a browser, as the tests do, the browser's own mouse works the same code.)
+    const under = (x, y) => document.elementFromPoint(x, y);
+    const frac = (x) => { const r = $('bar').getBoundingClientRect(); return r.width > 0 ? Math.max(0, Math.min(1, (x - r.left) / r.width)) : 0; };
+    let wokeAt = 0, idleT = null, lastXY = null, hov = null, onBar = false;
+    const setHov = (el) => { if (el === hov) return; if (hov) hov.classList.remove('hov'); hov = el; if (hov) hov.classList.add('hov'); };
+    function move(x, y) {
+      const xy = Math.round(x) + ',' + Math.round(y);
       if (xy === lastXY) return; // (the window moving under a still pointer isn't the mouse)
       lastXY = xy;
       document.body.classList.remove('idle');
       clearTimeout(idleT);
-      idleT = setTimeout(() => document.body.classList.add('idle'), 3200);
+      idleT = setTimeout(() => { document.body.classList.add('idle'); setHov(null); }, 3200);
       const t = Date.now();
       if (t - wokeAt > 350) { wokeAt = t; send('wake'); }
-    });
-    document.addEventListener('mouseleave', () => { clearTimeout(idleT); document.body.classList.add('idle'); });
-    const frac = (e) => { const r = $('bar').getBoundingClientRect(); return r.width > 0 ? Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) : 0; };
-    // The time under the pointer on the bar.
-    $('bar').addEventListener('mousemove', (e) => {
-      if (!last || !(last.dur > 0)) return;
-      const tip = $('tip'), f = frac(e);
-      tip.textContent = fmt(f * last.dur); tip.classList.add('on');
-      $('knob').style.left = (f * 100) + '%';
-    });
-    $('bar').addEventListener('mouseleave', () => { if (last) draw(last); });
-    document.addEventListener('mousedown', () => send('front'));
-    let clickT = null;
-    document.addEventListener('click', (e) => {
-      if (e.button !== 0) return;
-      const el = e.target.closest && e.target.closest('[data-m]');
+      const el = under(x, y);
+      setHov(el && el.closest ? el.closest('.mb, .mt, .btn, .mi') : null);
+      // The time under the pointer on the bar.
+      const bar = !!(el && el.closest && el.closest('#bar'));
+      if (bar && last && last.dur > 0) { const f = frac(x); $('tip').textContent = fmt(f * last.dur); $('tip').classList.add('on'); $('knob').style.left = (f * 100) + '%'; $('bar').classList.add('hov'); }
+      else if (onBar && last) { $('bar').classList.remove('hov'); draw(last); }
+      onBar = bar;
+    }
+    function leave() { clearTimeout(idleT); document.body.classList.add('idle'); setHov(null); if (onBar && last) { onBar = false; $('bar').classList.remove('hov'); draw(last); } }
+    let clickT = null, prev = { t: 0, x: 0, y: 0 };
+    function click(x, y) {
+      send('front');
+      const target = under(x, y), up = (sel) => (target && target.closest ? target.closest(sel) : null);
+      const el = up('[data-m]');
+      if (el || up('#bar') || up('.menu, .upnext')) prev = { t: 0, x: 0, y: 0 };
       if (el) {
-        const a = el.dataset.m, x = el.dataset.x;
-        send(a, a === 'press' ? x : x != null ? Number(x) : null);
+        const a = el.dataset.m, v = el.dataset.x;
+        send(a, a === 'press' ? v : v != null ? Number(v) : null);
         return;
       }
-      if (e.target.closest && e.target.closest('#bar')) { send('seekFrac', frac(e)); return; }
-      const inMenu = e.target.closest && e.target.closest('.menu, .upnext');
-      if (inMenu) return;
+      if (up('#bar')) { send('seekFrac', frac(x)); return; }
+      if (up('.menu, .upnext')) return;
       const menuOpen = !!(last && (last.menu || (last.cable && last.cable.menu)));
-      if (menuOpen) { send('menuClose'); return; }
+      if (menuOpen) { prev = { t: 0, x: 0, y: 0 }; send('menuClose'); return; }
       // The picture itself: a click pauses or plays (a movie), two go full screen.
+      const now = Date.now(), twice = now - prev.t < 350 && Math.abs(x - prev.x) < 12 && Math.abs(y - prev.y) < 12;
+      prev = twice ? { t: 0, x: 0, y: 0 } : { t: now, x, y };
       clearTimeout(clickT);
-      if (e.detail >= 2) { send('fullscreen'); return; }
-      clickT = setTimeout(() => { if (last && !last.cable && !last.upNext) send('toggle'); else send('wake'); }, 230);
+      if (twice) { send('fullscreen'); return; }
+      clickT = setTimeout(() => { if (last && !last.cable && !last.upNext) send('toggle'); else send('wake'); }, 250);
+    }
+    document.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
+    document.addEventListener('mouseleave', leave);
+    document.addEventListener('click', (e) => { if (e.button === 0) click(e.clientX, e.clientY); });
+    if (api.on) api.on('hud:mouse', (m) => {
+      if (!m) return;
+      const x = m.x * window.innerWidth, y = m.y * window.innerHeight;
+      if (m.t === 'move') move(x, y); else if (m.t === 'click') { move(x, y); click(x, y); } else if (m.t === 'leave') leave();
     });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
   }

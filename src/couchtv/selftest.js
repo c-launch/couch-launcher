@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-function run({ app, win, storeOpts, SHARED, embedApi, hwnd, tvPart }) {
+function run({ app, win, storeOpts, SHARED, embedApi, hwnd, tvPart, host, toPx, report }) {
   const dir = process.env.COUCH_TV_SELFTEST;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const res = { platform: process.platform, version: global.couchVersion, userData: app.getPath('userData'), shared: SHARED, console: [] };
@@ -41,7 +41,7 @@ function run({ app, win, storeOpts, SHARED, embedApi, hwnd, tvPart }) {
       return r;
     });
     // A real video, played by the real player inside this window, with the controls over it.
-    await step('embed', () => embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wait }));
+    await step('embed', () => embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wait, host, toPx, report }));
     await step('files', () => ({ ownSettings: fs.existsSync(path.join(app.getPath('userData'), 'settings.json')), ownTv: fs.existsSync(path.join(app.getPath('userData'), 'tv.json')) }));
     await step('errors', () => { try { return fs.readFileSync(path.join(app.getPath('userData'), 'errors.log'), 'utf8').slice(-1500); } catch (_) { return ''; } });
     res.done = true;
@@ -54,7 +54,7 @@ function run({ app, win, storeOpts, SHARED, embedApi, hwnd, tvPart }) {
 // looks at the screen: the picture must be a child of this window filling its inside, show
 // through the see-through controls, follow the window when it is resized and made full screen,
 // leave the keyboard with Couch TV, and be gone when it ends.
-async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wait }) {
+async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wait, host, toPx, report }) {
   const { BrowserWindow, screen, desktopCapturer, nativeImage } = require('electron');
   const http = require('http');
   const { execFileSync } = require('child_process');
@@ -94,7 +94,13 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
   };
   const magenta = (p) => p[0] > 170 && p[2] > 170 && p[1] < 100;
   const thumb = (part) => part.resize({ width: 720, quality: 'good' }).toJPEG(62).toString('base64');
-  const sameSize = () => { const c = embedApi.child(hwnd()), a = c ? embedApi.inside(c) : null, b = embedApi.inside(hwnd()); return !!a && !!b && Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1 ? a : null; };
+  // The picture fills its host, and the host lies exactly over the inside of the window.
+  const sameSize = () => {
+    const h = host(), c = h ? embedApi.child(h) : 0, a = c ? embedApi.inside(c) : null, b = h ? embedApi.inside(h) : null, at = h ? embedApi.place(h) : null, want = toPx(w.getContentBounds());
+    const fills = !!a && !!b && Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1;
+    const over = !!at && Math.abs(at.x - want.x) <= 1 && Math.abs(at.y - want.y) <= 1 && Math.abs(at.width - want.width) <= 1 && Math.abs(at.height - want.height) <= 1;
+    return fills && over ? a : null;
+  };
   const hudWin = () => BrowserWindow.getAllWindows().find((x) => x !== w && !x.isDestroyed() && x.isVisible());
   const hudOver = () => { const h = hudWin(); if (!h) return false; const a = h.getBounds(), b = w.getContentBounds(); return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1; };
   const js = (code) => w.webContents.executeJavaScript(code, true);
@@ -103,9 +109,11 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
     out.before = (await shot()).at(0.22, 0.45);
     out.started = await js("window.launcher.tvPlay({ meta: { id: 'selftest', type: 'movie', name: 'Couch TV self-test' }, stream: { url: " + JSON.stringify(url) + " } }).then(() => true, (e) => String(e.message || e))");
     if (out.started !== true) return 'it would not play: ' + out.started;
-    out.child = !!(await until(() => embedApi.child(hwnd()), 20000));
+    // (Started from here, not from a page: the page is told what it would otherwise know, that something is playing.)
+    await js("window.__couch.S.tvPlaying = true");
+    out.child = !!(await until(() => host() && embedApi.child(host()), 20000));
     if (!out.child) return 'the player’s picture never appeared inside the window';
-    out.isChild = embedApi.parentOf(embedApi.child(hwnd())) === hwnd();
+    out.isChild = embedApi.parentOf(embedApi.child(host())) === host() && embedApi.describe(host()).owner === hwnd();
     out.fills = await until(sameSize, 6000);
     out.controlsOver = !!(await until(hudOver, 4000));
     out.playing = !!(await until(async () => { const st = await js('window.launcher.tvStatus()'); return st && st.playing; }, 5000));
@@ -113,7 +121,20 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
     out.pixel = await until(async () => { const p = (await shot()).at(0.22, 0.45); return magenta(p) ? p : null; }, 15000);
     if (!out.pixel) { const s0 = await shot(); out.pixelSeen = s0.at(0.22, 0.45); res.thumb = thumb(s0.part); return 'the picture is not visible in the window (saw ' + out.pixelSeen + ')'; }
     // paused with a click on the controls: they stay up, with the play button in the middle
-    await js("window.launcher.hudAct('toggle', null)"); await wait(1200);
+    // (real clicks of the mouse on the play / pause button, as you would: pause, play, pause)
+    const info = await tvPart.hudInfo(), cpx = toPx(w.getContentBounds()), tg = info && info.page && info.page.toggle;
+    if (tg) {
+      const k = cpx.width / info.page.w, px = cpx.x + tg[0] * k, py = cpx.y + tg[1] * k;
+      out.underClick = embedApi.windowAt(px, py);
+      embedApi.clickAt(px, py); await wait(900); out.click1 = tvPart.paused;
+      embedApi.clickAt(px, py); await wait(900); out.click2 = tvPart.paused;
+      embedApi.clickAt(px, py); await wait(900); out.click3 = tvPart.paused;
+      out.clickWorks = out.click1 === true && out.click2 === false && out.click3 === true;
+      out.acts = tvPart.hudActs().map((x) => x[1]).join(' ');
+      out.mouseSeen = tvPart.mouseSeen();
+    }
+    if (!tvPart.paused) { await js("window.launcher.hudAct('toggle', null)"); await wait(1200); }
+    try { const rp = await report(); res.report = { gpu: rp.gpu, pile: rp.pile, under: rp.under, hud: rp.hud, host: rp.host, mainChildren: (rp.mainChildren || []).map((x) => x.cls), hostChildren: (rp.hostChildren || []).map((x) => x.cls) }; } catch (e) { res.report = String(e.message || e); }
     let s1 = await shot();
     out.pixelPaused = s1.at(0.22, 0.45);
     res.thumb = thumb(s1.part);
@@ -134,10 +155,10 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
     out.fillsBack = await until(sameSize, 5000);
     // Back: the picture goes, the page is there again
     await js("window.launcher.hudAct('exit', null)");
-    out.gone = !!(await until(() => !embedApi.child(hwnd()), 8000));
+    out.gone = !!(await until(() => !host() || !embedApi.child(host()) || !embedApi.visible(host()), 8000));
     out.controlsGone = !!(await until(() => !hudWin(), 4000));
     out.after = (await shot()).at(0.22, 0.45);
-    const ok = out.isChild && out.fills && out.controlsOver && out.playing && magenta(out.pixelPaused) && out.controlsDrawn && out.keyboardOurs !== false &&
+    const ok = out.isChild && out.fills && out.controlsOver && out.playing && out.clickWorks === true && magenta(out.pixelPaused) && out.controlsDrawn && out.keyboardOurs !== false &&
       out.fillsResized && out.controlsResized && magenta(out.pixelResized) && out.fillsFull && out.controlsFull && magenta(out.pixelFull) && out.fillsBack && out.gone && out.controlsGone && !magenta(out.after) && !magenta(out.before);
     return ok ? true : 'see embedInfo';
   } finally { try { server.close(); } catch (_) { /* closed */ } }
