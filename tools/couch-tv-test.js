@@ -140,7 +140,7 @@ const freshStart = () => {
   const preload = fs.readFileSync(path.join(SRC, 'preload.js'), 'utf8');
   const channels = [...preload.matchAll(/call\('(tv:[A-Za-z]+)'/g)].map((m) => m[1]).filter((c) => c !== 'tv:guideStop');
   assert.ok(channels.length > 30);
-  for (const ch of channels.concat(['lib:load', 'lib:save', 'app:info', 'app:started', 'log:error', 'pads:get', 'fs:list', 'fs:pick', 'fs:stat', 'tvapp:fullscreen', 'tvapp:report', 'tv:key', 'hud:act', 'update:check', 'update:install'])) assert.ok(handlers[ch], 'answers ' + ch);
+  for (const ch of channels.concat(['lib:load', 'lib:save', 'app:info', 'app:started', 'log:error', 'pads:get', 'fs:list', 'fs:pick', 'fs:stat', 'tvapp:fullscreen', 'tvapp:report', 'tv:key', 'hud:act', 'hud:mouse', 'update:check', 'update:install'])) assert.ok(handlers[ch], 'answers ' + ch);
   for (const ch of ['launch', 'scan', 'overlay:hide', 'app:power', 'yt:open']) assert.ok(!handlers[ch], 'has nothing to do with ' + ch);
 
   // ---------- settings: started from the launcher's, then its own
@@ -194,7 +194,13 @@ const freshStart = () => {
   let hud = wins[wins.length - 1];
   assert.ok(hud !== w && /hud\.html$/.test(hud.file) && hud.loadOpts && hud.loadOpts.query.mouse === '1', 'the controls are the mouse kind');
   assert.strictEqual(hud.o.parent, w, 'the controls belong to the window');
-  assert.ok(hud.o.focusable === false && hud.o.transparent && !hud.ignoresMouse && !hud.onTop, 'see-through, take the mouse, never the keyboard, not above other programs');
+  assert.ok(hud.o.focusable === false && hud.o.transparent && hud.ignoresMouse && !hud.onTop, 'see-through, let the mouse through to the picture, never take the keyboard, not above other programs');
+  // the mouse over the picture (told by the player) and over the page (told by the page) reaches the controls
+  hud.sent.length = 0;
+  pl.emit('mouse', { t: 'move', x: 0.5, y: 0.9 }); pl.emit('mouse', { t: 'click', x: 0.5, y: 0.9 });
+  assert.deepStrictEqual(hud.sent, [['hud:mouse', { t: 'move', x: 0.5, y: 0.9 }], ['hud:mouse', { t: 'click', x: 0.5, y: 0.9 }]], 'the player passes the mouse on: ' + JSON.stringify(hud.sent));
+  assert.strictEqual(await call('hud:mouse', 'click', 0.25, 2), true); assert.deepStrictEqual(hud.sent.pop(), ['hud:mouse', { t: 'click', x: 0.25, y: 1 }], 'and so does the page (kept inside the picture)');
+  assert.strictEqual(await call('hud:mouse', 'nonsense', 0.1, 0.1), false); assert.strictEqual(await call('hud:mouse', 'click', 'x', null), false);
   assert.deepStrictEqual(hud.bounds, w.getContentBounds(), 'the controls lie exactly over the inside of the window');
   assert.ok(hud.visible);
   assert.ok(!world.calls.some((c) => /^front 100[1-9]/.test(c)), 'no other window is pushed to the front');
@@ -244,6 +250,7 @@ const freshStart = () => {
   assert.ok(w.sent.some(([ch]) => ch === 'tv:ended'));
   assert.strictEqual(await call('tv:key', 'TOGGLE', false, 0), false, 'keys do nothing when nothing plays');
   assert.strictEqual(await call('hud:act', 'toggle', null), false);
+  assert.strictEqual(await call('hud:mouse', 'click', 0.5, 0.5), false, 'the mouse is the page’s again when nothing plays');
   await sleep(600); assert.ok(world.calls.includes('pad stop'), 'the controller is let go afterwards');
   // switched off in Settings: the whole screen, as in the launcher
   const l9 = await call('lib:load'); l9.settings.tvInWindow = false; await call('lib:save', l9);

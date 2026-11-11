@@ -141,6 +141,7 @@ contextBridge.exposeInMainWorld('launcher', {
   hudAct: (a, x) => call('hud:act', String(a || ''), typeof x === 'number' ? x : typeof x === 'string' ? x : null),
   tvKey: (name, repeat, heldMs) => call('tv:key', String(name || ''), !!repeat, Number(heldMs) || 0),
   tvReport: () => call('tvapp:report'),
+  hudMouse: (t, x, y) => call('hud:mouse', String(t || ''), Number(x), Number(y)),
   tvFullscreen: (on) => call('tvapp:fullscreen', on == null ? null : !!on),
   tvStatus: () => call('tv:status'),
   tvLinkCreate: () => call('tv:linkCreate'),
@@ -177,7 +178,7 @@ contextBridge.exposeInMainWorld('launcher', {
   tvCableRemove: (ch, i, era) => call('tv:cableRemove', String(ch || ''), Number(i) | 0, era ? String(era) : ''),
   tvCableReset: (ch, era) => call('tv:cableReset', String(ch || ''), era ? String(era) : ''),
   on: (channel, fn) => {
-    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'vpads', 'phone', 'news', 'deals', 'tv:ended', 'hud', 'tv:cableProgress', 'pops', 'tvapp:fullscreen'];
+    const allowed = ['game:exited', 'game:started', 'launch:cancelled', 'overlay', 'window:focus', 'guide', 'update:found', 'overlay:open', 'overlay:closed', 'remote', 'pads', 'notice', 'downloads', 'pad:a', 'pad:ext', 'vpads', 'phone', 'news', 'deals', 'tv:ended', 'hud', 'tv:cableProgress', 'pops', 'tvapp:fullscreen', 'hud:mouse'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, payload) => fn(payload));
   }

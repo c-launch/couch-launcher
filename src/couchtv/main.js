@@ -305,6 +305,7 @@ if (!app.requestSingleInstanceLock()) {
       await tryTo('window', () => ({ bounds: win.getBounds(), content: win.getContentBounds(), contentPx: toPx(win.getContentBounds()), focused: win.isFocused(), full: win.isFullScreen(), max: win.isMaximized() }));
       await tryTo('hud', () => tvPart.hudInfo());
       await tryTo('acts', () => tvPart.hudActs().map(([t, a]) => a + '@' + (Date.now() - t)));
+      await tryTo('mouseSeen', () => tvPart.mouseSeen());
       if (embedApi) {
         const me = hwnd();
         await tryTo('main', () => embedApi.describe(me));

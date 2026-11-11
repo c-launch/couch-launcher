@@ -4538,6 +4538,22 @@
     if (!e.repeat || !keyDownAt[name]) keyDownAt[name] = t;
     try { api.tvKey(name, !!e.repeat, t - keyDownAt[name]).catch(() => {}); } catch (_) { /* older app core */ }
   }
+  // ...and the mouse too: where the pointer reaches this page (there is no picture over it yet,
+  // or between two programs on Cable TV), it is passed on to the controls and does nothing here.
+  if (TVAPP) {
+    let sentAt = 0;
+    const pass = (t, e) => { try { api.hudMouse(t, e.clientX / window.innerWidth, e.clientY / window.innerHeight).catch(() => {}); } catch (_) { /* older app core */ } };
+    for (const type of ['mousemove', 'mouseover', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu', 'wheel']) {
+      window.addEventListener(type, (e) => {
+        if (!S.tvPlaying) return;
+        e.stopImmediatePropagation();
+        if (type !== 'wheel') e.preventDefault();
+        if (type === 'click' && e.button === 0) pass('click', e);
+        else if (type === 'mouseup' && e.button === 3) pass('back', e);
+        else if (type === 'mousemove') { const t = Date.now(); if (t - sentAt > 45) { sentAt = t; pass('move', e); } }
+      }, { capture: true, passive: false });
+    }
+  }
   let mouseTimer = null;
   let lastMouse = null;
   document.addEventListener('mousemove', () => noteActivity(true));

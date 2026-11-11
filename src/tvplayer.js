@@ -220,7 +220,13 @@ function startMpv(exe, o) {
   // Couch TV (Windows): the picture is drawn inside its window (o.wid: that window's handle),
   // filling it and following its size. The keyboard stays with Couch TV, which works the
   // controls itself; nothing here is full screen.
-  if (o.wid) args.push('--wid=' + String(o.wid), '--input-vo-keyboard=no', '--input-default-bindings=no');
+  // The mouse over the picture is the player's (its picture is a real window): it has no
+  // actions of its own here, it only tells Couch TV where the pointer is and when it is
+  // clicked (see "mouse" below), and Couch TV works the controls drawn over the picture.
+  if (o.wid) {
+    for (const drop of ['--input-cursor=no', '--cursor-autohide=always']) { const i = args.indexOf(drop); if (i >= 0) args.splice(i, 1); }
+    args.push('--wid=' + String(o.wid), '--input-vo-keyboard=no', '--input-default-bindings=no', '--input-cursor=yes', '--cursor-autohide=3000');
+  }
   else {
     if (o.rect) args.push('--geometry=' + o.rect.width + 'x' + o.rect.height + '+' + o.rect.x + '+' + o.rect.y);
     // Mac: full screen over the menu bar and Dock, without a separate Space (so the guide and the
@@ -238,6 +244,7 @@ function startMpv(exe, o) {
   let queuedSubs = (o.subs || []).slice(0, 25); // added once the pipe is open
   const pending = new Map();
   const state = { pos: 0, dur: 0, paused: false, tracks: [] };
+  const mouse = { x: 0, y: 0, w: 0, h: 0 };
   child.on('exit', (code) => { exited = true; try { if (sock) sock.destroy(); } catch (_) { /* gone */ } ev.emit('exit', { code }); });
   child.on('error', (e) => { exited = true; ev.emit('exit', { code: -1, error: e.message }); });
 
@@ -250,6 +257,12 @@ function startMpv(exe, o) {
       obs.forEach((p, i) => write({ command: ['observe_property', i + 1, p] }));
       for (const sub of queuedSubs) write({ command: ['sub-add', sub.url, 'auto', sub.lang || 'sub', sub.lang || ''] });
       queuedSubs = [];
+      if (o.wid) {
+        ['mouse-pos', 'osd-width', 'osd-height'].forEach((p, i) => write({ command: ['observe_property', 40 + i, p] }));
+        write({ command: ['keybind', 'MBTN_LEFT', 'script-message couch-mouse click'] });
+        write({ command: ['keybind', 'MBTN_BACK', 'script-message couch-mouse back'] });
+        for (const k of ['MBTN_LEFT_DBL', 'MBTN_RIGHT', 'MBTN_MID', 'WHEEL_UP', 'WHEEL_DOWN', 'WHEEL_LEFT', 'WHEEL_RIGHT']) write({ command: ['keybind', k, 'ignore'] });
+      }
       ev.emit('ready');
     });
     s.on('data', (d) => {
@@ -264,8 +277,21 @@ function startMpv(exe, o) {
     let m; try { m = JSON.parse(line); } catch (_) { return; }
     if (m.request_id && pending.has(m.request_id)) { const p = pending.get(m.request_id); pending.delete(m.request_id); if (m.error && m.error !== 'success') p.reject(new Error(m.error)); else p.resolve(m.data); return; }
     if (m.event === 'end-file' && m.reason === 'error') { ev.emit('failed', String(m.file_error || '')); return; }
+    // The mouse over the picture, as parts of its width and height (0 to 1).
+    if (m.event === 'client-message' && Array.isArray(m.args) && m.args[0] === 'couch-mouse') {
+      if (mouse.w > 0 && mouse.h > 0) ev.emit('mouse', { t: m.args[1] === 'back' ? 'back' : 'click', x: mouse.x / mouse.w, y: mouse.y / mouse.h });
+      return;
+    }
     if (m.event !== 'property-change') return;
     switch (m.name) {
+      case 'osd-width': if (typeof m.data === 'number') mouse.w = m.data; break;
+      case 'osd-height': if (typeof m.data === 'number') mouse.h = m.data; break;
+      case 'mouse-pos':
+        if (m.data && typeof m.data.x === 'number') {
+          mouse.x = m.data.x; mouse.y = m.data.y;
+          if (mouse.w > 0 && mouse.h > 0) ev.emit('mouse', { t: m.data.hover === false ? 'leave' : 'move', x: mouse.x / mouse.w, y: mouse.y / mouse.h });
+        }
+        break;
       case 'time-pos': if (typeof m.data === 'number') { state.pos = m.data; ev.emit('time', { pos: state.pos, dur: state.dur }); } break;
       case 'duration': if (typeof m.data === 'number') { state.dur = m.data; ev.emit('time', { pos: state.pos, dur: state.dur }); } break;
       case 'pause': state.paused = !!m.data; ev.emit('pause', state.paused); break;
