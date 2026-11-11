@@ -16,6 +16,8 @@
   const menuHTML = (items, start) => (MOUSE ? items.map((it, i) => ({ it, i })) : items.slice(start, start + 9).map((it, k) => ({ it, i: start + k })))
     .map(({ it, i }) => '<div class="mi' + (it.focused && !MOUSE ? ' focus' : '') + '" data-m="menuPick" data-x="' + i + '"><span class="ck">' + (it.selected ? '✓' : '') + '</span>' + esc(it.label) + '</div>').join('');
   let last = null; // what is drawn now
+  // A button such as "Subtitles: English": its name, then what is chosen (left out in a narrow window).
+  const chip = (label) => { const i = String(label).indexOf(': '); return i < 0 || !MOUSE ? esc(label) : esc(label.slice(0, i)) + '<span class="bv">' + esc(label.slice(i)) + '</span>'; };
   // Cable TV: channel banner, black between channels, "coming up next" between shows.
   function drawCable(c) {
     if (MOUSE) $('cb-strip-m').classList.toggle('on', !!c.strip && !c.menu);
@@ -92,8 +94,8 @@
     $('pos').textContent = fmt(at);
     $('left').textContent = dur > 0 ? '−' + fmt(dur - at) : '';
     $('h-a').textContent = v.target != null ? 'Jump here' : v.paused ? 'Play' : 'Pause';
-    $('btns').innerHTML = (v.buttons || []).map((b, i) => '<div class="btn' + (v.focus === 'btns' && v.btn === i && !v.menu ? ' focus' : '') + '" data-m="button" data-x="' + i + '">' + esc(b.label) + '</div>').join('');
-    if (MOUSE) $('m-toggle').classList.toggle('paused', !!v.paused);
+    $('btns').innerHTML = (v.buttons || []).map((b, i) => '<div class="btn' + (v.focus === 'btns' && v.btn === i && !v.menu ? ' focus' : '') + '" data-m="button" data-x="' + i + '">' + chip(b.label) + '</div>').join('');
+    if (MOUSE) { $('m-toggle').classList.toggle('paused', !!v.paused); $('m-time').textContent = fmt(at) + (dur > 0 ? ' / ' + fmt(dur) : ''); }
     const c = $('center');
     c.className = 'center' + (v.error ? ' err' : v.buffering && !v.paused ? ' spin' : '');
     c.textContent = v.error ? v.error : v.flash ? v.flash : v.buffering && !v.paused ? 'Loading' : '';

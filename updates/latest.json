@@ -1,6 +1,6 @@
 {
- "version": "1.28.4",
- "notes": "Cable TV commercials. Breaks are 2 minutes at most: a half-hour show now has three short breaks during it and one after (it had two long ones), and shows still start on the hour and half hour. Commercials play at the best quality the recording has, up to 1080p (they were fetched at 360p). Widescreen 720p+ recordings are picked first and remembered; when a channel has none, the best of the others plays as it is.",
- "file": "CouchLauncher-update-1.28.4.zip",
- "size": 473576
+ "version": "1.29.3",
+ "notes": "Couch TV: play / pause and the −10 / +30 skips sit in the middle of the bottom row, with the time on the left and subtitles, audio, episodes and full screen on the right.",
+ "file": "CouchLauncher-update-1.29.3.zip",
+ "size": 512934
 }

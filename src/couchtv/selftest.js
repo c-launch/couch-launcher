@@ -118,7 +118,7 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
     out.pixelPaused = s1.at(0.22, 0.45);
     res.thumb = thumb(s1.part);
     // (the white play button, where the plain picture has no green at all: looked for where the controls say it is)
-    const spot = await hudWin().webContents.executeJavaScript("(() => { const r = document.getElementById('m-toggle').getBoundingClientRect(); return [(r.left + r.width * 0.2) / innerWidth, (r.top + r.height / 2) / innerHeight, Math.round(r.width)]; })()", true);
+    const spot = await hudWin().webContents.executeJavaScript("(() => { const r = document.getElementById('m-toggle').getBoundingClientRect(); return [(r.left + r.width * 0.18) / innerWidth, (r.top + r.height / 2) / innerHeight, Math.round(r.width)]; })()", true);
     out.button = spot; out.buttonPixel = s1.at(spot[0], spot[1]);
     out.controlsDrawn = spot[2] >= 30 && out.buttonPixel[1] > 150;
     out.keyboardOurs = w.isFocused() ? embedApi.focusPid() === process.pid : 'not in front';

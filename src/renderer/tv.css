@@ -322,7 +322,7 @@
 html.tvapp { font-size: clamp(6.6px, min(calc(100vw / 160), calc(100vh / 76)), 15px); }
 html.tvapp #topbar, html.tvapp #bg .bg-deco, html.tvapp #bg .bg-art { display: none; }
 html.tvapp .shell { padding-top: 5rem; }
-html.tvapp .side .tvapp-back { justify-content: flex-start; gap: 1rem; margin-bottom: 1.4rem; color: var(--sub); }
+html.tvapp .side .tvapp-back { justify-content: flex-start; gap: 1rem; color: var(--sub); }
 html.tvapp .side .tvapp-back svg { width: 2rem; height: 2rem; flex-shrink: 0; }
 html.tvapp .side .tvapp-back.focused { color: var(--text); }
 /* A row's arrows: in the page margin at either end, only on the side that has more to show,
