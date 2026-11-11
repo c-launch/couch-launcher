@@ -1,6 +1,6 @@
 {
- "version": "1.29.2",
- "notes": "Couch TV: play / pause and the −10 / +30 skips are back in the middle of the picture at a comfortable size; the bottom row is calmer (time on the left; subtitles, audio, episodes and full screen on the right, evenly spaced).",
- "file": "CouchLauncher-update-1.29.2.zip",
- "size": 512803
+ "version": "1.29.3",
+ "notes": "Couch TV: play / pause and the −10 / +30 skips sit in the middle of the bottom row, with the time on the left and subtitles, audio, episodes and full screen on the right.",
+ "file": "CouchLauncher-update-1.29.3.zip",
+ "size": 512934
 }
