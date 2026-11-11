@@ -109,6 +109,8 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
     out.before = (await shot()).at(0.22, 0.45);
     out.started = await js("window.launcher.tvPlay({ meta: { id: 'selftest', type: 'movie', name: 'Couch TV self-test' }, stream: { url: " + JSON.stringify(url) + " } }).then(() => true, (e) => String(e.message || e))");
     if (out.started !== true) return 'it would not play: ' + out.started;
+    // (Started from here, not from a page: the page is told what it would otherwise know, that something is playing.)
+    await js("window.__couch.S.tvPlaying = true");
     out.child = !!(await until(() => host() && embedApi.child(host()), 20000));
     if (!out.child) return 'the player’s picture never appeared inside the window';
     out.isChild = embedApi.parentOf(embedApi.child(host())) === host() && embedApi.describe(host()).owner === hwnd();
@@ -129,6 +131,7 @@ async function embedCheck({ app, w, SHARED, embedApi, hwnd, tvPart, dir, res, wa
       embedApi.clickAt(px, py); await wait(900); out.click3 = tvPart.paused;
       out.clickWorks = out.click1 === true && out.click2 === false && out.click3 === true;
       out.acts = tvPart.hudActs().map((x) => x[1]).join(' ');
+      out.mouseSeen = tvPart.mouseSeen();
     }
     if (!tvPart.paused) { await js("window.launcher.hudAct('toggle', null)"); await wait(1200); }
     try { const rp = await report(); res.report = { gpu: rp.gpu, pile: rp.pile, under: rp.under, hud: rp.hud, host: rp.host, mainChildren: (rp.mainChildren || []).map((x) => x.cls), hostChildren: (rp.hostChildren || []).map((x) => x.cls) }; } catch (e) { res.report = String(e.message || e); }
