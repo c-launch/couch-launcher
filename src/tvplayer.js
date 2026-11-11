@@ -217,10 +217,16 @@ function startMpv(exe, o) {
     '--alang=' + (o.audioLang || 'en,eng'), '--slang=' + (lang && lang !== 'off' ? lang : 'en,eng')
   ];
   if (lang === 'off') args.push('--sid=no');
-  if (o.rect) args.push('--geometry=' + o.rect.width + 'x' + o.rect.height + '+' + o.rect.x + '+' + o.rect.y);
-  // Mac: full screen over the menu bar and Dock, without a separate Space (so the guide and the
-  // controls can sit on top).
-  if (process.platform === 'darwin') args.push('--fs', '--native-fs=no');
+  // Couch TV (Windows): the picture is drawn inside its window (o.wid: that window's handle),
+  // filling it and following its size. The keyboard stays with Couch TV, which works the
+  // controls itself; nothing here is full screen.
+  if (o.wid) args.push('--wid=' + String(o.wid), '--input-vo-keyboard=no', '--input-default-bindings=no');
+  else {
+    if (o.rect) args.push('--geometry=' + o.rect.width + 'x' + o.rect.height + '+' + o.rect.x + '+' + o.rect.y);
+    // Mac: full screen over the menu bar and Dock, without a separate Space (so the guide and the
+    // controls can sit on top).
+    if (process.platform === 'darwin') args.push('--fs', '--native-fs=no');
+  }
   if (o.startAt > 5) args.push('--start=' + Math.floor(o.startAt));
   if (o.headers) {
     const h = Object.entries(o.headers).filter(([k, v]) => /^[\w-]+$/.test(k) && !/[,\r\n]/.test(String(v))).map(([k, v]) => k + ': ' + v);

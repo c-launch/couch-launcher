@@ -305,8 +305,23 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   const days = new Map(); // channel|dayStart -> schedule
   let resolving = null;
 
+  // Couch Launcher and Couch TV keep this in the same file. With nothing waiting to be saved
+  // here, what the other one saved since is picked up before anything is looked at.
+  const stampOf = () => { try { const st = fs.statSync(file); return st.mtimeMs + ':' + st.size; } catch (_) { return ''; } };
+  let stamp = '';
+  const write = () => { try { writeJson(file, state); stamp = stampOf(); } catch (_) { /* next time */ } };
   function load() {
+    if (state && !saveT) {
+      const st = stampOf();
+      if (st && st !== stamp) {
+        // (Only a file that reads: one caught half-written is looked at again at its next change.)
+        let good = false;
+        try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); good = !!v && typeof v === 'object' && !Array.isArray(v); } catch (_) { good = false; }
+        if (good) { state = null; days.clear(); merged = null; } else stamp = st;
+      }
+    }
     if (state) return state;
+    stamp = stampOf();
     state = readJson(file);
     if (!state || typeof state !== 'object' || Array.isArray(state)) state = {};
     if (!state.shows || typeof state.shows !== 'object') state.shows = {};
@@ -339,9 +354,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
   let saveT = null;
   function save() {
     clearTimeout(saveT);
-    saveT = setTimeout(() => {
-      try { writeJson(file, state); } catch (_) { /* next time */ }
-    }, 300);
+    saveT = setTimeout(() => { saveT = null; write(); }, 300);
   }
   // The eras being watched (one, or several merged), and their channels. Merged: a channel in
   // more than one era (Nickelodeon) has all their shows; one only in some (Toon Disney, Disney
@@ -657,7 +670,7 @@ function createCable({ tv, file, now, ytdlp, ads }) {
     return eras();
   }
   const setEra = (id) => setEras([id]);
-  function flush() { if (saveT) { clearTimeout(saveT); saveT = null; try { writeJson(file, state); } catch (_) { /* fine */ } } }
+  function flush() { if (saveT) { clearTimeout(saveT); saveT = null; write(); } }
 
   return { get adWhy() { return adWhy; }, adInfo, adNote, ensure, ready, stale, guide, at, alternates, substitute, markBad, isBad, neighbor, channel, lineup, addShow, removeShow, resetChannel, flush, plan, learnDuration, adsFor, eras, setEra, setEras, era: eraId, mix: () => mix().slice(), get resolving() { return !!resolving; } };
 }

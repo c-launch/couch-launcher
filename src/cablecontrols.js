@@ -11,7 +11,7 @@ function createCableControls({ act, render, now }) {
   now = now || Date.now;
   // part: what's on screen: 'show', 'ad' (commercials) or 'filler' (a break with no commercials
   // found: a card). card: a channel bumper ("We'll be right back", "Now back to …") for a moment.
-  const st = { info: null, bannerUntil: 0, blank: true, quiet: false, status: '', brk: false, pos: 0, part: 'show', backAt: 0, card: null, subs: [], menu: null };
+  const st = { info: null, bannerUntil: 0, blank: true, quiet: false, status: '', brk: false, pos: 0, part: 'show', backAt: 0, card: null, subs: [], menu: null, stripUntil: 0 };
   let prev = 0, held = null;
   // The captions list: Off, then the episode's caption tracks.
   const menuItems = () => [{ id: null, label: 'Off', selected: !st.subs.some((x) => x.selected) }].concat(st.subs.map((x) => ({ id: x.id, label: x.label || x.lang || 'Captions', selected: !!x.selected })));
@@ -35,6 +35,7 @@ function createCableControls({ act, render, now }) {
         banner, blank: st.blank, status: st.status, brk: (st.brk || st.part === 'filler') && !st.blank,
         part: st.part, backAt: st.backAt || 0, why: st.why || '',
         card: st.card && st.card.until > t ? { kind: st.card.kind, text: st.card.text } : null,
+        strip: st.stripUntil > t, // (Couch TV: the buttons for the mouse, while it is moving)
         menu: st.menu ? { title: 'Captions', note: st.subs.length ? '' : st.part === 'show' ? 'This episode has no captions' : 'Commercials have no captions', items: st.menu.items.map((it, i) => ({ label: it.label, selected: it.selected, focused: i === st.menu.index })) } : null
       }
     };
@@ -78,9 +79,35 @@ function createCableControls({ act, render, now }) {
     } else held = null;
     if (changed) draw();
   }
-  let lastBanner = null, lastMin = null, lastCard = null;
+  // Couch TV: the mouse (clicks on what view() draws) and the keyboard (a key at a time).
+  const STRIP_MS = 3500;
+  function mouse(a, x) {
+    st.stripUntil = now() + STRIP_MS;
+    if (a === 'wake') { if (!lastStrip) draw(); return; }
+    if (a === 'menuPick') { const m = st.menu, it = m && m.items[x | 0]; st.menu = null; if (it) act('sub', it.id); }
+    else if (a === 'menuClose') st.menu = null;
+    else if (st.menu) st.menu = null;
+    else if (a === 'chan') { act('chan', x > 0 ? 1 : -1); }
+    else if (a === 'info') press('A');
+    else if (a === 'captions') press('Y');
+    else if (a === 'exit') { act('exit'); return; }
+    draw();
+  }
+  function key(name, repeat) {
+    if (st.menu && (name === 'UP' || name === 'DOWN')) { const m = st.menu; m.until = now() + MENU_MS; m.index = Math.max(0, Math.min(m.items.length - 1, m.index + (name === 'UP' ? -1 : 1))); draw(); return; }
+    if (repeat) return; // (a held key doesn't race through the channels)
+    if (name === 'UP') act('chan', 1);
+    else if (name === 'DOWN') act('chan', -1);
+    else if (name === 'LEFT' || name === 'RIGHT') st.bannerUntil = now() + BANNER_MS;
+    else if (name === 'TOGGLE') press('A');
+    else if (['A', 'B', 'X', 'Y', 'LB', 'RB', 'START'].includes(name)) press(name);
+    else return;
+    draw();
+  }
+  let lastBanner = null, lastMin = null, lastCard = null, lastStrip = false;
   function tick() {
     if (st.menu && now() > st.menu.until) { st.menu = null; draw(); }
+    { const on = st.stripUntil > now(); if (on !== lastStrip) { lastStrip = on; draw(); } }
     const v = view().cable;
     const m = Math.floor(now() / (v.brk ? 1000 : 30000));
     const card = v.card ? v.card.kind + v.card.text : null;
@@ -88,7 +115,7 @@ function createCableControls({ act, render, now }) {
   }
 
   return {
-    input, tick, view, BIT,
+    input, mouse, key, tick, view, BIT,
     // A channel was picked (or the program changed): show the banner, black until it plays.
     tuning(info) { st.menu = null; st.info = info; st.blank = true; st.quiet = false; st.brk = false; st.status = ''; st.bannerUntil = now() + BANNER_MS; draw(); },
     // Between the show and the commercials: just black for a moment, nothing on it.

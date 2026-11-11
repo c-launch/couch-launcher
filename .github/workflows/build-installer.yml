@@ -39,19 +39,29 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      # Couch TV: Movies & TV and Cable TV as an app of its own (same code, same version).
+      - name: Build Couch TV's setup wizard
+        run: npx electron-builder --win nsis --publish never --config couchtv.build.json
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
       - name: Publish it
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.v.outputs.version }}
           name: Couch Launcher ${{ steps.v.outputs.version }}
-          files: dist/CouchLauncher-Setup-*.exe
+          files: |
+            dist/CouchLauncher-Setup-*.exe
+            dist-tv/CouchTV-Setup-*.exe
           make_latest: true
           body: |
             **Windows:** download **CouchLauncher-Setup-${{ steps.v.outputs.version }}.exe** below and run it. Windows may say "Windows protected your PC" because the installer isn't signed by a known publisher: choose **More info › Run anyway**.
 
             **Mac:** download **CouchLauncher-${{ steps.v.outputs.version }}-mac-apple-silicon.dmg** (M1 and newer) or **…-mac-intel.dmg**, open it and drag Couch Launcher into Applications. The first time, open it, then choose **Open Anyway** in System Settings › Privacy & Security (the app isn't from an Apple-registered developer). The Mac files appear a few minutes after the Windows one.
 
-            Already installed? You don't need this: the launcher updates itself.
+            **Couch TV** (Movies & TV and Cable TV as an app of its own, in a normal window): **CouchTV-Setup-${{ steps.v.outputs.version }}.exe** for Windows, **CouchTV-${{ steps.v.outputs.version }}-mac-apple-silicon.dmg** / **…-mac-intel.dmg** for Mac. It uses the same addons, list and history as Couch Launcher.
+
+            Already installed? You don't need this: Couch Launcher and Couch TV update themselves.
 
       # The built app is started once on this Windows machine: its window calls, pauser, focus
       # guard, guide and pop-ups have to work for real (the other checks use stand-ins).
@@ -69,7 +79,20 @@ jobs:
           for i in $(seq 1 300); do [ -f st/result.json ] && break; sleep 1; done
           sleep 3; taskkill //F //IM "Couch Launcher.exe" > /dev/null 2>&1 || true
           [ -f st/result.json ] || { echo "The Windows app never finished its self-test"; cat st/log.txt || true; exit 1; }
-          node -e "const r=require('./st/result.json'); const w=r.win||{}; console.log(JSON.stringify({version:r.version,controller:r.controller,overlay:r.overlay,windows:r.windows,win:w},null,1)); const need=['w32','foreground','ownWindow','minimize','focus','pauser','pause','procs','procsList','procsTrack','mpvGot','mpvSwitches','mpvStart','mpvTwoFiles','mpvSoundDropped','mpvBadFile','mpvPlaysAfter','guard','pops']; const bad=need.filter((k)=>w[k]!==true); if(!w.ran||bad.length){console.error('Not working on Windows: '+(w.ran?bad.join(', '):'the Windows checks did not run'));process.exit(1);} if(!r.overlay){console.error('The guide did not open');process.exit(1);} if(String(w.errors||'').trim()){console.error('errors.log is not empty:\n'+w.errors);process.exit(1);}"
+          node -e "const r=require('./st/result.json'); const w=r.win||{}; console.log(JSON.stringify({version:r.version,controller:r.controller,overlay:r.overlay,windows:r.windows,win:w},null,1)); const need=['w32','foreground','ownWindow','minimize','focus','pauser','pause','procs','procsList','procsTrack','mpvGot','mpvSwitches','mpvStart','mpvTwoFiles','mpvSoundDropped','mpvBadFile','mpvPlaysAfter','guard','pops','sharedKey']; const bad=need.filter((k)=>w[k]!==true); if(!w.ran||bad.length){console.error('Not working on Windows: '+(w.ran?bad.join(', '):'the Windows checks did not run'));process.exit(1);} if(!r.overlay){console.error('The guide did not open');process.exit(1);} if(String(w.errors||'').trim()){console.error('errors.log is not empty:\n'+w.errors);process.exit(1);}"
+
+      - name: Check that Couch TV runs on Windows
+        continue-on-error: true
+        env:
+          COUCH_SELFTEST_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p st2
+          ( COUCH_TV_SELFTEST="$(pwd -W 2>/dev/null || pwd)/st2" "dist-tv/win-unpacked/Couch TV.exe" > st2/log.txt 2>&1 & echo $! > st2/pid )
+          for i in $(seq 1 240); do [ -f st2/result.json ] && break; sleep 1; done
+          sleep 3; taskkill //F //IM "Couch TV.exe" > /dev/null 2>&1 || true
+          [ -f st2/result.json ] || { echo "Couch TV never finished its self-test"; cat st2/log.txt || true; exit 1; }
+          node tools/couch-tv-check.js st2/result.json
 
   mac:
     needs: build
@@ -106,15 +129,29 @@ jobs:
           cat st/result.json
           node -e "const r=require('./st/result.json'); if (!r.mac || !r.mac.available || !r.overlay) { console.error('The Mac app started without its controller reader or guide'); process.exit(1); } if (r.placements > 4) { console.error('The Mac window kept switching full screen'); process.exit(1); }"
 
+      - name: Make sure Couch TV starts
+        run: |
+          mkdir -p st2
+          d=dist-tv/mac; [ "$(uname -m)" = arm64 ] && d=dist-tv/mac-arm64
+          ( COUCH_TV_SELFTEST="$PWD/st2" "$d/Couch TV.app/Contents/MacOS/Couch TV" > st2/log.txt 2>&1 & echo $! > st2/pid )
+          for i in $(seq 1 90); do [ -f st2/result.json ] && break; sleep 1; done
+          sleep 3; kill "$(cat st2/pid)" 2>/dev/null || true
+          [ -f st2/result.json ] || { echo "Couch TV never finished its check on the Mac"; cat st2/log.txt || true; exit 1; }
+          node tools/couch-tv-check.js st2/result.json --mac
+
       - name: Add them to the release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.v.outputs.version }}
           name: Couch Launcher ${{ steps.v.outputs.version }}
-          files: dist/CouchLauncher-*-mac-*.dmg
+          files: |
+            dist/CouchLauncher-*-mac-*.dmg
+            dist-tv/CouchTV-*-mac-*.dmg
           body: |
             **Windows:** download **CouchLauncher-Setup-${{ steps.v.outputs.version }}.exe** below and run it. Windows may say "Windows protected your PC" because the installer isn't signed by a known publisher: choose **More info › Run anyway**.
 
             **Mac:** download **CouchLauncher-${{ steps.v.outputs.version }}-mac-apple-silicon.dmg** (M1 and newer) or **…-mac-intel.dmg**, open it and drag Couch Launcher into Applications. The first time, open it, then choose **Open Anyway** in System Settings › Privacy & Security (the app isn't from an Apple-registered developer). The Mac files appear a few minutes after the Windows one.
 
-            Already installed? You don't need this: the launcher updates itself.
+            **Couch TV** (Movies & TV and Cable TV as an app of its own, in a normal window): **CouchTV-Setup-${{ steps.v.outputs.version }}.exe** for Windows, **CouchTV-${{ steps.v.outputs.version }}-mac-apple-silicon.dmg** / **…-mac-intel.dmg** for Mac. It uses the same addons, list and history as Couch Launcher.
+
+            Already installed? You don't need this: Couch Launcher and Couch TV update themselves.

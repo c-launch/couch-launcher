@@ -17,6 +17,9 @@ node tools/pops-test.js && node tools/discord-live-test.js || { echo "Not publis
 # the days the clocks change) and swaps in another episode or restarts its player when one fails.
 # And a store game's programs are followed correctly without starting PowerShell each time.
 node tools/procs-test.js && node tools/update-failsafe-test.js && node tools/safe-files-test.js && TZ=America/New_York node tools/cable-schedule-test.js && node tools/cable-fallback-test.js || { echo "Not published: a fail-safe check failed."; exit 1; }
+# Nor one where Couch TV (the same Movies & TV as an app of its own) can't start, or where the
+# two would lose each other's addons, list, history or sign-in (they keep them in the same files).
+node tools/shared-data-test.js && node tools/couch-tv-test.js || { echo "Not published: the Couch TV check failed."; exit 1; }
 python3 -c "import json,sys; p='package.json'; d=json.load(open(p)); d['version']=sys.argv[1]; open(p,'w').write(json.dumps(d, indent=2)+'\\n')" "$V"
 ./make-update.sh "$V" "$NOTES" >/dev/null
 Z="CouchLauncher-update-$V.zip"
@@ -24,7 +27,7 @@ mkdir -p "$REPO/updates"
 rm -f "$REPO"/updates/CouchLauncher-update-*.zip
 cp "$Z" "$REPO/updates/"
 python3 -c "import json,os,sys; json.dump({'version':sys.argv[1],'notes':sys.argv[2],'file':sys.argv[3],'size':os.path.getsize(sys.argv[4])}, open(sys.argv[5],'w'), ensure_ascii=False, indent=1)" "$V" "$NOTES" "$Z" "$Z" "$REPO/updates/latest.json"
-rm -rf "$REPO/src" "$REPO/build" "$REPO/tools" "$REPO/docs"; cp -r src build tools docs .github README.md Build.bat "Try it (windowed).bat" make-update.sh publish.sh package.json "$REPO/"
+rm -rf "$REPO/src" "$REPO/build" "$REPO/tools" "$REPO/docs"; cp -r src build tools docs .github README.md Build.bat "Try it (windowed).bat" make-update.sh publish.sh package.json couchtv.build.json "$REPO/"
 cd "$REPO"
 git add -A
 git commit -q -m "Couch Launcher $V

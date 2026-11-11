@@ -1,6 +1,6 @@
 {
- "version": "1.28.4",
- "notes": "Cable TV commercials. Breaks are 2 minutes at most: a half-hour show now has three short breaks during it and one after (it had two long ones), and shows still start on the hour and half hour. Commercials play at the best quality the recording has, up to 1080p (they were fetched at 360p). Widescreen 720p+ recordings are picked first and remembered; when a channel has none, the best of the others plays as it is.",
- "file": "CouchLauncher-update-1.28.4.zip",
- "size": 473576
+ "version": "1.29.0",
+ "notes": "Couch TV: Movies & TV and Cable TV as an app of their own, in a normal window (get CouchTV-Setup from the release page). Videos play inside its window with clickable controls. Couch Launcher now shares its addons, list and history safely with it. Cable TV: a commercial picked in a hurry uses a widescreen one it already knows.",
+ "file": "CouchLauncher-update-1.29.0.zip",
+ "size": 512453
 }

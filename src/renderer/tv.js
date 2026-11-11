@@ -21,15 +21,21 @@ window.CouchTV = function (k) {
     T.page = page || 'home'; T.stack = [];
     T.layer = openLayer({
       className: 'tv-layer tv-' + mode(),
-      html: '<div class="tv"><div class="tv-backdrop" aria-hidden="true"></div><header class="tv-top"><nav class="tv-nav" aria-label="Sections"></nav>' +
-        '<button class="tv-me" data-nav data-key="tvn-settings" data-lock="tvnav" data-zone="tvnav" data-act="settings" aria-label="Movies & TV settings">' + icon('gear') + '</button></header>' +
+      html: '<div class="tv"><div class="tv-backdrop" aria-hidden="true"></div><header class="tv-top">' +
+        (k.standalone ? '<button class="tv-backbtn off" type="button" tabindex="-1" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 5l-7 7 7 7"/></svg></button>' : '') +
+        '<nav class="tv-nav" aria-label="Sections"></nav>' +
+        '<button class="tv-me" data-nav data-key="tvn-settings" data-lock="tvnav" data-zone="tvnav" data-act="settings" aria-label="' + (k.standalone ? 'Settings' : 'Movies & TV settings') + '">' + icon('gear') + '</button></header>' +
         '<main class="tv-scroll"></main><footer class="tv-hints"></footer>' + introHTML() + '</div>',
       onActivate: activate,
       onButton: (b) => (T.intro ? (endIntro(), true) : buttonPress(b)),
       onMove: () => { if (T.intro) { endIntro(); return true; } return false; },
       onBack: back,
       onFocus: focused,
-      onClose: () => { clearInterval(T.heroTimer); clearInterval(T.cableTimer); endZooms(); if (T.navWatch) T.navWatch.disconnect(); T.navInd = null; T.layer = null; },
+      onClose: () => {
+        clearInterval(T.heroTimer); clearInterval(T.cableTimer); endZooms(); if (T.navWatch) T.navWatch.disconnect(); T.navInd = null; T.layer = null;
+        if (T.rowWatch) { T.rowWatch.disconnect(); T.rowWatch = null; }
+        if (T.rowResize) { window.removeEventListener('resize', T.rowResize); T.rowResize = null; }
+      },
       prompts: prompts
     });
     // Pictures that don't load: try the poster instead (wide art), else show the title.
@@ -39,7 +45,60 @@ window.CouchTV = function (k) {
       if (img.dataset.fb) { const fb = img.dataset.fb; delete img.dataset.fb; img.src = fb; return; }
       img.classList.add('broken');
     }, true);
+    if (k.standalone) rowArrows(T.layer.el);
     refreshStatus().then(() => { if (isOpen()) render(); });
+  }
+  // Couch TV: getting along a row without a controller.
+  //  - An arrow at each end of every row (shown only on the side that has more) moves it most of
+  //    a screen at a time.
+  //  - Two fingers sideways on a trackpad (or Shift + the mouse wheel) slides the row under the
+  //    pointer.
+  // Up and down is the page's own scrolling, as in any window.
+  function syncArrows(row) {
+    const wrap = row && row.parentElement;
+    if (!wrap || !wrap.classList.contains('tv-rowwrap')) return;
+    const max = row.scrollWidth - row.clientWidth;
+    const l = $('.tv-arrow.l', wrap), r = $('.tv-arrow.r', wrap);
+    if (l) l.classList.toggle('off', !(row.scrollLeft > 2));
+    if (r) r.classList.toggle('off', !(max > 2 && row.scrollLeft < max - 2));
+  }
+  function rowArrows(root) {
+    const all = () => { for (const row of $$('.tv-rowwrap > .tv-row', root)) syncArrows(row); };
+    let t = null;
+    const soon = () => { if (!t) t = setTimeout(() => { t = null; if (isOpen()) all(); }, 60); };
+    // (Also for the mouse: a Back button at the top left, the mouse's own back button, and
+    // the hints at the bottom right can be clicked.)
+    root.addEventListener('click', (e) => {
+      const bb = e.target.closest && e.target.closest('.tv-backbtn');
+      if (bb && root.contains(bb)) { e.preventDefault(); e.stopPropagation(); if (!T.intro) back(); return; }
+      const h = e.target.closest && e.target.closest('.tv-hints [data-b]');
+      if (h && root.contains(h)) { e.preventDefault(); e.stopPropagation(); if (!T.intro) { if (h.dataset.b === 'B') back(); else buttonPress(h.dataset.b); } return; }
+    });
+    root.addEventListener('mouseup', (e) => { if (e.button === 3 && !T.intro && k.topLayer() === T.layer) { e.preventDefault(); back(); } });
+    root.addEventListener('click', (e) => {
+      const a = e.target.closest && e.target.closest('.tv-arrow');
+      if (!a || !root.contains(a)) return;
+      e.preventDefault(); e.stopPropagation();
+      const row = $('.tv-row', a.parentElement);
+      if (!row) return;
+      const pad = parseFloat(getComputedStyle(row).paddingLeft) || 0;
+      row.scrollBy({ left: Number(a.dataset.dir) * Math.max(120, (row.clientWidth - 2 * pad) * 0.85), behavior: behavior() });
+    });
+    root.addEventListener('scroll', (e) => { const el = e.target; if (el && el.classList && el.classList.contains('tv-row')) syncArrows(el); }, true);
+    root.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) return;
+      const row = e.target.closest && e.target.closest('.tv-row, .tv-chips');
+      if (!row) return;
+      const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
+      if (!dx || row.scrollWidth - row.clientWidth <= 2) return;
+      e.preventDefault();
+      row.scrollLeft += e.deltaMode === 1 ? dx * 40 : dx;
+    }, { passive: false });
+    // Rows fill in as addons answer, pictures arrive and the window is resized.
+    if (window.MutationObserver) { T.rowWatch = new MutationObserver(soon); T.rowWatch.observe(root, { childList: true, subtree: true }); }
+    T.rowResize = soon;
+    window.addEventListener('resize', soon);
+    soon();
   }
   // Opening animation (first time each session): the mark with "Movies & TV" beside it fades
   // up; the words slide into the mark as it glides to the middle; then it grows a touch and fades
@@ -54,7 +113,7 @@ window.CouchTV = function (k) {
       '<circle cx="50" cy="50" r="47" fill="#000000"/><circle cx="50" cy="50" r="44" fill="none" stroke="#2C2C30" stroke-width="4.5"/>' +
       '<circle class="tv-intro-ring" cx="50" cy="50" r="44" fill="none" stroke="url(#tvIntroG)" stroke-width="4.5" stroke-linecap="round"/>' +
       '<path class="tv-intro-play" d="M41 33.5c0-2.3 2.5-3.7 4.5-2.5l22 14.2c1.8 1.1 1.8 3.7 0 4.8l-22 14.2c-2 1.3-4.5-.2-4.5-2.5z" fill="#F5F5F7"/></svg></div>' +
-      '<div class="tv-intro-word">Movies &amp; TV</div></div></div>';
+      '<div class="tv-intro-word">' + (k.standalone ? 'Couch TV' : 'Movies &amp; TV') + '</div></div></div>';
   }
   const introEl = () => T.layer && $('.tv-intro', T.layer.el);
   // Measured when it moves (after the font has loaded), so the mark lands exactly in the middle.
@@ -140,6 +199,7 @@ window.CouchTV = function (k) {
       return;
     }
     if (T.page !== 'home') return go('home');
+    if (k.standalone) return; // Couch TV: Home is as far back as it goes
     closeLayer(T.layer);
   }
   function push(page, extra) {
@@ -157,6 +217,7 @@ window.CouchTV = function (k) {
     T.layer.el.classList.toggle('tv-light', mode() === 'light');
     T.layer.el.classList.toggle('tv-dark', mode() !== 'light');
     nav();
+    { const bb = $('.tv-backbtn', T.layer.el); if (bb) bb.classList.toggle('off', !(T.stack.length || T.page !== 'home')); }
     backdrop(null);
     const sc = scroller();
     sc.className = 'tv-scroll page-' + T.page;
@@ -225,7 +286,10 @@ window.CouchTV = function (k) {
       '<span class="tv-wsub">' + esc((ep ? 'S' + ep.season + ':E' + ep.episode : 'Movie') + (minsLeft(it) ? ' · ' + minsLeft(it) : '')) + '</span></button>';
   }
   const sectionHTML = (title, inner, cls) => '<section class="tv-sec' + (cls ? ' ' + cls : '') + '" data-block><h2>' + esc(title) + '</h2>' + inner + '</section>';
-  const rowHTML = (inner) => '<div class="tv-row">' + inner + '</div>';
+  // Couch TV (used with a mouse or trackpad): each row has an arrow at either end, see rowArrows.
+  const arrowHTML = (d) => '<button class="tv-arrow ' + (d < 0 ? 'l' : 'r') + ' off" type="button" tabindex="-1" data-dir="' + d + '" aria-label="' + (d < 0 ? 'Scroll back' : 'Scroll on') + '">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (d < 0 ? 'M15.5 5l-7 7 7 7' : 'M8.5 5l7 7-7 7') + '"/></svg></button>';
+  const rowHTML = (inner) => (k.standalone ? '<div class="tv-rowwrap">' + arrowHTML(-1) + '<div class="tv-row">' + inner + '</div>' + arrowHTML(1) + '</div>' : '<div class="tv-row">' + inner + '</div>');
   const empty = (text, btn) => '<div class="tv-empty"><p>' + text + '</p>' + (btn || '') + '</div>';
 
   // ---------------------------------------------------------------- Home
@@ -1179,12 +1243,14 @@ window.CouchTV = function (k) {
     if (b === 'MENU') return true;
     return false;
   }
-  function focused(el) {
+  function focused(el, opts) {
     if (!el || !isOpen()) return;
     // Keep the focused thing on screen, with the whole row visible.
+    // (Couch TV: not for what the pointer is merely over or clicked: the page stays put.)
+    const still = !!(k.standalone && opts && opts.noScroll);
     const sc = scroller();
-    keepSideways(el);
-    if (el.closest('.tv-scroll')) {
+    if (!still) keepSideways(el);
+    if (!still && el.closest('.tv-scroll')) {
       const block = el.closest('[data-block]');
       if (block && block.dataset.block === 'top') { if (sc.scrollTop > 0) sc.scrollTo({ top: 0, behavior: behavior() }); }
       else {
@@ -1226,14 +1292,15 @@ window.CouchTV = function (k) {
     if (a === 'cable-show') list.push(['X', 'Remove']);
     if (a === 'episode') list.push(['X', 'Watched']);
     else if (a === 'item' || a === 'resume') list.push(['X', 'Library']);
-    list.push(['Y', 'Search'], ['B', T.stack.length || T.page !== 'home' ? 'Back' : 'Close']);
+    list.push(['Y', 'Search']);
+    if (T.stack.length || T.page !== 'home') list.push(['B', 'Back']); else if (!k.standalone) list.push(['B', 'Close']);
     return list;
   }
   function hints(el) {
     const h = $('.tv-hints', T.layer.el);
     if (!h) return;
     const p = prompts(el);
-    h.innerHTML = p.map(([b, l]) => '<span><i class="g' + (b === 'A' ? ' a' : '') + '">' + esc(k.glyphText(b)) + '</i>' + esc(l) + '</span>').join('') +
+    h.innerHTML = p.map(([b, l]) => '<span' + (k.standalone && (b === 'B' || b === 'Y') ? ' data-b="' + b + '"' : '') + '><i class="g' + (b === 'A' ? ' a' : '') + '">' + esc(k.glyphText(b)) + '</i>' + esc(l) + '</span>').join('') +
       '<span><i class="g w">' + esc(k.glyphText('LB') + ' ' + k.glyphText('RB')) + '</i>' + (T.page === 'show' ? 'Seasons' : 'Sections') + '</span>';
   }
 

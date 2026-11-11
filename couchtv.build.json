@@ -1,0 +1,56 @@
+{
+  "appId": "local.couchtv",
+  "productName": "Couch TV",
+  "extraMetadata": {
+    "name": "couch-tv",
+    "productName": "Couch TV",
+    "description": "Movies, series and Cable TV from Couch Launcher, as an app of its own.",
+    "main": "src/couchtv/boot.js"
+  },
+  "files": [
+    "src/**/*",
+    "package.json"
+  ],
+  "asarUnpack": [
+    "node_modules/koffi/**/*"
+  ],
+  "win": {
+    "target": [
+      "nsis"
+    ],
+    "icon": "build/couchtv.ico",
+    "signAndEditExecutable": true
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Couch TV",
+    "runAfterFinish": true,
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "build/couchtv.ico",
+    "uninstallerIcon": "build/couchtv.ico",
+    "installerHeaderIcon": "build/couchtv.ico",
+    "artifactName": "CouchTV-Setup-${version}.${ext}"
+  },
+  "npmRebuild": false,
+  "directories": {
+    "buildResources": "build",
+    "output": "dist-tv"
+  },
+  "mac": {
+    "target": [
+      "dir"
+    ],
+    "icon": "build/couchtv.png",
+    "category": "public.app-category.entertainment",
+    "identity": null,
+    "hardenedRuntime": false,
+    "darkModeSupport": true,
+    "extendInfo": {
+      "LSMinimumSystemVersion": "11.0"
+    }
+  }
+}
