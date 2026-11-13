@@ -1,5 +1,5 @@
 /* The launcher's pop-ups over everything: notifications (top right) and the Discord call (top
-   left). Always dark, with their own shadow: they sit on top of games and video. */
+   left, or where the setting puts it). Always dark, with their own shadow: they sit on top of games and video. */
 html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
 html.toasts { font-size: calc(100vw / 50); }
 html.voice { font-size: calc(100vw / 34); }
@@ -24,6 +24,10 @@ html.voice #toasts, html.toasts #voice { display: none; }
 /* ---- the Discord call */
 #voice { position: fixed; top: 2.4rem; left: 2.4rem; display: flex; flex-direction: column; gap: 0.7rem; align-items: flex-start; }
 #voice[hidden] { display: none; }
+html.voice[data-spot="bottom-left"] #voice { top: auto; bottom: 2.4rem; }
+html.voice[data-spot="bottom-right"] #voice { top: auto; bottom: 2.4rem; left: auto; right: 2.4rem; align-items: flex-end; }
+html.voice[data-spot="middle-left"] #voice { top: 50%; transform: translateY(-50%); }
+html.voice[data-spot="bottom-right"] .who { flex-direction: row-reverse; }
 .who { display: flex; align-items: center; gap: 0.9rem; padding: 0.5rem 1.3rem 0.5rem 0.5rem; border-radius: 99rem; background: rgba(24, 24, 30, 0.78); max-width: 28rem;
   opacity: 0.72; transition: opacity 160ms ease, background 160ms ease; }
 .who.speaking { opacity: 1; background: rgba(24, 24, 30, 0.94); }

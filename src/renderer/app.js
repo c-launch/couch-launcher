@@ -1040,8 +1040,9 @@
         toggleHTML('c-pops', 'Show notifications as Couch Launcher pop-ups', S.lib.settings.ownPopups !== false, 'Top right, above games and everything else. Off: regular ' + (IS_MAC ? 'Mac' : 'Windows') + ' notifications.', 'set-toggle', 'data-k="ownPopups"') +
         toggleHTML('c-popsnd', 'Play a sound with pop-ups', S.lib.settings.popSound !== false, '', 'set-toggle', 'data-k="popSound"') +
         '<button class="toggle-row" data-nav data-key="c-poptest" data-zone="body" data-action="pops-test"><span><div>Show a test pop-up</div><div class="d">See where they appear.</div></span><span class="status ok">Try it</span></button>' +
-        toggleHTML('c-callov', 'Show my Discord call on screen', S.lib.settings.callOverlay !== false, 'Who’s in the call, lit up while they talk. Top left, above games and the launcher. Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="callOverlay"') +
+        toggleHTML('c-callov', 'Show my Discord call on screen', S.lib.settings.callOverlay !== false, 'Who’s in the call, lit up while they talk. Above games and the launcher. Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="callOverlay"') +
         toggleHTML('c-calltalk', 'Only show who’s talking', !!S.lib.settings.callTalkingOnly, 'Instead of everyone in the call.', 'set-toggle', 'data-k="callTalkingOnly"') +
+        '<button class="toggle-row" data-nav data-key="c-callspot" data-zone="body" data-action="call-spot"><span><div>Where the call sits</div><div class="d">Its corner of the screen.</div></span><span class="status ok">' + spotName(S.lib.settings.callSpot) + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="c-dcmsg" data-zone="body" data-action="dc-msgs"><span><div>Discord messages as pop-ups</div><div class="d">Discord’s own notifications, shown the launcher’s way. Needs Discord calls connected and Discord’s permission to read notifications.</div></span><span class="status ok">' + (S.lib.settings.dcMessages !== false ? 'On' : 'Off') + '</span></button>' + '</div>';
         return h;
       }
@@ -1064,8 +1065,9 @@
         toggleHTML('c-pops', 'Show notifications as Couch Launcher pop-ups', S.lib.settings.ownPopups !== false, 'Top right, above games and everything else. Off: regular ' + (IS_MAC ? 'Mac' : 'Windows') + ' notifications.', 'set-toggle', 'data-k="ownPopups"') +
         toggleHTML('c-popsnd', 'Play a sound with pop-ups', S.lib.settings.popSound !== false, '', 'set-toggle', 'data-k="popSound"') +
         '<button class="toggle-row" data-nav data-key="c-poptest" data-zone="body" data-action="pops-test"><span><div>Show a test pop-up</div><div class="d">See where they appear.</div></span><span class="status ok">Try it</span></button>' +
-        toggleHTML('c-callov', 'Show my Discord call on screen', S.lib.settings.callOverlay !== false, 'Who’s in the call, lit up while they talk. Top left, above games and the launcher. Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="callOverlay"') +
+        toggleHTML('c-callov', 'Show my Discord call on screen', S.lib.settings.callOverlay !== false, 'Who’s in the call, lit up while they talk. Above games and the launcher. Needs Discord calls connected (guide › Friends).', 'set-toggle', 'data-k="callOverlay"') +
         toggleHTML('c-calltalk', 'Only show who’s talking', !!S.lib.settings.callTalkingOnly, 'Instead of everyone in the call.', 'set-toggle', 'data-k="callTalkingOnly"') +
+        '<button class="toggle-row" data-nav data-key="c-callspot" data-zone="body" data-action="call-spot"><span><div>Where the call sits</div><div class="d">Its corner of the screen.</div></span><span class="status ok">' + spotName(S.lib.settings.callSpot) + '</span></button>' +
         '<button class="toggle-row" data-nav data-key="c-dcmsg" data-zone="body" data-action="dc-msgs"><span><div>Discord messages as pop-ups</div><div class="d">Discord’s own notifications, shown the launcher’s way. Needs Discord calls connected and Discord’s permission to read notifications.</div></span><span class="status ok">' + (S.lib.settings.dcMessages !== false ? 'On' : 'Off') + '</span></button>' +
         toggleHTML('c-nfr', 'Tell me when a friend comes online', S.lib.settings.notifyFriends !== false, 'Xbox and Steam friends you have connected.', 'set-toggle', 'data-k="notifyFriends"') +
         toggleHTML('c-njoin', 'Tell me when a friend starts a game I can join', S.lib.settings.notifyJoin !== false, 'Steam friends in a lobby or on a server (their Steam profile has to be public). Join from the alert or the guide.', 'set-toggle', 'data-k="notifyJoin"') +
@@ -1545,6 +1547,8 @@
   const topLayer = () => layers[layers.length - 1];
 
   // Generic menu (list of actions)
+  const SPOT_NAMES = { 'top-left': 'Top left', 'bottom-left': 'Bottom left', 'bottom-right': 'Bottom right', 'middle-left': 'Middle left' };
+  const spotName = (k) => SPOT_NAMES[k] || SPOT_NAMES['top-left'];
   function openMenu(title, items) {
     return new Promise((resolve) => {
       let done = false;
@@ -3959,6 +3963,13 @@
       case 'pick-mode': {
         const m = await openMenu('Players in emulator games', [{ id: 'saved', label: 'Use my saved players (no screen)', icon: 'check' }, { id: 'ask', label: 'Ask “Who’s playing?” every time', icon: 'users' }, { id: 'off', label: 'Leave as set in the emulator', icon: 'x' }]);
         if (m) { s.pickPlayers = m; save(); refreshContent(); }
+        return;
+      }
+      case 'call-spot': {
+        const cur = s.callSpot || 'top-left';
+        const items = Object.keys(SPOT_NAMES).map((k) => ({ id: k, label: SPOT_NAMES[k], icon: k === cur ? 'check' : 'play' }));
+        const m = await openMenu('Where the call sits', items);
+        if (m) { s.callSpot = m; save(); refreshContent(); }
         return;
       }
       case 'players-setup': return setUpPlayersNow();

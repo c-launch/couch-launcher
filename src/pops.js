@@ -7,8 +7,9 @@
 // (A game in exclusive full screen draws over every window, these included.)
 
 const SHOW_MS = 6500, LONG_MS = 9000, MAX_SHOWN = 4, MAX_WAITING = 12, HIDE_AFTER = 450, MAX_PEOPLE = 8;
+const SPOTS = ['top-left', 'bottom-left', 'bottom-right', 'middle-left'];
 
-// o: { BrowserWindow, file, preload, display() -> { bounds }, mac, now, sound() -> bool }
+// o: { BrowserWindow, file, preload, display() -> { bounds }, mac, now, sound() -> bool, callSpot() -> name }
 function createPops(o) {
   const now = o.now || Date.now;
   const wins = { toasts: null, voice: null };
@@ -22,7 +23,18 @@ function createPops(o) {
     const b = o.display().bounds;
     const rem = Math.min(b.width / 160, b.height / 90);
     const w = Math.round((kind === 'toasts' ? 50 : 34) * rem), h = Math.round((kind === 'toasts' ? 58 : 62) * rem);
-    return { x: kind === 'toasts' ? b.x + b.width - w : b.x, y: b.y, width: Math.min(w, b.width), height: Math.min(h, b.height) };
+    const width = Math.min(w, b.width), height = Math.min(h, b.height);
+    if (kind === 'toasts') return { x: b.x + b.width - w, y: b.y, width, height };
+    // The Discord call: where the chosen spot is (top left unless the setting says otherwise).
+    const spot = spotOf();
+    const x = spot.endsWith('right') ? b.x + b.width - w : b.x;
+    const y = spot.startsWith('bottom') ? b.y + b.height - h : spot.startsWith('middle') ? b.y + Math.round((b.height - h) / 2) : b.y;
+    return { x, y, width, height };
+  }
+  function spotOf() {
+    let s = null;
+    try { s = o.callSpot ? o.callSpot() : null; } catch (_) { s = null; }
+    return SPOTS.includes(s) ? s : 'top-left';
   }
   function windowFor(kind) {
     let w = wins[kind];
@@ -52,7 +64,7 @@ function createPops(o) {
     if (!w || w.isDestroyed() || !ready[kind]) return false;
     w.webContents.send('pops', kind === 'toasts'
       ? { toasts: shown.map((t) => ({ id: t.id, title: t.title, body: t.body, icon: t.icon, from: t.from, sound: t.sound })) }
-      : { voice: call });
+      : { voice: call, spot: spotOf() });
     if (kind === 'toasts') for (const s of shown) s.sound = false; // the sound plays once, when it first shows
     return true;
   }
@@ -117,7 +129,7 @@ function createPops(o) {
   return {
     toast, voice,
     // The display changed (or another one was chosen): move to it.
-    place() { for (const k of ['toasts', 'voice']) { const w = wins[k]; if (w && !w.isDestroyed()) { try { w.setBounds(boundsOf(k)); } catch (_) { /* keeps its place */ } } } },
+    place() { for (const k of ['toasts', 'voice']) { const w = wins[k]; if (w && !w.isDestroyed()) { try { w.setBounds(boundsOf(k)); } catch (_) { /* keeps its place */ } } } send('voice'); },
     close() { closed = true; clearTimeout(timer); clearTimeout(hideTimer); for (const k of ['toasts', 'voice']) { const w = wins[k]; if (w && !w.isDestroyed()) w.destroy(); wins[k] = null; } },
     get state() { return { shown: shown.map((s) => s.title), waiting: waiting.length, call }; },
     isOurs: (w) => w === wins.toasts || w === wins.voice

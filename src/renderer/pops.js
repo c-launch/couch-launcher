@@ -65,8 +65,12 @@
     if (v.more) { const m = document.createElement('div'); m.className = 'who more'; m.textContent = '+' + v.more + ' more'; box.appendChild(m); }
   }
 
+  // Where the call sits (top-left unless the setting says otherwise); the page only takes a known name.
+  const SPOTS = ['top-left', 'bottom-left', 'bottom-right', 'middle-left'];
+  function setSpot(s) { document.documentElement.dataset.spot = SPOTS.includes(s) ? s : 'top-left'; }
   function draw(msg) {
     if (!msg) return;
+    if (mode === 'voice' && 'spot' in msg) setSpot(msg.spot);
     if (mode === 'toasts' && Array.isArray(msg.toasts)) drawToasts(msg.toasts);
     if (mode === 'voice' && 'voice' in msg) drawVoice(msg.voice);
   }

@@ -76,8 +76,22 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.ok(tw.bounds.width === 400 && tw.bounds.x === 880 && vw.bounds.x === 0);
   // a window that got closed is made again
   tw.destroy(); pops.toast({ title: 'after close' }); assert.ok(made.length === 3 && made[2].visible);
+  // the Discord call's spot: where its window sits, and what the page is told
+  let spot = 'bottom-right';
+  const sp = createPops({ BrowserWindow: BW, file: '/x/pops.html', preload: '/x/preload.js', display: () => ({ bounds: { x: 0, y: 0, width: 1600, height: 900 } }), mac: false, callSpot: () => spot });
+  sp.voice({ id: '5', name: 'Sq', people: [P('1', 'Me')] }, false);
+  await wait(60); // the page loads
+  const sv = made[made.length - 1], bw = sv.bounds, bh = sv.bounds.height;
+  assert.ok(bw.x === 1600 - bw.width && bw.y === 900 - bh && sv.sent[sv.sent.length - 1].spot === 'bottom-right', 'bottom right: ' + JSON.stringify(bw));
+  spot = 'middle-left'; sp.place();
+  assert.ok(sv.bounds.x === 0 && sv.bounds.y === Math.round((900 - bh) / 2) && sv.sent[sv.sent.length - 1].spot === 'middle-left', 'middle left: ' + JSON.stringify(sv.bounds));
+  spot = 'bottom-left'; sp.place();
+  assert.ok(sv.bounds.x === 0 && sv.bounds.y === 900 - bh, 'bottom left');
+  spot = 'nonsense'; sp.place();
+  assert.ok(sv.bounds.x === 0 && sv.bounds.y === 0 && sv.sent[sv.sent.length - 1].spot === 'top-left', 'unknown spot falls back to top left');
+  sp.close();
   // closing: no more windows
-  pops.close(); assert.ok(made[2].dead && vw.dead); assert.strictEqual(pops.toast({ title: 'late' }), false); pops.voice({ name: 'x', people: [] }); assert.strictEqual(made.length, 3);
+  pops.close(); assert.ok(made[2].dead && vw.dead); assert.strictEqual(pops.toast({ title: 'late' }), false); pops.voice({ name: 'x', people: [] }); assert.strictEqual(made.length, 4);
   console.log('pops ok');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
