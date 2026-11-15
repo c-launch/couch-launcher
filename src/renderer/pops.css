@@ -25,9 +25,10 @@ html.voice #toasts, html.toasts #voice { display: none; }
 #voice { position: fixed; top: 2.4rem; left: 2.4rem; display: flex; flex-direction: column; gap: 0.7rem; align-items: flex-start; }
 #voice[hidden] { display: none; }
 html.voice[data-spot="bottom-left"] #voice { top: auto; bottom: 2.4rem; }
-html.voice[data-spot="bottom-right"] #voice { top: auto; bottom: 2.4rem; left: auto; right: 2.4rem; align-items: flex-end; }
 html.voice[data-spot="middle-left"] #voice { top: 50%; transform: translateY(-50%); }
-html.voice[data-spot="bottom-right"] .who { flex-direction: row-reverse; }
+html.voice[data-spot="middle-right"] #voice { top: 50%; left: auto; right: 2.4rem; transform: translateY(-50%); align-items: flex-end; }
+html.voice[data-spot="bottom-right"] #voice { top: auto; bottom: 2.4rem; left: auto; right: 2.4rem; align-items: flex-end; }
+html.voice[data-spot$="right"] .who { flex-direction: row-reverse; }
 .who { display: flex; align-items: center; gap: 0.9rem; padding: 0.5rem 1.3rem 0.5rem 0.5rem; border-radius: 99rem; background: rgba(24, 24, 30, 0.78); max-width: 28rem;
   opacity: 0.72; transition: opacity 160ms ease, background 160ms ease; }
 .who.speaking { opacity: 1; background: rgba(24, 24, 30, 0.94); }

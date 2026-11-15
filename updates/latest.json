@@ -1,6 +1,6 @@
 {
- "version": "1.29.5",
- "notes": "Discord call overlay: choose where it sits in Settings (top left, bottom left, bottom right or middle left). Top left stays the default.",
- "file": "CouchLauncher-update-1.29.5.zip",
- "size": 519534
+ "version": "1.29.6",
+ "notes": "Discord call overlay: a middle right spot, and a size setting (small, medium, large) in Settings › Controllers.",
+ "file": "CouchLauncher-update-1.29.6.zip",
+ "size": 519921
 }

@@ -89,9 +89,20 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.ok(sv.bounds.x === 0 && sv.bounds.y === 900 - bh, 'bottom left');
   spot = 'nonsense'; sp.place();
   assert.ok(sv.bounds.x === 0 && sv.bounds.y === 0 && sv.sent[sv.sent.length - 1].spot === 'top-left', 'unknown spot falls back to top left');
+  spot = 'middle-right'; sp.place();
+  assert.ok(sv.bounds.x === 1600 - sv.bounds.width && sv.bounds.y === Math.round((900 - sv.bounds.height) / 2) && sv.sent[sv.sent.length - 1].spot === 'middle-right', 'middle right: ' + JSON.stringify(sv.bounds));
+  // size: small, large, medium (the default), an unknown one is medium
+  let size = 'small'; const sz = createPops({ BrowserWindow: BW, file: '/x/pops.html', preload: '/x/preload.js', display: () => ({ bounds: { x: 0, y: 0, width: 1600, height: 900 } }), mac: false, callSpot: () => 'top-left', callSize: () => size });
+  sz.voice({ id: '6', name: 'Sq', people: [P('1', 'Me')] }, false); await wait(60);
+  const zv = made[made.length - 1];
+  const at = (k) => { size = k; sz.place(); return zv.bounds.width; };
+  const small = at('small'), medium = at('medium'), large = at('large'), odd = at('huge');
+  assert.ok(small < medium && medium < large && odd === medium, 'sizes: ' + [small, medium, large, odd]);
+  assert.ok(zv.bounds.x === 0 && zv.bounds.y === 0, 'top left stays put when resized');
+  sz.close();
   sp.close();
   // closing: no more windows
-  pops.close(); assert.ok(made[2].dead && vw.dead); assert.strictEqual(pops.toast({ title: 'late' }), false); pops.voice({ name: 'x', people: [] }); assert.strictEqual(made.length, 4);
+  pops.close(); assert.ok(made[2].dead && vw.dead); assert.strictEqual(pops.toast({ title: 'late' }), false); pops.voice({ name: 'x', people: [] }); assert.strictEqual(made.length, 5);
   console.log('pops ok');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

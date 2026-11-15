@@ -7,7 +7,8 @@
 // (A game in exclusive full screen draws over every window, these included.)
 
 const SHOW_MS = 6500, LONG_MS = 9000, MAX_SHOWN = 4, MAX_WAITING = 12, HIDE_AFTER = 450, MAX_PEOPLE = 8;
-const SPOTS = ['top-left', 'bottom-left', 'bottom-right', 'middle-left'];
+const SPOTS = ['top-left', 'middle-left', 'bottom-left', 'middle-right', 'bottom-right'];
+const SIZES = { small: 0.8, medium: 1, large: 1.25 };
 
 // o: { BrowserWindow, file, preload, display() -> { bounds }, mac, now, sound() -> bool, callSpot() -> name }
 function createPops(o) {
@@ -22,7 +23,8 @@ function createPops(o) {
   function boundsOf(kind) {
     const b = o.display().bounds;
     const rem = Math.min(b.width / 160, b.height / 90);
-    const w = Math.round((kind === 'toasts' ? 50 : 34) * rem), h = Math.round((kind === 'toasts' ? 58 : 62) * rem);
+    const k = kind === 'toasts' ? 1 : sizeOf();
+    const w = Math.round((kind === 'toasts' ? 50 : 34) * rem * k), h = Math.round((kind === 'toasts' ? 58 : 62) * rem * k);
     const width = Math.min(w, b.width), height = Math.min(h, b.height);
     if (kind === 'toasts') return { x: b.x + b.width - w, y: b.y, width, height };
     // The Discord call: where the chosen spot is (top left unless the setting says otherwise).
@@ -35,6 +37,12 @@ function createPops(o) {
     let s = null;
     try { s = o.callSpot ? o.callSpot() : null; } catch (_) { s = null; }
     return SPOTS.includes(s) ? s : 'top-left';
+  }
+  // The call's size: how far the window and everything in it scale (the page sizes itself from the window).
+  function sizeOf() {
+    let s = null;
+    try { s = o.callSize ? o.callSize() : null; } catch (_) { s = null; }
+    return Object.prototype.hasOwnProperty.call(SIZES, s) ? SIZES[s] : 1;
   }
   function windowFor(kind) {
     let w = wins[kind];

@@ -66,7 +66,7 @@
   }
 
   // Where the call sits (top-left unless the setting says otherwise); the page only takes a known name.
-  const SPOTS = ['top-left', 'bottom-left', 'bottom-right', 'middle-left'];
+  const SPOTS = ['top-left', 'middle-left', 'bottom-left', 'middle-right', 'bottom-right'];
   function setSpot(s) { document.documentElement.dataset.spot = SPOTS.includes(s) ? s : 'top-left'; }
   function draw(msg) {
     if (!msg) return;

@@ -1299,7 +1299,8 @@ if (!app.requestSingleInstanceLock()) {
   const pops = () => popsPart || (popsPart = createPops({
     BrowserWindow, file: path.join(__dirname, 'renderer', 'pops.html'), preload: path.join(__dirname, 'preload.js'),
     display: () => targetDisplay(), mac: MAC, sound: () => !(lib && lib.settings && lib.settings.popSound === false),
-    callSpot: () => (lib && lib.settings && lib.settings.callSpot) || 'top-left'
+    callSpot: () => (lib && lib.settings && lib.settings.callSpot) || 'top-left',
+    callSize: () => (lib && lib.settings && lib.settings.callSize) || 'medium'
   }));
   const ownPops = () => !(lib && lib.settings && lib.settings.ownPopups === false);
   // A notification: the launcher's own pop-up, or (when those are turned off, or can't be shown)
